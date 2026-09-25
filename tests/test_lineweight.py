@@ -77,8 +77,28 @@ def test_inking_leaves_small_details_alone():
     svg = ('<svg><path d="M 0 0 L 100 0 L 100 80 L 0 80 Z" fill="#111"/>'
            '<path d="M 0 0 L 5 0 L 5 5 Z" fill="#222"/></svg>')
     out = inked_svg(svg)
-    assert out.count('<path') == 3          # the two originals, plus one contour for the big one
-    assert inked_svg(svg).count('<path') == 3
+    # each original, a seam stroke for each, and one contour for the big shape -- but no contour for the small one
+    contours = [p for p in out.split('<path') if 'fill="#2A1E26"' in p]
+    assert len(contours) == 1
+    assert out.count('stroke="#111"') == 1
+    assert out.count('stroke="#222"') == 1
+
+
+def test_inking_keeps_every_element_it_does_not_understand():
+    # **Regression for the most expensive defect in this library's short life.** `inked_svg` used to collect the
+    # paths it matched into a new list and join that into the result, which deleted every element the pattern did
+    # not match -- the ellipses carrying a figure's eye whites, irises and catchlights among them. What remained
+    # still suggested a face, so the drawings looked plausible with no eyes in them for several rounds.
+    svg = ('<svg><rect width="10" height="10" fill="#0f0"/>'
+           '<ellipse cx="5" cy="5" rx="3" ry="2" fill="#fff"/>'
+           '<g transform="translate(1 1)"><circle cx="2" cy="2" r="1"/></g>'
+           '<path d="M 0 0 L 100 0 L 100 80 L 0 80 Z" fill="#111"/></svg>')
+    out = inked_svg(svg)
+    assert '<rect' in out, 'a rectangle the pattern does not match was dropped'
+    assert '<ellipse' in out, 'an ellipse was dropped, which is how the eyes went missing'
+    assert '<g transform' in out, 'a group was dropped'
+    assert '<circle' in out
+    assert out.count('<path') >= 2  # the original plus the contour it earned
 
 
 def test_a_closed_contour_is_walked_once():

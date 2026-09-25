@@ -33,6 +33,7 @@ import argparse
 import math
 import os
 import random
+import re
 
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
 BRUSHES: dict[str, dict[str, float]] = {
@@ -248,18 +249,29 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
     because a heavy line around an eye is mud. Extent is the test rather than a list of names, so a shape added
     later is treated the same way without anybody remembering to add it.
     """
-    import re
-    out: list[str] = []
-    for match in re.finditer(r'<path d="([^"]+)"([^/>]*)/>', svg):
+    # **A substitution, not a rebuild -- and that distinction cost a drawing its eyes.** The first version collected
+    # the paths it matched into a new list and joined that list into the result, which silently discarded every
+    # element the pattern did not match: the ellipses carrying an eye's whites, irises and catchlights all vanished,
+    # and because what remained still suggested a face, the output went on looking plausible with no eyes in it.
+    # `re.sub` keeps every character it does not match, which is the only safe way to transform a document by pattern.
+
+    def _replace(match: 're.Match[str]') -> str:
         d, rest = match.group(1), match.group(2)
-        out.append(match.group(0))
+        added: list[str] = []
+        # the seam fix: a shape stroked with its own fill colour bleeds outward by half the stroke width and closes
+        # the pale hairline that antialiasing leaves between two shapes that touch
+        fill = re.search(r'fill="([^"]+)"', rest)
+        if fill and fill.group(1) not in ('none', 'transparent'):
+            added.append('<path d="%s" fill="none" stroke="%s" stroke-width="1.3" stroke-linejoin="round"/>'
+                         % (d, fill.group(1)))
+        added.append(match.group(0))
         polys = parse_path(d)
         if not polys:
-            continue
+            return '\n  '.join(added)
         xs = [x for poly in polys for x, _ in poly]
         ys = [y for poly in polys for _, y in poly]
         if (max(xs) - min(xs)) < min_extent and (max(ys) - min(ys)) < min_extent:
-            continue
+            return '\n  '.join(added)
         # **A closed contour is one loop, so it is walked once and never tapered.** The first version walked it
         # forwards and then backwards to "close" it, which drew the line twice and scalloped every hair mass into
         # fish scales -- visible the moment it was rendered. A loop has no ends, so a taper has nothing to taper;
@@ -282,8 +294,10 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
             od = outline(path, widths)
             if od:
                 opacity = brush_def['opacity'] * (0.5 + 0.5 * (sum(ps) / len(ps)))
-                out.append(f'<path d="{od}" fill="{colour}" opacity="{opacity:.2f}"/>')
-    return '\n  '.join(out)
+                added.append(f'<path d="{od}" fill="{colour}" opacity="{opacity:.2f}"/>')
+        return '\n  '.join(added)
+
+    return re.sub(r'<path d="([^"]+)"([^/>]*)/>', _replace, svg)
 
 
 def fit_report(image_path: str) -> int:
