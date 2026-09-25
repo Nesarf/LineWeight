@@ -63,4 +63,4 @@ inked = inked_svg(open('figure.svg').read(), min_extent=46, brush='ink', colour=
 
 ## Licence
 
-MIT — see `LICENSE`. *(Decided by the repository owner; change before publishing if that is not the intent.)*
+MIT — see `LICENSE`.
