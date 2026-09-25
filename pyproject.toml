@@ -9,6 +9,7 @@ description = "Weighted vector linework without a tablet: a pressure model, stro
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+license-files = ["LICENSE"]
 keywords = ["svg", "lineart", "brush", "pressure", "drawing", "llm"]
 classifiers = [
   "Programming Language :: Python :: 3",
