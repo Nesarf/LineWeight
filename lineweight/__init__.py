@@ -8,8 +8,8 @@ Public surface: a brush, a pressure model, a stroke-to-outline expander, and a c
     #  d is a filled outline in SVG path syntax, with the width already varied along it
 """
 from .core import (BRUSHES, from_record, inked_svg, load_strokes, outline, parse_path, pressures,
-                    save_strokes, stroke, stroke_record)
+                    region_fill, save_strokes, stroke, stroke_record, weld_endpoints)
 
 __all__ = ['BRUSHES', 'stroke', 'stroke_record', 'from_record', 'save_strokes', 'load_strokes',
-           'inked_svg', 'outline', 'pressures', 'parse_path']
+           'inked_svg', 'outline', 'pressures', 'parse_path', 'weld_endpoints', 'region_fill']
 __version__ = '0.1.0'
