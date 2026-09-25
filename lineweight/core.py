@@ -351,6 +351,54 @@ def load_strokes(path: str) -> list[dict]:
         return json.load(handle)['strokes']
 
 
+def weld_endpoints(polys: list[list[tuple[float, float]]], tolerance: float = 4.0
+                   ) -> list[list[tuple[float, float]]]:
+    """Joins polylines whose ends are within [tolerance] of each other, and closes the loops that result.
+
+    **This is gap closing, which is the thing a bucket fill needs and does not have.** An exact fill stops at the
+    first pixel of daylight: draw four strokes that almost meet and nothing is enclosed, so nothing fills. Every
+    drawing program solves this by closing gaps as it fills, and the vector equivalent is to weld the ends before
+    deciding what counts as a region -- two loose ends four pixels apart are one corner, not a hole.
+    """
+    remaining = [list(poly) for poly in polys if len(poly) >= 2]
+    loops: list[list[tuple[float, float]]] = []
+    while remaining:
+        chain = remaining.pop(0)
+        joined = True
+        while joined and remaining:
+            joined = False
+            for index, other in enumerate(remaining):
+                for reverse_chain, reverse_other in ((False, False), (False, True), (True, False), (True, True)):
+                    a = chain[::-1] if reverse_chain else chain
+                    b = other[::-1] if reverse_other else other
+                    if math.dist(a[-1], b[0]) <= tolerance:
+                        chain = a + b[1:]
+                        remaining.pop(index)
+                        joined = True
+                        break
+                if joined:
+                    break
+        if len(chain) >= 3 and math.dist(chain[0], chain[-1]) <= tolerance:
+            if chain[0] != chain[-1]:
+                chain = chain + [chain[0]]
+            loops.append(chain)
+    return loops
+
+
+def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) -> list[str]:
+    """Path data for every region the strokes enclose once their gaps have been closed.
+
+    Returned as `d` strings rather than as drawn elements, because what a caller does with a region -- fill it, clip
+    to it, paint it black -- is the caller's decision. What this answers is the question a bucket answers: *is
+    anything enclosed here*, given a drawing made by somebody whose lines do not always meet.
+    """
+    out: list[str] = []
+    for loop in weld_endpoints(polys, tolerance):
+        points = ['%.2f %.2f' % (x, y) for x, y in loop]
+        out.append('M ' + ' L '.join(points) + ' Z')
+    return out
+
+
 def fit_report(image_path: str) -> int:
     """Measures a real illustration's linework, so the brushes above can be checked against art rather than taste.
 

@@ -143,3 +143,32 @@ def test_a_record_survives_a_trip_through_a_file(tmp_path):
 
     assert back == [record]
     assert from_record(back[0])[0] == stroke(points, 'pencil', seed=11)[0]
+
+
+def test_a_gap_stops_an_exact_fill_and_closing_it_does_not():
+    """**The problem a bucket fill has and an exact fill cannot solve.** Four strokes that almost meet enclose
+    nothing, so nothing fills; weld their ends and the same four strokes are a region. The sweep is the point: at a
+    tolerance below the gap there is no region, above it there is one, and it does not keep growing."""
+    from lineweight import region_fill, weld_endpoints
+
+    square = [
+        [(0.0, 0.0), (100.0, 0.0)],
+        [(102.0, 2.0), (102.0, 100.0)],
+        [(100.0, 102.0), (0.0, 102.0)],
+        [(-2.0, 100.0), (-2.0, 2.0)],
+    ]
+    # the corners are 2.83 apart, so nothing closes below that
+    assert len(weld_endpoints(square, 0.0)) == 0
+    assert len(weld_endpoints(square, 1.0)) == 0
+    assert len(weld_endpoints(square, 3.0)) == 1
+    assert len(weld_endpoints(square, 6.0)) == 1, 'a loose tolerance must not keep welding things together'
+
+    regions = region_fill(square, 3.0)
+    assert len(regions) == 1
+    nums = [float(v) for v in regions[0].replace('M', '').replace('L', '').replace('Z', '').split()]
+    points = list(zip(nums[0::2], nums[1::2]))
+    area = abs(sum(points[i][0] * points[(i + 1) % len(points)][1]
+                   - points[(i + 1) % len(points)][0] * points[i][1]
+                   for i in range(len(points)))) / 2
+    # the square drawn is about 104 on a side
+    assert 9000 < area < 12000, 'the welded region is not the square that was drawn: %s' % area
