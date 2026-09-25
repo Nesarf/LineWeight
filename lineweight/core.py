@@ -36,15 +36,15 @@ import random
 
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
 BRUSHES: dict[str, dict[str, float]] = {
-    # name:            width  opacity taper_in taper_out spacing  speed   corner  noise
+    # name:            width  opacity taper_in taper_out spacing  speed   corner  noise  wobble
     'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 0.10, 'taper_out': 0.14, 'spacing': 0.6,
-             'speed': 0.35, 'corner': 0.40, 'noise': 0.06},
+             'speed': 0.35, 'corner': 0.40, 'noise': 0.06, 'wobble': 0.30},
     'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 0.06, 'taper_out': 0.10, 'spacing': 0.5,
-            'speed': 0.22, 'corner': 0.30, 'noise': 0.05},
+            'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26},
     'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 0.15, 'taper_out': 0.20, 'spacing': 0.8,
-               'speed': 0.40, 'corner': 0.45, 'noise': 0.18},
+               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38},
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 0.30, 'taper_out': 0.40, 'spacing': 1.4,
-             'speed': 0.15, 'corner': 0.20, 'noise': 0.10},
+             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14},
 }
 
 
@@ -95,6 +95,7 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
             corner = min(1.0, d / (math.pi / 2))
         # 4. a slow drift, which is what makes a line look drawn rather than computed
         noise_state = noise_state * 0.86 + rng.uniform(-1, 1) * 0.14
+        grain_state = rng.uniform(-1, 1)
         taper = 1.0
         # **The taper tests are guarded, because a zero taper is a real brush setting.** `t` accumulates from
         # floating-point lengths and can land a hair above 1.0, so `t > 1.0 - 0` was true often enough to divide by
@@ -104,7 +105,7 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
         elif brush['taper_out'] > 0 and t > 1.0 - brush['taper_out']:
             taper = 0.25 + 0.75 * ((1.0 - t) / brush['taper_out'])
         p = taper * (1.0 - brush['speed'] * speed) * (1.0 - brush['corner'] * corner)
-        p *= 1.0 + brush['noise'] * noise_state
+        p *= 1.0 + brush['noise'] * noise_state + brush['noise'] * 0.55 * grain_state
         out.append(max(0.18, min(1.0, p)))
         walked += lengths[i] if i < len(lengths) else 0.0
     return out
@@ -135,11 +136,44 @@ def outline(path: list[tuple[float, float]], width: list[float]) -> str:
     return d
 
 
+def tremble(path: list[tuple[float, float]], amount: float, seed: int) -> list[tuple[float, float]]:
+    """Nudges a path sideways the way a hand does, because a line that is exactly where it was aimed is a plot.
+
+    **Two frequencies, and the difference between them is the whole effect.** A slow wander is the arm moving and a
+    fast jitter is the wrist; a line with only the slow one looks drugged, one with only the fast one looks nervous,
+    and both together look drawn. The nudge is perpendicular to the path, because a hand shakes across its direction
+    of travel rather than along it. This is the opposite of what a drawing program's stabiliser does.
+
+    **The amount is a fraction of the brush's width rather than a distance in pixels**, and that is a correction
+    rather than a preference: half a pixel is invisible on a six-pixel ink line and enormous on a two-pixel pen, so
+    an absolute number means something different on every brush. As a fraction, the same number means the same thing
+    everywhere -- measured across the four brushes, a wobble of about a quarter of the width.
+    """
+    if amount <= 0 or len(path) < 3:
+        return list(path)
+    rng = random.Random(seed * 7919 + 13)
+    slow, fast = 0.0, 0.0
+    out: list[tuple[float, float]] = []
+    for i, (x, y) in enumerate(path):
+        slow = slow * 0.90 + rng.uniform(-1, 1) * 0.10
+        fast = fast * 0.45 + rng.uniform(-1, 1) * 0.55
+        prev = path[max(0, i - 1)]
+        nxt = path[min(len(path) - 1, i + 1)]
+        dx, dy = nxt[0] - prev[0], nxt[1] - prev[1]
+        length = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length
+        offset = amount * (slow * 1.7 + fast * 0.6)
+        out.append((x + nx * offset, y + ny * offset))
+    return out
+
+
 def stroke(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
            colour: str = '#1A1620', resolution: int = 14) -> tuple[str, float]:
     """One stroke: path in, filled outline plus its mean opacity out."""
     brush = BRUSHES[brush_name]
     path = catmull(points, resolution)
+    # a hand's wobble is proportional to the mark it is making, so the parameter is a fraction of the width
+    path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed)
     ps = pressures(path, brush, seed)
     # opacity follows pressure too, which is the second thing a tablet changes
     mean_p = sum(ps) / len(ps)
