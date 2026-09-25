@@ -14,4 +14,4 @@ __all__ = ['BRUSHES', 'stroke', 'stroke_record', 'from_record', 'save_strokes', 
            'inked_svg', 'outline', 'pressures', 'parse_path', 'weld_endpoints', 'region_fill']
 __version__ = '0.1.0'
 
-from .raster import Layer, blend, clip, composite, stroke_layer  # noqa: E402,F401
+from .raster import Layer, blend, clip, composite, grain_at, stroke_layer, warp  # noqa: E402,F401

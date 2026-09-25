@@ -335,3 +335,35 @@ def test_grain_belongs_to_the_paper_and_not_to_the_stroke():
         'grain did not thin the line: %.1f vs %.1f' % (statistics.mean(with_grain), statistics.mean(without))
     # every grained pixel sits below the ungrained one at the same place, because the paper only ever takes away
     assert all(g <= p + 1 for g, p in zip(with_grain, without)), 'some pixel gained ink from the paper'
+
+
+def test_a_zero_mesh_warp_returns_the_layer_unchanged():
+    """**The identity property, which is the one that catches a transposed axis or an off-by-one corner.** Warping is
+    inverse sampling and the grid holds displacements, so a grid of zeroes must reproduce the input exactly -- and
+    both of the mistakes it catches still produce a picture that looks like a picture, which is why this is asserted
+    rather than eyeballed."""
+    from lineweight import stroke_record
+    from lineweight.raster import stroke_layer, warp
+
+    record = stroke_record([(40.0, 60.0), (200.0, 120.0), (340.0, 70.0)], 'ink', seed=3)
+    record['colour_int'] = (40, 34, 48)
+    layer = stroke_layer(record, 200, 150, 1.0)
+
+    rows, cols = 3, 3
+    zero = [[(0.0, 0.0) for _ in range(cols)] for _ in range(rows)]
+    same = warp(layer, zero, (0.0, 0.0, 199.0, 149.0))
+    assert same.data == layer.data, 'a zero displacement grid changed the picture'
+
+    # and a bulge actually moves ink: the top row pushed up spreads the mark further up the canvas
+    bulge = [[(0.0, 0.0) for _ in range(cols)] for _ in range(rows)]
+    bulge[0] = [(0.0, -18.0) for _ in range(cols)]
+    warped = warp(layer, bulge, (0.0, 0.0, 199.0, 149.0))
+
+    def top_row(l):
+        for y in range(l.height):
+            if any(l.data[(y * l.width + x) * 4 + 3] > 8 for x in range(l.width)):
+                return y
+        return -1
+
+    assert top_row(warped) < top_row(layer), \
+        'the bulge did not move the ink upward: %d vs %d' % (top_row(warped), top_row(layer))

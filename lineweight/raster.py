@@ -231,6 +231,55 @@ def clip(layer: Layer, mask: Layer, invert: bool = False) -> Layer:
     return out
 
 
+def warp(layer: Layer, displacements: list[list[tuple[float, float]]],
+         corners: tuple[float, float, float, float]) -> Layer:
+    """Resamples a layer through a grid of displacements, bilinearly between the grid's control points.
+
+    **The last piece of the C tier, and the one worth having for a procedural illustrator.** A generated figure is
+    assembled from placed elements, and a warp is how one of them bends -- a sleeve following an arm, a pattern
+    flowing over a shoulder, a limb adjusted without redrawing it. The grid holds displacements rather than absolute
+    positions, because a displacement grid composes with whatever was drawn underneath while an absolute one
+    silently moves everything.
+
+    Sampling is inverse: for each *destination* pixel the source position is looked up, which is the only way to fill
+    every output pixel exactly once. A zero grid therefore returns the input unchanged, and that identity is asserted
+    rather than assumed -- it is the one property that catches a transposed axis or an off-by-one corner, both of
+    which still produce a picture that looks like a picture.
+
+    `corners` is (x0, y0, x1, y1): the rectangle the grid's rows and columns span.
+    """
+    x0, y0, x1, y1 = corners
+    rows = len(displacements)
+    cols = len(displacements[0])
+    out = Layer(layer.width, layer.height, layer.seed)
+    for py in range(layer.height):
+        for px in range(layer.width):
+            u = (px - x0) / (x1 - x0) * (cols - 1) if cols > 1 and x1 != x0 else 0.0
+            v = (py - y0) / (y1 - y0) * (rows - 1) if rows > 1 and y1 != y0 else 0.0
+            cu = max(0.0, min(cols - 1.001, u))
+            cv = max(0.0, min(rows - 1.001, v))
+            i0, j0 = int(cu), int(cv)
+            fu, fv = cu - i0, cv - j0
+            dx = dy = 0.0
+            for wi, wj, weight in ((i0, j0, (1 - fu) * (1 - fv)), (i0 + 1, j0, fu * (1 - fv)),
+                                   (i0, j0 + 1, (1 - fu) * fv), (i0 + 1, j0 + 1, fu * fv)):
+                if wi >= cols or wj >= rows:
+                    continue
+                dx += displacements[wj][wi][0] * weight
+                dy += displacements[wj][wi][1] * weight
+            sx = int(round(px - dx))
+            sy = int(round(py - dy))
+            if not (0 <= sx < layer.width and 0 <= sy < layer.height):
+                continue
+            source = (sy * layer.width + sx) * 4
+            target = (py * layer.width + px) * 4
+            out.data[target] = layer.data[source]
+            out.data[target + 1] = layer.data[source + 1]
+            out.data[target + 2] = layer.data[source + 2]
+            out.data[target + 3] = layer.data[source + 3]
+    return out
+
+
 def composite(width: int, height: int, stack: list[tuple[Layer, str, float]]) -> Layer:
     """Stacks layers bottom to top, each with its own mode and opacity."""
     result = Layer(width, height)
