@@ -257,3 +257,35 @@ def test_clipping_is_one_alpha_multiply():
     # and clipping never invents ink
     assert sum(1 for i in range(3, len(kept.data), 4) if kept.data[i] > 0) \
         <= sum(1 for i in range(3, len(wash.data), 4) if wash.data[i] > 0)
+
+
+def test_a_wet_brush_picks_up_the_colour_it_crosses():
+    """**The essence of wet mixing, and it is a lerp rather than a physics simulation.** A loaded brush crossing a
+    wet wash carries some of that wash with it, so the colour it deposits is part way between the paint it holds and
+    the paint it found.
+
+    The first version sampled its own buffer, which includes the dabs the stroke laid down a moment ago -- so a red
+    brush crossing a blue wash picked up its own red and stayed red, a difference of one unit out of 255. That is why
+    this asserts a sweep rather than a value: the failure was invisible to the eye and obvious to a measurement.
+    """
+    from lineweight import stroke_record
+    from lineweight.raster import composite, stroke_layer
+
+    wash = stroke_record([(30.0, 100.0), (390.0, 100.0)], 'wash', seed=1)
+    wash['colour_int'] = (40, 80, 170)
+    red = stroke_record([(210.0, 20.0), (210.0, 150.0)], 'ink', seed=2)
+    red['colour_int'] = (190, 40, 50)
+
+    def sample(pickup):
+        under = stroke_layer(wash, 420, 200, 1.0)
+        over = stroke_layer(red, 420, 200, 1.0, wet=pickup, under=under if pickup else None)
+        out = composite(420, 200, [(under, 'normal', 1.0), (over, 'normal', 1.0)])
+        index = (110 * 420 + 210) * 4
+        return tuple(out.data[index:index + 3])
+
+    dry = sample(0.0)
+    blues = [sample(p)[2] for p in (0.0, 0.3, 0.6, 1.0)]
+    assert blues == sorted(blues) and blues[-1] > blues[0] + 50, \
+        'the brush is not picking up the wash: %s' % (blues,)
+    assert sample(1.0)[2] > sample(0.0)[2], 'a fully wet brush should carry the underlying colour'
+    assert dry[0] > 100, 'the dry brush should still be the colour it was loaded with: %s' % (dry,)

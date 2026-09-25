@@ -62,7 +62,48 @@ class Layer:
                 self.data[index + 3] = int(new_a * 255)
 
 
-def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0) -> Layer:
+    def wet_dab(self, x: float, y: float, radius: float, colour: tuple[int, int, int], alpha: float,
+                pickup: float, under: Layer | None = None) -> None:
+        """A dab that first picks up what is already on the layer, then lays down the result.
+
+        **This is the essence of wet mixing, and it is a lerp rather than a physics simulation.** A loaded brush
+        crossing a wet wash carries some of that wash with it; the colour it deposits is part way between the paint it
+        holds and the paint it found. Sampling the footprint's average and mixing by `pickup` reproduces the thing
+        that makes watercolour read as watercolour -- the trail of colour a brush drags out of a shape it passes over
+        -- without any of the neighbourhood iteration the tier was expected to need.
+
+        Zero pickup is the dry dab exactly, so one code path covers both.
+        """
+        if pickup <= 0:
+            self.dab(x, y, radius, colour, alpha)
+            return
+        x0, x1 = max(0, int(x - radius)), min(self.width - 1, int(x + radius) + 1)
+        y0, y1 = max(0, int(y - radius)), min(self.height - 1, int(y + radius) + 1)
+        # **Sample the layer underneath, not this one.** The first version averaged this buffer's own footprint,
+        # which includes the dabs the stroke laid down a moment ago -- so a red brush crossing a blue wash picked up
+        # its own red and stayed red, and the measurement showed a difference of one unit out of 255. A brush carries
+        # the paint it is passing over, not the paint it has just put down.
+        source = under if under is not None else self
+        total = [0.0, 0.0, 0.0]
+        weight = 0.0
+        for py in range(y0, y1 + 1):
+            row = py * source.width * 4
+            for px in range(x0, x1 + 1):
+                if math.hypot(px - x, py - y) > radius:
+                    continue
+                index = row + px * 4
+                a = source.data[index + 3] / 255.0
+                for channel in range(3):
+                    total[channel] += source.data[index + channel] * a
+                weight += a
+        mixed = colour
+        if weight > 0:
+            found = tuple(c / weight for c in total)
+            mixed = tuple(int(colour[c] + (found[c] - colour[c]) * pickup) for c in range(3))
+        self.dab(x, y, radius, mixed, alpha)
+
+def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
+                 wet: float = 0.0, under: Layer | None = None) -> Layer:
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
     **This is the same data the vector expander uses**, which is the point of keeping a record rather than an
@@ -94,7 +135,7 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0) -> L
             y = (y0 + (y1 - y0) * t) * scale
             p = pressure[min(i, len(pressure) - 1)]
             radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5)
-            layer.dab(x, y, radius, colour, min(1.0, brush['opacity'] * (p ** gamma)))
+            layer.wet_dab(x, y, radius, colour, min(1.0, brush['opacity'] * (p ** gamma)), wet, under)
             travelled += max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
         carry = travelled - segment
     return layer

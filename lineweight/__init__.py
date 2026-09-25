@@ -13,3 +13,5 @@ from .core import (BRUSHES, from_record, inked_svg, load_strokes, outline, parse
 __all__ = ['BRUSHES', 'stroke', 'stroke_record', 'from_record', 'save_strokes', 'load_strokes',
            'inked_svg', 'outline', 'pressures', 'parse_path', 'weld_endpoints', 'region_fill']
 __version__ = '0.1.0'
+
+from .raster import Layer, blend, clip, composite, stroke_layer  # noqa: E402,F401
