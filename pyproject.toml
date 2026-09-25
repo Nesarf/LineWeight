@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lineweight"
+version = "0.1.0"
+description = "Weighted vector linework without a tablet: a pressure model, stroke outlining, and calibration against real drawings"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["svg", "lineart", "brush", "pressure", "drawing", "llm"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Graphics :: Vector",
+]
+
+[project.optional-dependencies]
+fit = ["pillow>=9"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+lineweight = "lineweight.core:main"
+
+[tool.setuptools]
+packages = ["lineweight"]
