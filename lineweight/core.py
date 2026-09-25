@@ -39,13 +39,13 @@ import re
 BRUSHES: dict[str, dict[str, float]] = {
     # name:            width  opacity taper_in taper_out spacing  speed   corner  noise  wobble
     'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 0.10, 'taper_out': 0.14, 'spacing': 0.6,
-             'speed': 0.35, 'corner': 0.40, 'noise': 0.06, 'wobble': 0.30},
+             'speed': 0.35, 'corner': 0.40, 'noise': 0.06, 'wobble': 0.30, 'curve': 1.15},
     'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 0.06, 'taper_out': 0.10, 'spacing': 0.5,
-            'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26},
+            'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26, 'curve': 0.85},
     'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 0.15, 'taper_out': 0.20, 'spacing': 0.8,
-               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38},
+               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38, 'curve': 1.00},
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 0.30, 'taper_out': 0.40, 'spacing': 1.4,
-             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14},
+             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70},
 }
 
 
@@ -324,7 +324,13 @@ def from_record(record: dict) -> tuple[str, float]:
     brush = BRUSHES[record['brush']]
     path = [(float(x), float(y)) for x, y in record['centre']]
     ps = [float(p) for p in record['pressure']]
-    widths = [brush['width'] * p for p in ps]
+    # **The response curve is applied here, at expansion, rather than being baked into the record.** A record holds
+    # what the pressure model produced; the curve is a decision about how the brush answers it -- under one it
+    # reaches full width early and feels soft, over one it needs real pressure and feels like a pen. Because the
+    # curve lives on this side, the same recorded stroke can be re-expanded with a different one, which is the
+    # practical difference between keeping the line and keeping only its outline.
+    gamma = float(brush.get('curve', 1.0))
+    widths = [brush['width'] * (p ** gamma) for p in ps]
     d = outline(path, widths)
     mean_p = sum(ps) / len(ps) if ps else 1.0
     opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
