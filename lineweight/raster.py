@@ -140,6 +140,29 @@ def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -
     return out
 
 
+def clip(layer: Layer, mask: Layer, invert: bool = False) -> Layer:
+    """Keeps [layer] only where [mask] is opaque: one alpha multiply, which is the whole of clipping.
+
+    Cheaper and more predictable than a mask object, and it composes: clip a wash to a pencil region, clip that to a
+    silhouette, and every step is a multiply of two numbers. Inverting covers the case the mask is really a hole --
+    light through a window, colour outside a line -- without needing a second mask.
+    """
+    if (layer.width, layer.height) != (mask.width, mask.height):
+        raise ValueError('layer and mask must be the same size: %sx%s vs %sx%s'
+                         % (layer.width, layer.height, mask.width, mask.height))
+    out = Layer(layer.width, layer.height)
+    for index in range(0, len(layer.data), 4):
+        m = mask.data[index + 3] / 255.0
+        if invert:
+            m = 1.0 - m
+        a = layer.data[index + 3] / 255.0 * m
+        out.data[index] = layer.data[index]
+        out.data[index + 1] = layer.data[index + 1]
+        out.data[index + 2] = layer.data[index + 2]
+        out.data[index + 3] = int(a * 255)
+    return out
+
+
 def composite(width: int, height: int, stack: list[tuple[Layer, str, float]]) -> Layer:
     """Stacks layers bottom to top, each with its own mode and opacity."""
     result = Layer(width, height)

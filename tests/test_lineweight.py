@@ -213,3 +213,28 @@ def test_a_straight_stroke_is_continuous_not_a_string_of_beads(tmp_path):
             previous = lit
         assert runs == 1, '%s draws %d separate runs of ink along a straight line' % (name, runs)
         assert BRUSHES[name]['spacing'] <= 0.8, 'spacing %s is past the measured threshold' % BRUSHES[name]['spacing']
+
+
+def test_clipping_is_one_alpha_multiply():
+    """Clipping is a multiply of two alphas and nothing else, so it composes: clip a wash to a region, clip that to
+    a silhouette, and each step is one multiply. Inverting is the case where the mask is really a hole."""
+    from lineweight import stroke_record
+    from lineweight.raster import Layer, clip, stroke_layer
+
+    record = stroke_record([(60.0, 140.0), (150.0, 20.0)], 'wash', seed=2)
+    record['colour_int'] = (110, 30, 60)
+    wash = stroke_layer(record, 220, 160, 1.0)
+    disc = Layer(220, 160)
+    disc.dab(100, 80, 45, (255, 255, 255), 1.0)
+
+    def alpha(layer, x, y):
+        return layer.data[(y * layer.width + x) * 4 + 3]
+
+    assert alpha(wash, 100, 80) > 0, 'the wash is not where the test thinks it is'
+    kept = clip(wash, disc)
+    inverted = clip(wash, disc, invert=True)
+    assert alpha(kept, 100, 80) > 0 and alpha(inverted, 100, 80) == 0
+    assert alpha(kept, 110, 40) == 0 and alpha(inverted, 110, 40) > 0
+    # and clipping never invents ink
+    assert sum(1 for i in range(3, len(kept.data), 4) if kept.data[i] > 0) \
+        <= sum(1 for i in range(3, len(wash.data), 4) if wash.data[i] > 0)
