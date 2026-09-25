@@ -230,11 +230,30 @@ def test_clipping_is_one_alpha_multiply():
     def alpha(layer, x, y):
         return layer.data[(y * layer.width + x) * 4 + 3]
 
-    assert alpha(wash, 100, 80) > 0, 'the wash is not where the test thinks it is'
+    # **Find the ink rather than guessing where it is.** Three attempts to name a point by hand put it off the
+    # stroke, because a diagonal line is not where it looks like it should be at a given row.
+    lit = [(i // 4 % 220, i // 4 // 220) for i in range(3, len(wash.data), 4) if wash.data[i] > 0]
+    assert lit, 'the wash drew nothing'
+    def mask_alpha(x, y):
+        return disc.data[(y * disc.width + x) * 4 + 3] / 255.0
+
+    # near the middle, where the mask is solid; and well outside it, where the mask is nothing. An earlier version
+    # called a point 39.4 pixels from the centre of a 45-pixel disc "inside" and expected ink there -- but the disc
+    # has a soft edge, so at that distance the mask is only a fifth, and a fifth of an almost transparent edge pixel
+    # rounds to nothing. The assertion was wrong, not the clip.
+    inside = [p for p in lit if (p[0] - 100) ** 2 + (p[1] - 80) ** 2 < 15 ** 2 and mask_alpha(*p) > 0.9]
+    outside = [p for p in lit if (p[0] - 100) ** 2 + (p[1] - 80) ** 2 > 55 ** 2]
+    assert inside and outside, 'the disc does not divide the stroke: %d in, %d out' % (len(inside), len(outside))
+
     kept = clip(wash, disc)
     inverted = clip(wash, disc, invert=True)
-    assert alpha(kept, 100, 80) > 0 and alpha(inverted, 100, 80) == 0
-    assert alpha(kept, 110, 40) == 0 and alpha(inverted, 110, 40) > 0
+    assert alpha(kept, *inside[0]) > 0 and alpha(inverted, *inside[0]) == 0
+    assert alpha(kept, *outside[0]) == 0 and alpha(inverted, *outside[0]) > 0
+    # the relationship itself: what was kept is the product of the two alphas, rounded
+    for point in lit[:400]:
+        x, y = point
+        expected = int(alpha(wash, x, y) * mask_alpha(x, y))
+        assert abs(alpha(kept, x, y) - expected) <= 1, 'clip is not a multiply at %s' % (point,)
     # and clipping never invents ink
     assert sum(1 for i in range(3, len(kept.data), 4) if kept.data[i] > 0) \
         <= sum(1 for i in range(3, len(wash.data), 4) if wash.data[i] > 0)
