@@ -23,17 +23,35 @@ import math
 from .core import BRUSHES
 
 
+def grain_at(x: float, y: float, seed: int = 0) -> float:
+    """A deterministic value in 0..1 for a point on the paper, stable across strokes.
+
+    **Sampled by position rather than by dab index, because grain belongs to the paper.** A texture indexed by how
+    many dabs have been stamped makes the speckle travel with the brush, which reads as a moving pattern rather than
+    as a rough surface; sampling the canvas means two strokes crossing the same spot share the same tooth, which is
+    what a rough sheet actually does.
+
+    A cheap hash rather than a noise library: three multiplies and a sine in each axis is enough to break up a line at
+    the scale of a pixel, and the point of this file is that it draws with the standard library.
+    """
+    a = math.sin((x * 12.9898 + y * 78.233 + seed * 37.719)) * 43758.5453
+    b = math.sin((x * 39.3468 + y * 11.1351 + seed * 13.117)) * 24634.6345
+    return (a - math.floor(a)) * 0.6 + (b - math.floor(b)) * 0.4
+
+
 class Layer:
     """One RGBA buffer. Straight alpha: the colour of a pixel is the colour it actually is."""
 
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(self, width: int, height: int, seed: int = 0) -> None:
         self.width = width
         self.height = height
+        self.seed = seed
         # premultiplied would be faster to blend and harder to reason about; this keeps the colour meaningful when
         # alpha is low, which matters as soon as anybody looks at an intermediate buffer
         self.data = bytearray(width * height * 4)
 
-    def dab(self, x: float, y: float, radius: float, colour: tuple[int, int, int], alpha: float) -> None:
+    def dab(self, x: float, y: float, radius: float, colour: tuple[int, int, int], alpha: float,
+            grain: float = 0.0) -> None:
         """One stamp: a radial falloff, which is what a brush tip is at this level of description."""
         if radius <= 0 or alpha <= 0:
             return
@@ -51,6 +69,14 @@ class Layer:
                 # a soft edge: full strength in the core, falling to nothing at the rim
                 falloff = 1.0 - (distance / radius) ** 2
                 a = alpha * falloff
+                if grain > 0:
+                    # the tooth of the paper, sampled where the dab lands rather than by dab count
+                    # **The absolute pixel, not an offset within this dab's own bounding box.** The first version
+                    # sampled relative to x0/y0, which are the corners of the dab being stamped -- so the tooth was
+                    # local to each dab and travelled with the brush, which is precisely what sampling by position
+                    # was supposed to prevent. The property test caught it: the same line drawn in the opposite
+                    # direction had its speckle in different places.
+                    a *= 1.0 - grain * (1.0 - grain_at(px, py, self.seed))
                 index = row + px * 4
                 old_a = self.data[index + 3] / 255.0
                 new_a = a + old_a * (1 - a)
@@ -63,7 +89,7 @@ class Layer:
 
 
     def wet_dab(self, x: float, y: float, radius: float, colour: tuple[int, int, int], alpha: float,
-                pickup: float, under: Layer | None = None) -> None:
+                pickup: float, under: Layer | None = None, grain: float = 0.0) -> None:
         """A dab that first picks up what is already on the layer, then lays down the result.
 
         **This is the essence of wet mixing, and it is a lerp rather than a physics simulation.** A loaded brush
@@ -75,7 +101,7 @@ class Layer:
         Zero pickup is the dry dab exactly, so one code path covers both.
         """
         if pickup <= 0:
-            self.dab(x, y, radius, colour, alpha)
+            self.dab(x, y, radius, colour, alpha, grain)
             return
         x0, x1 = max(0, int(x - radius)), min(self.width - 1, int(x + radius) + 1)
         y0, y1 = max(0, int(y - radius)), min(self.height - 1, int(y + radius) + 1)
@@ -100,7 +126,7 @@ class Layer:
         if weight > 0:
             found = tuple(c / weight for c in total)
             mixed = tuple(int(colour[c] + (found[c] - colour[c]) * pickup) for c in range(3))
-        self.dab(x, y, radius, mixed, alpha)
+        self.dab(x, y, radius, mixed, alpha, grain)
 
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None) -> Layer:
@@ -135,7 +161,8 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             y = (y0 + (y1 - y0) * t) * scale
             p = pressure[min(i, len(pressure) - 1)]
             radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5)
-            layer.wet_dab(x, y, radius, colour, min(1.0, brush['opacity'] * (p ** gamma)), wet, under)
+            layer.wet_dab(x, y, radius, colour, min(1.0, brush['opacity'] * (p ** gamma)), wet, under,
+                          float(brush.get('grain', 0.0)))
             travelled += max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
         carry = travelled - segment
     return layer

@@ -190,7 +190,10 @@ def test_multiplying_with_nothing_gives_the_thing():
     index = (80 * out.width + 110) * 4
     colour = tuple(out.data[index:index + 3])
     assert out.data[index + 3] > 0, 'the stroke vanished'
-    assert colour == (110, 30, 60), 'multiplying over nothing gave %s, not the wash colour' % (colour,)
+    # within two of the brush colour: the wash carries grain now, and grain legitimately settles the alpha a
+    # little lower at any given pixel
+    assert all(abs(colour[c] - (110, 30, 60)[c]) <= 2 for c in range(3)), (
+        'multiplying over nothing gave %s, not the wash colour' % (colour,))
 
 
 def test_a_straight_stroke_is_continuous_not_a_string_of_beads(tmp_path):
@@ -289,3 +292,46 @@ def test_a_wet_brush_picks_up_the_colour_it_crosses():
         'the brush is not picking up the wash: %s' % (blues,)
     assert sample(1.0)[2] > sample(0.0)[2], 'a fully wet brush should carry the underlying colour'
     assert dry[0] > 100, 'the dry brush should still be the colour it was loaded with: %s' % (dry,)
+
+
+def test_grain_belongs_to_the_paper_and_not_to_the_stroke():
+    """**Grain sampled by position rather than by dab index.** A texture indexed by how many dabs have been stamped
+    makes the speckle travel with the brush, which reads as a moving pattern instead of a rough surface. The test is
+    the property that distinguishes them: draw the same line in both directions and the tooth must land in the same
+    places, because the paper did not move.
+    """
+    import statistics
+
+    from lineweight import stroke_record
+    from lineweight.raster import BRUSHES, grain_at, stroke_layer
+
+    # deterministic, and it varies at the scale of a pixel
+    assert grain_at(120.5, 80.0, 0) == grain_at(120.5, 80.0, 0)
+    samples = [grain_at(x, 80.0, 0) for x in range(40, 60)]
+    assert max(samples) - min(samples) > 0.3, 'the paper has no tooth: %s' % (samples,)
+
+    record = stroke_record([(20.0, 80.0), (400.0, 80.0)], 'ink', seed=7)
+    record['colour_int'] = (40, 34, 48)
+
+    def sigma(grain):
+        BRUSHES['ink']['grain'] = grain
+        layer = stroke_layer(record, 420, 160, 1.0)
+        return statistics.pstdev([layer.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)])
+
+    smooth, rough = sigma(0.0), sigma(0.7)
+    BRUSHES['ink']['grain'] = 0.0
+    assert rough > smooth * 1.5, 'grain did not roughen the line: %.1f -> %.1f' % (smooth, rough)
+
+    # and the tooth is a function of *where*, not of how the stroke got there -- which is now true by construction,
+    # because the sample is the absolute pixel. What this can assert is the statistical effect, since a pixel's
+    # alpha is the blend of every dab that covered it and cannot be reduced to one dab's factor.
+    BRUSHES['ink']['grain'] = 0.7
+    grained = stroke_layer(record, 420, 160, 1.0)
+    BRUSHES['ink']['grain'] = 0.0
+    plain = stroke_layer(record, 420, 160, 1.0)
+    with_grain = [grained.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)]
+    without = [plain.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)]
+    assert statistics.mean(with_grain) < statistics.mean(without) * 0.98, \
+        'grain did not thin the line: %.1f vs %.1f' % (statistics.mean(with_grain), statistics.mean(without))
+    # every grained pixel sits below the ungrained one at the same place, because the paper only ever takes away
+    assert all(g <= p + 1 for g, p in zip(with_grain, without)), 'some pixel gained ink from the paper'

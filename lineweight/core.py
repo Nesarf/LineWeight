@@ -43,13 +43,13 @@ BRUSHES: dict[str, dict[str, float]] = {
     'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 0.06, 'taper_out': 0.10, 'spacing': 0.56,
             'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26, 'curve': 0.85},
     'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 0.15, 'taper_out': 0.20, 'spacing': 0.56,
-               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38, 'curve': 1.00},
+               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
     # **Spacing is measured, not chosen.** Sweeping it per brush and counting how many separate runs of ink a
     # single straight stroke leaves shows all four staying continuous to 0.8 of a diameter and breaking at
     # 1.0, so every brush sits at 0.56 -- a measured value with the margin left in, rather than a number
     # that merely looked reasonable and had no effect until the raster compositor arrived.
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 0.30, 'taper_out': 0.40, 'spacing': 0.56,
-             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70},
+             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
 }
 
 
