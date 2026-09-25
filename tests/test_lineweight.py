@@ -172,3 +172,44 @@ def test_a_gap_stops_an_exact_fill_and_closing_it_does_not():
                    for i in range(len(points)))) / 2
     # the square drawn is about 104 on a side
     assert 9000 < area < 12000, 'the welded region is not the square that was drawn: %s' % area
+
+
+def test_multiplying_with_nothing_gives_the_thing():
+    """**The bug a probe found and looking would not have.** Blend combined against the base colour whatever its
+    alpha, and a transparent base has a colour of zero, so a wash crossing a pencil line was painted black where
+    there was no pencil line at all. Where the base is empty the top layer simply goes down."""
+    from lineweight import stroke_record
+    from lineweight.raster import Layer, blend, stroke_layer
+
+    record = stroke_record([(20.0, 80.0), (200.0, 80.0)], 'wash', seed=4)
+    record['colour_int'] = (110, 30, 60)
+    layer = stroke_layer(record, 220, 160, 1.0)
+    empty = Layer(220, 160)
+
+    out = blend(empty, layer, 'multiply', 1.0)
+    index = (80 * out.width + 110) * 4
+    colour = tuple(out.data[index:index + 3])
+    assert out.data[index + 3] > 0, 'the stroke vanished'
+    assert colour == (110, 30, 60), 'multiplying over nothing gave %s, not the wash colour' % (colour,)
+
+
+def test_a_straight_stroke_is_continuous_not_a_string_of_beads(tmp_path):
+    """Spacing was measured against the brush width times a factor, which for a wide wash drew a dab every fifteen
+    pixels. It is measured against the dab's own size, and the value in the brushes was swept: all four stay
+    continuous to 0.8 of a diameter and break at 1.0."""
+    from lineweight import BRUSHES, stroke_record
+    from lineweight.raster import stroke_layer
+
+    for name in ('fine', 'ink', 'pencil', 'wash'):
+        record = stroke_record([(20.0, 80.0), (200.0, 80.0)], name, seed=5)
+        record['colour_int'] = (40, 34, 48)
+        layer = stroke_layer(record, 220, 160, 1.0)
+        row = 80 * layer.width * 4
+        runs, previous = 0, False
+        for x in range(layer.width):
+            lit = layer.data[row + x * 4 + 3] > 8
+            if lit and not previous:
+                runs += 1
+            previous = lit
+        assert runs == 1, '%s draws %d separate runs of ink along a straight line' % (name, runs)
+        assert BRUSHES[name]['spacing'] <= 0.8, 'spacing %s is past the measured threshold' % BRUSHES[name]['spacing']
