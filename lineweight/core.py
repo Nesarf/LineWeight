@@ -171,17 +171,7 @@ def tremble(path: list[tuple[float, float]], amount: float, seed: int) -> list[t
 def stroke(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
            colour: str = '#1A1620', resolution: int = 14) -> tuple[str, float]:
     """One stroke: path in, filled outline plus its mean opacity out."""
-    brush = BRUSHES[brush_name]
-    path = catmull(points, resolution)
-    # a hand's wobble is proportional to the mark it is making, so the parameter is a fraction of the width
-    path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed)
-    ps = pressures(path, brush, seed)
-    # opacity follows pressure too, which is the second thing a tablet changes
-    mean_p = sum(ps) / len(ps)
-    widths = [brush['width'] * p for p in ps]
-    d = outline(path, widths)
-    opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
-    return d, opacity
+    return from_record(stroke_record(points, brush_name, seed, colour, resolution))
 
 
 
@@ -298,6 +288,61 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
         return '\n  '.join(added)
 
     return re.sub(r'<path d="([^"]+)"([^/>]*)/>', _replace, svg)
+
+
+def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
+                  colour: str = '#1A1620', resolution: int = 14) -> dict:
+    """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
+
+    **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
+    outline -- the correct thing to render and useless to edit, because once a variable-width stroke has been turned
+    into a polygon there is no way back to the line it came from or the hand that made it. A record keeps the
+    decisions: which brush, which seed, which points, and what pressure the model produced at each of them. From that
+    the outline can be regenerated at any resolution, the brush can be swapped, a point can be moved, and the whole
+    thing can be written to a file and reopened tomorrow.
+
+    Nothing about the rendering changes; `stroke()` now builds its outline from a record, so the two cannot drift
+    apart, and a test asserts that a record round-trips to identical output.
+    """
+    brush = BRUSHES[brush_name]
+    path = catmull(points, resolution)
+    path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed)
+    ps = pressures(path, brush, seed)
+    return {
+        'brush': brush_name,
+        'seed': seed,
+        'colour': colour,
+        'resolution': resolution,
+        'control': [[round(x, 3), round(y, 3)] for x, y in points],
+        'centre': [[round(x, 3), round(y, 3)] for x, y in path],
+        'pressure': [round(p, 4) for p in ps],
+    }
+
+
+def from_record(record: dict) -> tuple[str, float]:
+    """Rebuilds a stroke's outline from its record, which is what makes the record worth keeping."""
+    brush = BRUSHES[record['brush']]
+    path = [(float(x), float(y)) for x, y in record['centre']]
+    ps = [float(p) for p in record['pressure']]
+    widths = [brush['width'] * p for p in ps]
+    d = outline(path, widths)
+    mean_p = sum(ps) / len(ps) if ps else 1.0
+    opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
+    return d, opacity
+
+
+def save_strokes(records: list[dict], path: str) -> None:
+    """A drawing is a list of records; this is how it survives the process that made it."""
+    import json
+    with open(path, 'w', encoding='utf-8', newline='\n') as handle:
+        json.dump({'version': 1, 'strokes': records}, handle, ensure_ascii=False, indent=1)
+        handle.write('\n')
+
+
+def load_strokes(path: str) -> list[dict]:
+    import json
+    with open(path, encoding='utf-8') as handle:
+        return json.load(handle)['strokes']
 
 
 def fit_report(image_path: str) -> int:

@@ -111,3 +111,35 @@ def test_a_closed_contour_is_walked_once():
     # one walk of a four-point loop samples the same number of points as its perimeter, not twice that
     d = contour[0].split('d="')[1].split('"')[0]
     assert d.count('L') < 40
+
+
+def test_a_stroke_record_round_trips_losslessly():
+    """**The whole point of a record is that it can be expanded again.** Everything before this returned a filled
+    outline -- right to render, useless to edit, because once a variable-width stroke is a polygon there is no way
+    back to the line it came from. A record keeps the brush, the seed, the points and the pressure, so the outline
+    can be regenerated at any resolution, the brush swapped, a point moved."""
+    from lineweight import from_record, stroke, stroke_record
+
+    points = [(40.0, 40.0), (140.0, 30.0), (240.0, 60.0)]
+    a_d, a_opacity = stroke(points, 'ink', seed=3)
+    record = stroke_record(points, 'ink', seed=3)
+    b_d, b_opacity = from_record(record)
+
+    assert a_d == b_d, 'the outline from a record differs from the one stroke() produced'
+    assert abs(a_opacity - b_opacity) < 1e-9
+    assert len(record['centre']) == len(record['pressure']) > 4
+    for key in ('brush', 'seed', 'colour', 'resolution', 'control', 'centre', 'pressure'):
+        assert key in record
+
+
+def test_a_record_survives_a_trip_through_a_file(tmp_path):
+    from lineweight import from_record, load_strokes, save_strokes, stroke, stroke_record
+
+    points = [(10.0, 10.0), (80.0, 40.0)]
+    record = stroke_record(points, 'pencil', seed=11)
+    path = tmp_path / 'drawing.json'
+    save_strokes([record], str(path))
+    back = load_strokes(str(path))
+
+    assert back == [record]
+    assert from_record(back[0])[0] == stroke(points, 'pencil', seed=11)[0]
