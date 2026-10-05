@@ -61,30 +61,61 @@ class Greyscale:
         *appearance* of the line rather than the pressure that made it. Scanning both axes matters because a drawing
         is mostly lines in one direction, and measuring only one of them measures only the lines that happen to cross
         it.
+
+        **Written to walk indices rather than to slice.** The obvious version takes a row with
+        `pixels[y*w:(y+1)*w]`, which copies every pixel of the image once per axis -- on a four-megapixel illustration
+        that is sixteen megabytes of copying to count runs, and it was most of the time a full library took to
+        measure. The step form is the same loop with no copy.
         """
         runs: list[int] = []
         if axis == 'x':
             for y in range(self.height):
-                row = self.pixels[y * self.width:(y + 1) * self.width]
-                runs.extend(_runs(row, threshold))
+                base = y * self.width
+                length = 0
+                for x in range(self.width):
+                    if self.pixels[base + x] < threshold:
+                        length += 1
+                    elif length:
+                        runs.append(length)
+                        length = 0
+                if length:
+                    runs.append(length)
         else:
             for x in range(self.width):
-                column = self.pixels[x::self.width]
-                runs.extend(_runs(column, threshold))
+                length = 0
+                index = x
+                for _y in range(self.height):
+                    if self.pixels[index] < threshold:
+                        length += 1
+                    elif length:
+                        runs.append(length)
+                        length = 0
+                    index += self.width
+                if length:
+                    runs.append(length)
         return runs
 
-    def mean_darkness(self, threshold: int = INK_THRESHOLD) -> float:
-        total = 0
-        count = 0
+    def ink_stats(self, threshold: int = INK_THRESHOLD) -> tuple[float, float]:
+        """Ink fraction and mean darkness in one pass, because they are read from the same pixels.
+
+        Two separate passes over every pixel was the shape this started as, and with three such helpers the cost of a
+        measurement grew with the number of questions asked rather than with the size of the image.
+        """
+        dark = 0
+        total_darkness = 0
+        count = len(self.pixels)
         for value in self.pixels:
             if value < threshold:
-                total += 255 - value
-                count += 1
-        return (total / count) if count else 0.0
+                dark += 1
+                total_darkness += 255 - value
+        return (dark / count if count else 0.0,
+                (total_darkness / dark) if dark else 0.0)
+
+    def mean_darkness(self, threshold: int = INK_THRESHOLD) -> float:
+        return self.ink_stats(threshold)[1]
 
     def ink_ratio(self, threshold: int = INK_THRESHOLD) -> float:
-        dark = sum(1 for value in self.pixels if value < threshold)
-        return dark / len(self.pixels) if self.pixels else 0.0
+        return self.ink_stats(threshold)[0]
 
 
 def _runs(sequence, threshold: int) -> list[int]:
@@ -174,32 +205,61 @@ def decode_png(path: str) -> Greyscale:
                 left = line[i - channels] if i >= channels else 0
                 line[i] = (line[i] + ((left + prior[i]) >> 1)) & 0xFF
         elif filter_type == 4:
+            # **The predictor is inlined.** `_paeth` is three subtractions and three comparisons, and calling it once
+            # per byte of a four-megapixel image costs more than the arithmetic inside it -- the decoder was most of
+            # the time a full library took to measure, while the measuring itself ran in under half a second.
             for i in range(stride):
-                left = line[i - channels] if i >= channels else 0
-                upleft = prior[i - channels] if i >= channels else 0
-                line[i] = (line[i] + _paeth(left, prior[i], upleft)) & 0xFF
+                if i >= channels:
+                    a = line[i - channels]
+                    b = prior[i]
+                    c = prior[i - channels]
+                else:
+                    a = 0
+                    b = prior[i]
+                    c = 0
+                p = a + b - c
+                pa = p - a
+                if pa < 0:
+                    pa = -pa
+                pb = p - b
+                if pb < 0:
+                    pb = -pb
+                pc = p - c
+                if pc < 0:
+                    pc = -pc
+                if pa <= pb and pa <= pc:
+                    pred = a
+                elif pb <= pc:
+                    pred = b
+                else:
+                    pred = c
+                line[i] = (line[i] + pred) & 0xFF
         elif filter_type != 0:
             raise ImageError('unknown PNG filter %d in %s' % (filter_type, path))
         prior = line
-        for x in range(width):
-            if colour == 0:
-                grey = line[x]
-            elif colour == 4:
-                grey = line[x * 2]
-            elif colour == 2:
-                r, g, b = line[x * 3], line[x * 3 + 1], line[x * 3 + 2]
-                grey = (r * 299 + g * 587 + b * 114) // 1000
-            elif colour == 6:
-                r, g, b = line[x * 4], line[x * 4 + 1], line[x * 4 + 2]
-                grey = (r * 299 + g * 587 + b * 114) // 1000
-            else:  # palette
-                index = line[x]
+        base = y * width
+        if colour == 0:                                  # grey, one byte a pixel
+            out[base:base + width] = line[:width]
+        elif colour == 4:                                # grey plus alpha
+            out[base:base + width] = line[0::2]
+        elif colour == 2:                                # RGB, the recursion kept out of the inner loop
+            for x in range(width):
+                i = x * 3
+                out[base + x] = (line[i] * 299 + line[i + 1] * 587 + line[i + 2] * 114) // 1000
+        elif colour == 6:                                # RGBA
+            for x in range(width):
+                i = x * 4
+                out[base + x] = (line[i] * 299 + line[i + 1] * 587 + line[i + 2] * 114) // 1000
+        else:                                            # palette: resolved once, not per pixel
+            table = bytearray(256)
+            for index in range(256):
                 if index < len(palette):
                     r, g, b = palette[index]
-                    grey = (r * 299 + g * 587 + b * 114) // 1000
+                    table[index] = (r * 299 + g * 587 + b * 114) // 1000
                 else:
-                    grey = 255
-            out[y * width + x] = grey
+                    table[index] = 255
+            for x in range(width):
+                out[base + x] = table[line[x]]
     return Greyscale(width=width, height=height, pixels=out)
 
 
