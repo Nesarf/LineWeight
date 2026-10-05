@@ -173,9 +173,28 @@ def from_strokes(strokes: list[dict], width: float | None = None, height: float 
     # `Document` defaults its canvas to 800x600, so checking `height is None` after construction is never true and
     # the size was silently left at the default -- a generated document whose canvas had nothing to do with its
     # contents. The size a caller passed is the one fact this function has that `Document` does not.
+    #
+    # **And the bounds are taken again at the end, not only here.** Sizing the canvas before a caller adds anything
+    # else means whatever it adds next is outside the page: the demo drawing grew a rule at y=380 on a canvas 372
+    # tall, which is a shape that exists and cannot be seen. `resize_to_fit` exists for that, and callers that build
+    # a document up in stages should end with it.
     if boxes:
         if width is None:
             doc.width = boxes[2] + 20
         if height is None:
             doc.height = boxes[3] + 20
     return doc
+
+
+def resize_to_fit(document: 'Document', margin: float = 20.0) -> 'Document':
+    """Grow the canvas so everything in the document is on it.
+
+    Cheap and worth calling after a document is assembled: a shape outside the page is a shape no destination will
+    show, and no format reports it -- the file is well formed, the layer exists, and the geometry is off the canvas.
+    """
+    boxes = document.bounds()
+    if not boxes:
+        return document
+    document.width = max(document.width, boxes[2] + margin)
+    document.height = max(document.height, boxes[3] + margin)
+    return document

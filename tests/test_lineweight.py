@@ -458,6 +458,33 @@ def test_the_canvas_is_sized_to_the_drawing():
     assert (sized.width, sized.height) == (1000, 500)
 
 
+def test_a_shape_added_after_the_canvas_was_sized_is_still_on_the_page():
+    """**No format complains about geometry outside the page.**
+
+    `from_strokes` sizes the canvas to the strokes it is handed. Anything a caller adds afterwards is outside it --
+    the file stays well formed, the layer and the shape are both there, and the drawing simply has a piece nobody will
+    ever see. The demo drawing did exactly that: a rule at y=380 on a canvas 372 tall. `resize_to_fit` is the fix, and
+    this is the check that it is called.
+    """
+    from lineweight import Appearance, Document, Path, from_strokes, resize_to_fit
+
+    doc = from_strokes([{'outline': [(10.0, 10.0), (110.0, 10.0), (110.0, 60.0)], 'opacity': 1.0}])
+    assert doc.height == 80
+    doc.layer('DETAIL').add(Path(points=[(0, 200), (120, 200)], closed=False,
+                                 appearance=Appearance(filled=False, stroke='#6E1E2E', stroke_width=2.0)))
+    # before the resize the new shape is off the canvas, and nothing would have said so
+    assert doc.bounds()[3] > doc.height
+    resize_to_fit(doc)
+    x0, y0, x1, y1 = doc.bounds()
+    assert x1 <= doc.width and y1 <= doc.height, (doc.width, doc.height, doc.bounds())
+
+    # and the demo drawing itself, which is what exposed this, keeps every shape on its page
+    from lineweight.core import demo_document
+    demo = demo_document()
+    dx0, dy0, dx1, dy1 = demo.bounds()
+    assert dx1 <= demo.width and dy1 <= demo.height, (demo.width, demo.height, demo.bounds())
+
+
 def test_the_illustrator_script_flips_y_and_keeps_the_palette():
     """Illustrator's y axis points up and SVG's points down, so a generated script that forgets it draws the picture
     upside down, which looks plausible in the code and wrong on the screen."""

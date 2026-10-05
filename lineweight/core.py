@@ -892,7 +892,11 @@ def demo_document() -> 'Document':
                                       appearance=Appearance(filled=False, stroke='#6E1E2E',
                                                             stroke_width=2.5, opacity=0.8),
                                       closed=False, name='rule'))
-    return document
+    # **The canvas is grown after the last shape is added, not before.** `from_strokes` sizes the page to the strokes
+    # it was given, and the rule below them landed outside it -- a shape that exists in every destination's data and
+    # is visible in none of them, because no format complains about geometry off the page.
+    from .doc import resize_to_fit
+    return resize_to_fit(document)
 
 
 def to_psd(out_path: str, scale: float = 1.0) -> int:
