@@ -90,10 +90,25 @@ On the command line:
 **What is measured, and what is not.** Illustrator 28.5 runs a generated script from a command line and returns the
 drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator itself exported --
 including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build. The
-PSD writer's output is verified by walking its own bytes back out: layer names, dimensions, channel layout and the
-merged image. **Whether SAI accepts the PSD is not verified** -- SAI has no scripting interface and no reliable
-signal here that it has loaded a file, so the claim stops at the format. Animate opens a hand-written XFL as a
-document, which is verified, but **the content does not import**, and that is unresolved; see `lineweight/xfl.py`.
+PSD writer's output is verified by walking its own bytes back out: layer names, dimensions, channel layout, the
+merged image, and that every channel decompresses to a full image. **Whether SAI accepts the PSD is not verified** --
+SAI has no scripting interface and no reliable signal here that it has loaded a file, so the claim stops at the
+format.
+
+Animate is a folder, not a zip, and it opens as a document. That took long enough to be worth writing down: nine
+hand-written skeletons opened as documents while importing nothing, because an XFL is a **directory** holding
+`DOMDocument.xml` beside a marker file named after the project and containing `PROXY-CS5`, and Animate has to be
+pointed at **the marker**, not the folder -- the folder opens the home screen. A document Animate saved itself
+supplied the rest: `xflVersion="23.0"`, `creatorInfo="Adobe Animate"`, `<scripts/>`/`<PrinterSettings/>`/
+`<publishHistory/>` on the root, `layerDepthEnabled` on the timeline, and a frame with no `duration`. A generated XFL
+now opens with its scene name and its own canvas size. **The shape encoding is the remaining unknown**: the stage
+comes up empty, so `DOMShape`'s edge chain is still wrong.
+
+Animate has no scriptable entry point on this machine at all, which is why the bridge is a file: JSFL passed on the
+command line opens as a document, `FlashFactory` refuses out-of-process creation, a JSFL in `Configuration/Commands`
+does not run when a document opens, its UI Automation tree is empty, a background process cannot take its focus, and
+`Animate.exe drawing.svg` opens the home screen. After Effects 2024 ships no XFL exporter and Illustrator has no XFL
+in its scripting dictionary.
 
 ## Calibrating to your own hand
 
