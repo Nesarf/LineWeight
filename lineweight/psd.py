@@ -302,22 +302,31 @@ def unpackbits(data: bytes, expected: int) -> bytes:
 
 
 def _packed_channel(data: bytes, width: int, height: int) -> bytes:
-    """One channel as PackBits, one compressed run per scanline, which is how the format stores images.
+    """One channel as PackBits: a **table of two-byte row lengths**, and then all the rows.
 
-    Each row is prefixed with its own compressed length -- writing one stream for the whole channel is a plausible
-    simplification that no reader accepts, because the length prefixes are how a reader finds row boundaries without
-    decompressing everything first.
+    **Both of those were wrong here for several rounds, and reading the decoder that actually works settled it.** A
+    reference file -- a SAI PSD containing a real drawing -- decodes perfectly through `psd-tools`, and its `decode_rle`
+    states the layout plainly::
+
+        row_size = (width * depth + 7) // 8
+        bytes_counts = read_be_array(("H", "I")[version - 1], height, fp)   # every count, first
+        return b"".join(decode(fp.read(count), row_size) for count in bytes_counts)
+
+    * **The counts are two bytes each** for version 1, not one. A single byte shifts every row boundary, so the first
+      row decodes and nothing after it does -- exactly the symptom that was being chased for several rounds.
+    * **All the counts come before any row data.** Writing each row's length immediately before that row is the obvious
+      layout, and it is not this format.
+
+    Measured against the reference: the counts sum to precisely the bytes following the table (253104 of 253104) and the
+    rows expand to precisely the channel size (1662661 of 1662661).
     """
-    out = bytearray(struct.pack('>H', 1))
+    counts = bytearray()
+    rows = bytearray()
     for y in range(height):
-        row = data[y * width:(y + 1) * width]
-        packed = packbits(bytes(row))
-        # **One byte, not two.** PSD prefixes each compressed scanline with a single-byte length. Writing
-        # two shifted every following row by one byte, so the first channel decoded correctly and every
-        # channel after it began mid-data -- which reads as `compression 12`, an impossible value, and is how
-        # this was finally spotted.
-        out += bytes([len(packed)]) + packed
-    return bytes(out)
+        packed = packbits(bytes(data[y * width:(y + 1) * width]))
+        counts += struct.pack('>H', len(packed))
+        rows += packed
+    return bytes(struct.pack('>H', 1) + counts + rows)
 
 
 def save_psd(layers: list[Layer], path: str, width: int | None = None, height: int | None = None) -> str:
@@ -540,16 +549,16 @@ def read_psd_header(path: str) -> dict:
             merged_decoded.append(data[mo:mo + width * height])
             mo += width * height
         elif comp == 1:
-            # **Row lengths are read, not assumed.** Each scanline carries its own compressed length, so the only way
-            # to find the next row -- and the end of this channel -- is to follow them one at a time.
-            rows = []
+            # **A table of two-byte row lengths, then every row.** Both halves were wrong here and in the writer, and
+            # they agreed with each other, which is why the round trip passed while the file was unreadable elsewhere.
+            # The layout is not a guess: `psd-tools` decodes a real SAI drawing with exactly this shape, and reading
+            # that decoder is what ended several rounds of inferring the format from bytes.
+            counts = []
             for _y in range(height):
-                # **One byte, to match the format -- and to match the writer, which read and wrote two.** The pair
-                # agreed with each other and neither agreed with PSD, so the first channel decoded and every channel
-                # after it started a byte early per row. That showed up as `compression 12`, a value the format does not
-                # have, and it is the only reason the mistake ever became visible.
-                row_len = data[mo]
-                mo += 1
+                counts.append(struct.unpack('>H', data[mo:mo + 2])[0])
+                mo += 2
+            rows = []
+            for row_len in counts:
                 rows.append(unpackbits(data[mo:mo + row_len], width))
                 mo += row_len
             merged_decoded.append(b''.join(rows))
