@@ -1,17 +1,33 @@
 """Weighted linework without a tablet.
 
-Public surface: a brush, a pressure model, a stroke-to-outline expander, and a calibration measurement.
+Public surface: a brush, a pressure model, a stroke-to-outline expander, a calibration measurement, and the bridges
+that carry the result into a drawing application.
 
     from lineweight import BRUSHES, stroke, inked_svg
 
     d, opacity = stroke([(0, 0), (100, 20), (200, 0)], 'ink')
     #  d is a filled outline in SVG path syntax, with the width already varied along it
+
+    from lineweight import Document, jsx_document
+    #  the same drawing as a layered document, and then as a script Illustrator runs natively
+
+`Layer` is the document model's. The raster compositor has a `Layer` of its own, which stays reachable as
+`lineweight.raster.Layer` rather than being shadowed here -- two different things under one name is how a caller ends
+up passing the wrong one to something that will not complain.
 """
-from .core import (BRUSHES, from_record, inked_svg, load_strokes, outline, parse_path, pressures,
+from .core import (BRUSHES, from_record, inked_svg, load_strokes, outline, parse_path, parse_transform, pressures,
                     region_fill, save_strokes, stroke, stroke_record, weld_endpoints)
 
 __all__ = ['BRUSHES', 'stroke', 'stroke_record', 'from_record', 'save_strokes', 'load_strokes',
-           'inked_svg', 'outline', 'pressures', 'parse_path', 'weld_endpoints', 'region_fill']
+           'inked_svg', 'outline', 'pressures', 'parse_path', 'parse_transform', 'weld_endpoints', 'region_fill']
 __version__ = '0.1.0'
 
-from .raster import Layer, blend, clip, composite, grain_at, stroke_layer, warp  # noqa: E402,F401
+from .doc import Appearance, Document, Layer, Path, from_strokes, parse_colour  # noqa: E402,F401
+from .app import jsx_document  # noqa: E402,F401
+from .xfl import write_xfl, zip_xfl  # noqa: E402,F401
+from .ref import Greyscale, measure, scan, summarise, compare, check  # noqa: E402,F401
+from . import run  # noqa: E402,F401
+
+__all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',
+            'write_xfl', 'zip_xfl', 'run',
+            'Greyscale', 'measure', 'scan', 'summarise', 'compare', 'check']

@@ -180,58 +180,380 @@ def stroke(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
 
 
 # -------------------------------------------------------------------------------------------------- path parsing
+TOKEN_RE = re.compile(r'([MmLlHhVvCcSsQqTtAaZz])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)')
+
+
+def _sample_quad(p0, c, p1, samples):
+    out = []
+    for i in range(1, samples + 1):
+        t = i / samples
+        mt = 1 - t
+        out.append((mt * mt * p0[0] + 2 * mt * t * c[0] + t * t * p1[0],
+                    mt * mt * p0[1] + 2 * mt * t * c[1] + t * t * p1[1]))
+    return out
+
+
+def _sample_cubic(p0, c1, c2, p1, samples):
+    out = []
+    for i in range(1, samples + 1):
+        t = i / samples
+        mt = 1 - t
+        a, b, cc, dd = mt * mt * mt, 3 * mt * mt * t, 3 * mt * t * t, t * t * t
+        out.append((a * p0[0] + b * c1[0] + cc * c2[0] + dd * p1[0],
+                    a * p0[1] + b * c1[1] + cc * c2[1] + dd * p1[1]))
+    return out
+
+
+def _sample_arc(p0, rx, ry, rotation, large_arc, sweep, p1, samples):
+    """An SVG elliptical arc, walked as an ellipse and sampled.
+
+    **This is the one command that cannot be handled by interpolation**, because the spec defines it by its
+    endpoints rather than its centre, and the two possible ellipses through those endpoints are chosen by two flags.
+    Everything below is that conversion (F.6.5 of the SVG specification) done in full, including the degenerate
+    cases: a zero radius is a straight line, and endpoints that coincide describe no arc at all.
+    """
+    if rx == 0 or ry == 0:
+        return [p1]
+    if abs(p0[0] - p1[0]) < 1e-12 and abs(p0[1] - p1[1]) < 1e-12:
+        return []
+    rx, ry = abs(rx), abs(ry)
+    phi = math.radians(rotation % 360.0)
+    cos_p, sin_p = math.cos(phi), math.sin(phi)
+    dx2, dy2 = (p0[0] - p1[0]) / 2.0, (p0[1] - p1[1]) / 2.0
+    x1p = cos_p * dx2 + sin_p * dy2
+    y1p = -sin_p * dx2 + cos_p * dy2
+    # scale the radii up if they are too small to span the endpoints, which the spec requires
+    lam = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+    if lam > 1.0:
+        scale = math.sqrt(lam)
+        rx, ry = rx * scale, ry * scale
+    num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
+    den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+    factor = math.sqrt(max(0.0, num / den)) if den else 0.0
+    if large_arc == sweep:
+        factor = -factor
+    cxp = factor * rx * y1p / ry
+    cyp = -factor * ry * x1p / rx
+    cx = cos_p * cxp - sin_p * cyp + (p0[0] + p1[0]) / 2.0
+    cy = sin_p * cxp + cos_p * cyp + (p0[1] + p1[1]) / 2.0
+
+    def angle(ux, uy, vx, vy):
+        dot = ux * vx + uy * vy
+        norm = math.hypot(ux, uy) * math.hypot(vx, vy)
+        if norm == 0:
+            return 0.0
+        value = max(-1.0, min(1.0, dot / norm))
+        a = math.acos(value)
+        return -a if (ux * vy - uy * vx) < 0 else a
+
+    theta1 = angle(1.0, 0.0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+    delta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+    if not sweep and delta > 0:
+        delta -= 2 * math.pi
+    elif sweep and delta < 0:
+        delta += 2 * math.pi
+    out = []
+    # at least two samples whatever the arc is, so a wide arc is never reduced to a single chord
+    steps = max(2, int(samples * max(1.0, abs(delta) / (math.pi / 2))))
+    for i in range(1, steps + 1):
+        theta = theta1 + delta * i / steps
+        ex, ey = rx * math.cos(theta), ry * math.sin(theta)
+        out.append((cx + cos_p * ex - sin_p * ey, cy + sin_p * ex + cos_p * ey))
+    return out
+
+
 def parse_path(d: str, samples: int = 10) -> list[list[tuple[float, float]]]:
     """Turns a path string into polylines, which is what a stroke outline needs.
 
-    **Only the commands the generator actually writes are handled**, and that is deliberate rather than lazy: `M`,
-    `L`, `Q` and `Z` cover every shape in the shapes a caller supplies, and a parser for the whole of SVG would be a parser
-    nobody here can check. An unknown command is skipped rather than guessed at.
+    **The whole command set, because dropping what a generator writes is the worst available behaviour.** This
+    parser once handled only `M`, `L`, `Q` and `Z` and skipped the rest, with a test asserting the skip so it looked
+    intentional. It was not a safe choice: a language model asked to draw writes cubics and arcs constantly, and every
+    one of them was silently discarded -- a shape whose outline came partly from a curve lost that part and kept the
+    rest, so the result looked like a drawing rather than like a failure. Rendering it was the only way to notice.
+
+    Relative commands are honoured too, which is the quieter half of the same bug: `m` and `l` were uppercased and
+    then read as absolute, so a perfectly ordinary path placed everything after its first move at the wrong
+    coordinates. Curves are sampled rather than kept, because an outline has to be a polyline to be offset.
     """
-    import re
-    tokens = re.findall(r'([MLQZmlqz])|(-?\d*\.?\d+)', d)
+    tokens = TOKEN_RE.findall(d)
     polys: list[list[tuple[float, float]]] = []
     current: list[tuple[float, float]] = []
     nums: list[float] = []
     command = ''
+    start: tuple[float, float] = (0.0, 0.0)   # the subpath's first point, for `Z` and for relative moves
+    cursor: tuple[float, float] = (0.0, 0.0)
+    last_control: tuple[float, float] | None = None
+
+    def flush(close: bool = False) -> None:
+        nonlocal current
+        if close and len(current) >= 2:
+            current = current + [current[0]]
+        if len(current) >= 2:
+            polys.append(current)
+        current = []
+
+    def relative() -> bool:
+        return command.islower()
+
     for letter, number in tokens:
         if letter:
-            if command == 'Q' and len(nums) >= 4:
-                # a quadratic: sample it, so the curve becomes a polyline like everything else
-                x0, y0 = current[-1]
-                cx, cy, x1, y1 = nums[-4:]
-                for i in range(1, samples + 1):
-                    t = i / samples
-                    mt = 1 - t
-                    current.append((mt * mt * x0 + 2 * mt * t * cx + t * t * x1,
-                                    mt * mt * y0 + 2 * mt * t * cy + t * t * y1))
-            if letter in 'Mm' and current:
-                polys.append(current)
-                current = []
-            if letter in 'Zz' and current:
-                current.append(current[0])
-                polys.append(current)
-                current = []
-            command, nums = letter.upper(), []
+            command = letter
+            nums = []
+            if letter in 'Zz':
+                flush(close=True)
+                cursor = start
             continue
         nums.append(float(number))
-        if command == 'L' and len(nums) >= 2:
-            current.append((nums[0], nums[1]))
+        cmd = command.upper()
+        upper = not relative()
+        ox, oy = cursor if not upper else (0.0, 0.0)
+
+        if cmd == 'M' and len(nums) >= 2:
+            flush()
+            cursor = (nums[0] + ox, nums[1] + oy)
+            start = cursor
+            current = [cursor]
             nums = []
-        elif command == 'M' and len(nums) >= 2:
-            current = [(nums[0], nums[1])]
+            # subsequent pairs after a move are line-tos, as the spec says
+            command = 'L' if upper else 'l'
+        elif cmd == 'L' and len(nums) >= 2:
+            cursor = (nums[0] + ox, nums[1] + oy)
+            current.append(cursor)
             nums = []
-            command = 'L'
-    if command == 'Q' and len(nums) >= 4 and current:
-        x0, y0 = current[-1]
-        cx, cy, x1, y1 = nums[-4:]
-        for i in range(1, samples + 1):
-            t = i / samples
-            mt = 1 - t
-            current.append((mt * mt * x0 + 2 * mt * t * cx + t * t * x1,
-                            mt * mt * y0 + 2 * mt * t * cy + t * t * y1))
-    if current:
-        polys.append(current)
+            last_control = None
+        elif cmd == 'H' and len(nums) >= 1:
+            cursor = (nums[0] + ox, cursor[1])
+            current.append(cursor)
+            nums = []
+            last_control = None
+        elif cmd == 'V' and len(nums) >= 1:
+            cursor = (cursor[0], nums[0] + oy)
+            current.append(cursor)
+            nums = []
+            last_control = None
+        elif cmd == 'C' and len(nums) >= 6:
+            c1 = (nums[0] + ox, nums[1] + oy)
+            c2 = (nums[2] + ox, nums[3] + oy)
+            end = (nums[4] + ox, nums[5] + oy)
+            if not current:
+                current = [cursor]
+            current.extend(_sample_cubic(cursor, c1, c2, end, samples))
+            cursor, last_control = end, c2
+            nums = []
+        elif cmd == 'S' and len(nums) >= 4:
+            # the first control is the reflection of the previous one about the cursor
+            c1 = (2 * cursor[0] - last_control[0], 2 * cursor[1] - last_control[1]) if last_control else cursor
+            c2 = (nums[0] + ox, nums[1] + oy)
+            end = (nums[2] + ox, nums[3] + oy)
+            if not current:
+                current = [cursor]
+            current.extend(_sample_cubic(cursor, c1, c2, end, samples))
+            cursor, last_control = end, c2
+            nums = []
+        elif cmd == 'Q' and len(nums) >= 4:
+            c1 = (nums[0] + ox, nums[1] + oy)
+            end = (nums[2] + ox, nums[3] + oy)
+            if not current:
+                current = [cursor]
+            current.extend(_sample_quad(cursor, c1, end, samples))
+            cursor, last_control = end, c1
+            nums = []
+        elif cmd == 'T' and len(nums) >= 2:
+            c1 = (2 * cursor[0] - last_control[0], 2 * cursor[1] - last_control[1]) if last_control else cursor
+            end = (nums[0] + ox, nums[1] + oy)
+            if not current:
+                current = [cursor]
+            current.extend(_sample_quad(cursor, c1, end, samples))
+            cursor, last_control = end, c1
+            nums = []
+        elif cmd == 'A' and len(nums) >= 7:
+            end = (nums[5] + ox, nums[6] + oy)
+            if not current:
+                current = [cursor]
+            current.extend(_sample_arc(cursor, nums[0], nums[1], nums[2], int(nums[3]) != 0, int(nums[4]) != 0,
+                                       end, samples))
+            cursor, last_control = end, None
+            nums = []
+    flush()
     return [p for p in polys if len(p) >= 2]
+
+
+TRANSFORM_ITEM_RE = re.compile(r'(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)')
+NUMBER_RE = re.compile(r'-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
+
+
+def _mat_mul(m: tuple[float, ...], n: tuple[float, ...]) -> tuple[float, ...]:
+    a1, b1, c1, d1, e1, f1 = m
+    a2, b2, c2, d2, e2, f2 = n
+    return (a1 * a2 + c1 * b2, b1 * a2 + d1 * b2,
+            a1 * c2 + c1 * d2, b1 * c2 + d1 * d2,
+            a1 * e2 + c1 * f2 + e1, b1 * e2 + d1 * f2 + f1)
+
+
+def parse_transform(text: str) -> tuple[float, float, float, float, float, float]:
+    """An SVG `transform` attribute as a 2x3 matrix `(a, b, c, d, e, f)`.
+
+    **Without this, a weighted outline is drawn in the wrong place.** An outline is generated from the numbers in the
+    path, and those numbers are in the path's own coordinates: a path inside `<g transform="translate(20,10)
+    scale(2)">` is not where its digits say it is. Generate the contour from those digits, nest it back inside the
+    same group, and the transform is applied to it a second time -- the contour lands displaced and wrongly sized,
+    which reads as a bad drawing rather than as a bug. Transforms are composed in document order here, as SVG applies
+    them, and the same matrix scales the brush so the line's weight stays proportional to the artwork.
+    """
+    matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    for kind, body in TRANSFORM_ITEM_RE.findall(text or ''):
+        parts = [float(v) for v in NUMBER_RE.findall(body)]
+        if kind == 'matrix' and len(parts) >= 6:
+            step = tuple(parts[:6])
+        elif kind == 'translate':
+            step = (1.0, 0.0, 0.0, 1.0, parts[0] if parts else 0.0, parts[1] if len(parts) > 1 else 0.0)
+        elif kind == 'scale':
+            sx = parts[0] if parts else 1.0
+            sy = parts[1] if len(parts) > 1 else sx
+            step = (sx, 0.0, 0.0, sy, 0.0, 0.0)
+        elif kind == 'rotate':
+            angle = math.radians(parts[0] if parts else 0.0)
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
+            rotation = (cos_a, sin_a, -sin_a, cos_a, 0.0, 0.0)
+            if len(parts) >= 3:
+                # rotate about a point is translate-to-origin, rotate, translate-back
+                cx, cy = parts[1], parts[2]
+                step = _mat_mul((1.0, 0.0, 0.0, 1.0, cx, cy),
+                                _mat_mul(rotation, (1.0, 0.0, 0.0, 1.0, -cx, -cy)))
+            else:
+                step = rotation
+        elif kind == 'skewX':
+            step = (1.0, 0.0, math.tan(math.radians(parts[0] if parts else 0.0)), 1.0, 0.0, 0.0)
+        elif kind == 'skewY':
+            step = (1.0, math.tan(math.radians(parts[0] if parts else 0.0)), 0.0, 1.0, 0.0, 0.0)
+        else:
+            continue
+        matrix = _mat_mul(matrix, step)
+    return matrix
+
+
+def apply_transform(points: list[tuple[float, float]],
+                    matrix: tuple[float, ...]) -> list[tuple[float, float]]:
+    a, b, c, d, e, f = matrix
+    return [(a * x + c * y + e, b * x + d * y + f) for x, y in points]
+
+
+def transform_scale(matrix: tuple[float, ...]) -> float:
+    """The uniform scale a transform applies, as the square root of its area factor.
+
+    A brush's width is a length, so a transformed path needs its width scaled by the same amount, or the inked contour
+    comes out too thin or too thick by exactly the factor the artwork was scaled.
+    """
+    a, b, c, d = matrix[0], matrix[1], matrix[2], matrix[3]
+    determinant = abs(a * d - b * c)
+    return math.sqrt(determinant) if determinant > 0 else 1.0
+
+
+def _transform_path_data(d: str, matrix: tuple[float, ...]) -> str:
+    """Rewrites path data with every coordinate moved through a transform.
+
+    Used for the seam-fix copy of a shape, which is emitted outside the group it came from and therefore cannot
+    inherit the transform that positioned it -- leave the numbers local and the hairline-closing stroke lands near the
+    origin while the shape it belongs to is somewhere else entirely.
+
+    **Absolute and relative commands need different arithmetic**, which is why this parses rather than rewrites
+    numbers in place. An absolute point is mapped through the whole matrix; a relative offset is turned by the linear
+    part alone, because the translation belongs to the cursor rather than to the offset. Handling only the absolute
+    cases would be simpler and would silently misplace every relative path it was handed, which is the same class of
+    quiet wrongness this file has been fixing all along.
+    """
+    a, b, c, dd, e, f = matrix
+    # how many numbers each command consumes before the next group of the same command starts
+    arity = {'M': 2, 'L': 2, 'T': 2, 'H': 1, 'V': 1, 'C': 6, 'S': 4, 'Q': 4, 'A': 7}
+    tokens = re.findall(r'[A-Za-z]|-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][-+]?\d+)?', d)
+    out: list[str] = []
+    command = ''
+    index = 0
+    cursor = [0.0, 0.0]
+    start = [0.0, 0.0]
+
+    def map_absolute(x: float, y: float) -> tuple[float, float]:
+        return a * x + c * y + e, b * x + dd * y + f
+
+    def map_relative(x: float, y: float) -> tuple[float, float]:
+        return a * x + c * y, b * x + dd * y
+
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token.isalpha():
+            command = token
+            index = 0
+            out.append(token)
+            i += 1
+            continue
+        kind = command.upper()
+        if kind == 'Z':
+            i += 1
+            continue
+        size = arity.get(kind, 2)
+        group = tokens[i:i + size]
+        try:
+            values = [float(v) for v in group]
+        except ValueError:
+            out.extend(group)
+            i += size
+            continue
+        relative = command.islower()
+        mapped: list[float] = []
+        if kind == 'H':
+            x = values[0] + (cursor[0] if relative else 0.0)
+            y = cursor[1]
+            mx, my = map_absolute(x, y)
+            mapped = [mx if not relative else mx - cursor[0]]
+        elif kind == 'V':
+            x = cursor[0]
+            y = values[0] + (cursor[1] if relative else 0.0)
+            mx, my = map_absolute(x, y)
+            mapped = [my if not relative else my - cursor[1]]
+        elif kind == 'A':
+            # radii and flags are not coordinates; only the endpoint moves
+            ex = values[5] + (cursor[0] if relative else 0.0)
+            ey = values[6] + (cursor[1] if relative else 0.0)
+            mx, my = map_absolute(ex, ey)
+            if relative:
+                mx, my = mx - cursor[0], my - cursor[1]
+            mapped = values[:5] + [mx, my]
+        else:
+            pairs = [(values[k], values[k + 1]) for k in range(0, len(values) - 1, 2)]
+            for px, py in pairs:
+                if relative:
+                    mx, my = map_relative(px, py)
+                else:
+                    mx, my = map_absolute(px, py)
+                mapped.extend([mx, my])
+        out.extend(_fmt_num(v) for v in mapped)
+        # advance the cursor so a relative command knows where it starts from
+        if kind in ('M', 'L', 'T'):
+            if relative:
+                cursor = [cursor[0] + values[-2], cursor[1] + values[-1]]
+            else:
+                cursor = [values[-2], values[-1]]
+        elif kind == 'H':
+            cursor = [values[0] + (cursor[0] if relative else 0.0), cursor[1]]
+        elif kind == 'V':
+            cursor = [cursor[0], values[0] + (cursor[1] if relative else 0.0)]
+        elif kind in ('C', 'S', 'Q'):
+            if relative:
+                cursor = [cursor[0] + values[-2], cursor[1] + values[-1]]
+            else:
+                cursor = [values[-2], values[-1]]
+        elif kind == 'A':
+            cursor = [values[5] + (cursor[0] if relative else 0.0), values[6] + (cursor[1] if relative else 0.0)]
+        if kind == 'M':
+            start = list(cursor)
+        index += size
+        i += size
+    return ' '.join(out)
+
+
+def _fmt_num(value: float) -> str:
+    return ('%.4f' % value).rstrip('0').rstrip('.') or '0'
 
 
 def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: str = '#2A1E26',
@@ -249,17 +571,36 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
     # and because what remained still suggested a face, the output went on looking plausible with no eyes in it.
     # `re.sub` keeps every character it does not match, which is the only safe way to transform a document by pattern.
 
-    def _replace(match: 're.Match[str]') -> str:
-        d, rest = match.group(1), match.group(2)
-        added: list[str] = []
-        # the seam fix: a shape stroked with its own fill colour bleeds outward by half the stroke width and closes
-        # the pale hairline that antialiasing leaves between two shapes that touch
-        fill = re.search(r'fill="([^"]+)"', rest)
-        if fill and fill.group(1) not in ('none', 'transparent'):
-            added.append('<path d="%s" fill="none" stroke="%s" stroke-width="1.3" stroke-linejoin="round"/>'
-                         % (d, fill.group(1)))
-        added.append(match.group(0))
+    def _replace(match: 're.Match[str]', parent: tuple[float, ...]) -> str:
+        body = match.group(1)
+        found = re.search(r'\bd\s*=\s*(["\'])(.*?)\1', body, re.S)
+        if not found:
+            return match.group(0)
+        d = found.group(2)
+        rest = body[:found.start()] + body[found.end():]
+        # **The transform belongs to the geometry, not to the outline's parent.** Generating a contour from the raw
+        # numbers of a path inside `<g transform="...">` and nesting it back inside that group applies the transform
+        # twice, so the contour is displaced and scaled away from the shape it is supposed to outline. It reads as a
+        # bad drawing rather than as a bug, which is exactly why it is applied here instead.
+        transform = re.search(r'transform\s*=\s*"([^"]*)"', rest)
+        # the path's own transform is applied inside its ancestors', so the two compose in that order
+        matrix = _mat_mul(parent, parse_transform(transform.group(1)) if transform else (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+        brush_scale = transform_scale(matrix)
         polys = parse_path(d)
+        added: list[str] = []
+        # **The seam fix is emitted after the element and therefore in the caller's coordinate space.** It was
+        # written with the path's own numbers, which is only correct while no transform is in play; inside a
+        # transformed group those numbers are local, so the hairline-closing stroke landed near the origin instead of
+        # over the seam it exists to close. Emitting it after the element also keeps it out of the transformed group,
+        # so its coordinates have to be the transformed ones -- there is no group left to do the work.
+        fill = re.search(r'fill\s*=\s*"([^"]+)"', rest)
+        if fill and fill.group(1) not in ('none', 'transparent'):
+            seam = _transform_path_data(d, matrix) if transform else d
+            added.append(match.group(0))
+            added.append('<path d="%s" fill="none" stroke="%s" stroke-width="1.3" stroke-linejoin="round"/>'
+                         % (seam, fill.group(1)))
+        else:
+            added.append(match.group(0))
         if not polys:
             return '\n  '.join(added)
         xs = [x for poly in polys for x, _ in poly]
@@ -273,9 +614,11 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
         for i, poly in enumerate(polys):
             if len(poly) < 3:
                 continue
+            poly = apply_transform(poly, matrix)
             closed = math.dist(poly[0], poly[-1]) < 1.5
             brush_def = dict(BRUSHES[brush])
-            brush_def['width'] = brush_def['width'] * scale
+            # the width is a length, so it scales with the artwork or the line is too thin by the scale factor
+            brush_def['width'] = brush_def['width'] * scale * brush_scale
             if closed:
                 brush_def['taper_in'] = 0.0
                 brush_def['taper_out'] = 0.0
@@ -291,7 +634,57 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
                 added.append(f'<path d="{od}" fill="{colour}" opacity="{opacity:.2f}"/>')
         return '\n  '.join(added)
 
-    return re.sub(r'<path d="([^"]+)"([^/>]*)/>', _replace, svg)
+    # **`<path ...></path>` counts as much as `<path ... />`.** The pattern used to require the self-closing form, so
+    # a document that spelled its paths the long way -- which is what most writers and most language models emit --
+    # had every shape skipped in silence, and the page came back looking merely un-inked rather than broken.
+    pattern = re.compile(r'<path\b((?:"[^"]*"|\'[^\']*\'|[^>])*?)/?>')
+
+    # **Ancestor transforms have to be accumulated, because a path's own attributes are usually not where the
+    # transform is.** A drawing puts `transform` on the `<g>` that groups its shapes, so looking only inside the
+    # `<path>` finds nothing, generates the contour in local coordinates, and then hands it back to the group to be
+    # transformed a second time -- the exact displacement this was meant to remove, and it survived a first fix
+    # because that fix only handled a transform written on the path itself. The scan below keeps a stack: opening
+    # `<g>` tags push their matrix, closing tags pop, and a group with no transform still pushes the identity so the
+    # stack stays aligned with the nesting.
+    pieces: list[str] = []
+    cursor = 0
+    close_re = re.compile(r'</g\s*>')
+    open_re = re.compile(r'<g\b((?:"[^"]*"|\'[^\']*\'|[^>])*?)(/?)>')
+    stack: list[tuple[float, ...]] = [(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)]
+
+    def advance(upto: int) -> None:
+        """Feed `svg[cursor:upto]` to the group stack, in document order.
+
+        Kept separate from assembling the output on purpose: an earlier version advanced the cursor itself as it
+        scanned, so the text between two matches was consumed by the stack walk and never reached the result -- which
+        deleted every element the path pattern does not match, the most expensive defect this library has had.
+        """
+        chunk = svg[cursor:upto]
+        pos = 0
+        while pos < len(chunk):
+            nxt_close = close_re.search(chunk, pos)
+            nxt_open = open_re.search(chunk, pos)
+            if nxt_close is None and nxt_open is None:
+                break
+            if nxt_open is not None and (nxt_close is None or nxt_open.start() < nxt_close.start()):
+                attrs = nxt_open.group(1)
+                if nxt_open.group(2) != '/':       # a self-closing group has no children to affect
+                    inner = re.search(r'transform\s*=\s*"([^"]*)"', attrs)
+                    matrix = parse_transform(inner.group(1)) if inner else (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+                    stack.append(_mat_mul(stack[-1], matrix))
+                pos = nxt_open.end()
+            else:
+                if len(stack) > 1:
+                    stack.pop()
+                pos = nxt_close.end()
+
+    for match in pattern.finditer(svg):
+        advance(match.start())
+        pieces.append(svg[cursor:match.start()])
+        pieces.append(_replace(match, stack[-1]))
+        cursor = match.end()
+    pieces.append(svg[cursor:])
+    return ''.join(pieces)
 
 
 def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
@@ -460,20 +853,151 @@ def demo(out_path: str) -> int:
             if d2:
                 parts.append(f'<path d="{d2}" fill="#6E1E2E" opacity="{o2:.2f}"/>')
     parts.append('</svg>')
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    # **`os.path.dirname('strokes.svg')` is the empty string**, and `makedirs('')` raises -- so the plain invocation
+    # in the README, `--out strokes.svg`, crashed before it wrote anything. Only make a directory that was named.
+    parent = os.path.dirname(out_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(out_path, 'w', encoding='utf-8', newline='\n') as handle:
         handle.write('\n'.join(parts))
     print('  %s' % out_path)
     return 0
 
 
+def demo_document() -> 'Document':
+    """The demo sheet as a document: four brushes' worth of expanded outlines, plus a construction line.
+
+    Shared by every destination so that "does Illustrator receive the same drawing SAI does" is answerable by
+    construction rather than by keeping two copies of the same four strokes in step.
+    """
+    from .doc import Appearance, Path, from_strokes
+
+    strokes = [
+        ([(40, 40), (140, 30), (240, 60), (340, 40)], 'ink'),
+        ([(40, 110), (120, 150), (200, 90), (300, 130), (360, 100)], 'pencil'),
+        ([(40, 200), (200, 190), (200, 260), (360, 250)], 'fine'),
+        ([(40, 320), (110, 280), (190, 340), (270, 290), (360, 330)], 'wash'),
+    ]
+    expanded = []
+    for i, (points, name) in enumerate(strokes):
+        d, opacity = stroke(points, name, seed=13 + i, colour='#1A1620')
+        coords = re.findall(r'(-?\d+\.?\d*) (-?\d+\.?\d*)', d)
+        if not coords:
+            continue
+        expanded.append({'outline': [(float(a), float(b)) for a, b in coords], 'colour': '#1A1620',
+                         'opacity': opacity, 'layer': 'LINE', 'name': '%s-%d' % (name, i)})
+    document = from_strokes(expanded, layer='LINE')
+    # a stroked construction line, so every destination is exercised with both kinds of geometry
+    document.layer('DETAIL').add(Path(points=[(40, 380), (360, 380)],
+                                      appearance=Appearance(filled=False, stroke='#6E1E2E',
+                                                            stroke_width=2.5, opacity=0.8),
+                                      closed=False, name='rule'))
+    return document
+
+
+def to_psd(out_path: str, scale: float = 1.0) -> int:
+    """The demo sheet as a layered PSD, which is how a drawing reaches SAI -- it has no scripting interface at all."""
+    from .psd import layers_from_document, read_psd_header, save_psd
+
+    document = demo_document()
+    layers = layers_from_document(document, scale=scale)
+    parent = os.path.dirname(out_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    save_psd(layers, out_path)
+    head = read_psd_header(out_path)
+    print('  %s  %s' % (out_path, ', '.join('%s=%s' % (k, head[k])
+                                            for k in ('layers', 'width', 'height', 'mode', 'depth'))))
+    print('      layers: %s' % ', '.join(head['names']))
+    print('      %d bytes, merged image data %s'
+          % (head['bytes'], 'present' if head['merged_bytes_present'] else 'MISSING'))
+    return 0
+
+
+def to_xfl(out_path: str, launch: bool = False) -> int:
+    """The demo sheet as XFL, the one form Animate opens without a click.
+
+    Animate has no scriptable entry point on this machine -- verified four ways -- so the drawing is written as
+    Animate's own uncompressed project format and handed over as a file.
+    """
+    from .xfl import write_xfl, zip_xfl
+
+    document = demo_document()
+    folder = out_path[:-4] if out_path.lower().endswith('.xfl') else out_path
+    parent = os.path.dirname(folder)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    write_xfl(document, folder)
+    archive = zip_xfl(folder, folder + '.xfl')
+    print('  %s  (%s)' % (archive, ', '.join('%s=%d' % (k, v) for k, v in document.counts().items())))
+    if not launch:
+        print('  open it with:  Animate.exe "%s"' % archive)
+        return 0
+    from .run import open_in_animate
+    result = open_in_animate(archive)
+    print('  %s' % result.describe())
+    return 0 if result.ok else 1
+
+
+def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False, ai_out: str = '') -> int:
+    """The demo sheet, carried into Illustrator as a real document instead of as SVG.
+
+    This is the entry point that answers "can a lineweight drawing be worked on in a drawing application": the
+    pressure model expands each stroke into a filled outline, the outlines are gathered into a layered document, and
+    the document is written as an ExtendScript that Illustrator runs natively. With `run`, Illustrator is launched and
+    the result is exported back to SVG, so the check is the application's own output rather than this side's belief.
+    """
+    from .app import jsx_document
+
+    document = demo_document()
+    script = out_path if out_path.lower().endswith('.jsx') else out_path + '.jsx'
+    jsx = jsx_document(document, export_svg=svg_out or None, export_ai=ai_out or None,
+                       report=report or None,
+                       done=(script[:-4] + '.done') if run else None)
+    with open(script, 'w', encoding='utf-8', newline='\n') as handle:
+        handle.write(jsx)
+    print('  %s  (%s)' % (script, ', '.join('%s=%d' % (k, v) for k, v in document.counts().items())))
+    if not run:
+        print('  run it with:  Illustrator.exe "%s"' % script)
+        return 0
+
+    from .run import run_jsx
+    result = run_jsx(jsx, script, report_path=report or None, sentinel_path=script[:-4] + '.done')
+    print('  %s' % result.describe())
+    if result.report:
+        for line in result.report.strip().splitlines():
+            print('      %s' % line)
+    if svg_out and os.path.exists(svg_out):
+        with open(svg_out, encoding='iso-8859-1') as handle:
+            body = handle.read()
+        groups = re.findall(r'<g id="([^"]*)"', body)
+        shapes = re.findall(r'<(polygon|path|line)\b', body)
+        print('  exported: %d shapes in groups %s' % (len(shapes), groups))
+    return 0 if result.ok else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='strokes.svg')
     parser.add_argument('--fit', default='', help='measure an illustration\'s linework instead of drawing')
+    parser.add_argument('--bridge', default='', metavar='JSX',
+                        help='write the demo sheet as a script for Illustrator')
+    parser.add_argument('--svg-out', default='', help='with --bridge: ask Illustrator to export SVG here')
+    parser.add_argument('--report', default='', help='with --bridge: where Illustrator writes its report')
+    parser.add_argument('--run', action='store_true',
+                        help='with --bridge: launch Illustrator; with --xfl: launch Animate')
+    parser.add_argument('--psd', default='', metavar='PSD', help='write the demo sheet as a layered PSD for SAI')
+    parser.add_argument('--scale', type=float, default=1.0, help='with --psd: pixels per drawing unit')
+    parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
     args = parser.parse_args()
     if args.fit:
         return fit_report(args.fit)
+    if args.bridge:
+        return bridge(args.bridge, svg_out=args.svg_out, report=args.report, run=args.run)
+    if args.psd:
+        return to_psd(args.psd, scale=args.scale)
+    if args.xfl:
+        return to_xfl(args.xfl, launch=args.run)
     return demo(args.out)
 
 

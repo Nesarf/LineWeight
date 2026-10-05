@@ -8,6 +8,7 @@ zero because a floating-point position can land a hair above 1.0.
 from __future__ import annotations
 
 import math
+import re
 
 from lineweight import BRUSHES, inked_svg, outline, parse_path, pressures, stroke
 
@@ -20,10 +21,67 @@ def test_parse_handles_the_commands_a_generator_writes():
     assert polys[0][0] == (0.0, 0.0)
 
 
-def test_parse_ignores_what_it_does_not_know_rather_than_guessing():
-    # an arc is not handled; the line before it still is, and nothing raises
-    polys = parse_path('M 0 0 L 10 0 A 5 5 0 0 1 20 0')
-    assert polys and polys[0][0] == (0.0, 0.0)
+def test_parse_handles_every_command_a_generator_writes():
+    """**This replaces a test that asserted the opposite, and that test was the bug.**
+
+    The parser used to handle `M`, `L`, `Q` and `Z` and skip everything else, and a test named
+    `test_parse_ignores_what_it_does_not_know_rather_than_guessing` locked that in so it read as a decision. It was
+    not one: a language model asked to draw emits cubics and arcs constantly, and every curve was dropped in silence
+    while the straight parts of the same shape were kept -- so the result looked like a drawing rather than like a
+    failure, and only rendering it showed anything was missing.
+    """
+    # an arc is a real shape: from (0,0) to (20,0) with radius 5, it bulges to y=-10
+    arc = parse_path('M 0 0 A 5 5 0 0 1 20 0')[0]
+    assert len(arc) > 5
+    assert arc[0] == (0.0, 0.0)
+    assert abs(arc[-1][0] - 20.0) < 1e-6
+    assert min(y for _, y in arc) < -9.0
+
+    # a cubic arrives as a sampled polyline, five points or so
+    assert len(parse_path('M 0 0 C 10 0 20 10 30 10')[0]) > 5
+    # and so does a smooth cubic and a smooth quadratic
+    assert len(parse_path('M 0 0 C 5 5 10 5 15 0 S 25 -5 30 0')[0]) > 10
+    assert len(parse_path('M 0 0 Q 5 5 10 0 T 20 0')[0]) > 10
+
+
+def test_relative_commands_are_relative():
+    """The quieter half of the same bug: `m` and `l` were uppercased and then read as absolute, so an ordinary path
+    placed everything after its first move at coordinates it never asked for."""
+    assert parse_path('m 10 10 l 10 0 l 0 10 z')[0] == [(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 10.0)]
+    assert parse_path('M 0 0 H 10 V 10 Z')[0] == [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 0.0)]
+    # scientific notation is legal SVG and was never matched by the old number pattern
+    assert parse_path('M 0 0 L 1e2 5.5e1')[0][-1] == (100.0, 55.0)
+
+
+def test_a_path_spelled_the_long_way_is_not_skipped():
+    """`<path d="..."></path>` is as valid as `<path d="..." />`, and the pattern used to require the self-closing
+    form -- so a document written the long way came back merely un-inked instead of obviously broken."""
+    body = '<svg><path d="M 0 0 L 200 0 L 200 200 L 0 200 Z"></path></svg>'
+    out = inked_svg(body, min_extent=10)
+    assert out.count('<path') > 1
+
+
+def test_an_outline_lands_where_a_transform_puts_it():
+    """A contour generated in local coordinates and nested inside the group carrying the transform is displaced by
+    that transform twice. The check is positional: the drawn outline has to sit near the shape it outlines.
+
+    Only the *generated* paths are sampled -- they are the ones carrying an `opacity` attribute. An earlier version of
+    this test took every number in the output, which included the source shape's own coordinates at the origin, so it
+    failed on a correct implementation and accused the wrong layer of the code.
+    """
+    body = '<svg><g transform="translate(300,100)"><path d="M 0 0 L 80 0 L 80 80 L 0 80 Z"/></g></svg>'
+    out = inked_svg(body, min_extent=10)
+    generated = re.findall(r'<path d="([^"]+)" fill="[^"]*" opacity=', out)
+    assert generated, 'no weighted outline was produced'
+    coords = [float(v) for d in generated for v in re.findall(r'-?\d+\.?\d*', d)]
+    xs, ys = coords[0::2], coords[1::2]
+    assert min(xs) > 295 and max(xs) < 385, (min(xs), max(xs))
+    assert min(ys) > 95 and max(ys) < 185, (min(ys), max(ys))
+    # the seam stroke follows the shape instead of sitting at the origin
+    seams = re.findall(r'<path d="([^"]+)" fill="none"', out)
+    if seams:
+        seam_coords = [float(v) for v in re.findall(r'-?\d+\.?\d*', seams[0])]
+        assert min(seam_coords[0::2]) >= 300, seam_coords[:4]
 
 
 def test_pressure_tapers_at_both_ends_of_an_open_stroke():
@@ -367,3 +425,266 @@ def test_a_zero_mesh_warp_returns_the_layer_unchanged():
 
     assert top_row(warped) < top_row(layer), \
         'the bulge did not move the ink upward: %d vs %d' % (top_row(warped), top_row(layer))
+
+
+# ------------------------------------------------------------------ the document and the bridges
+
+def test_a_document_carries_layers_and_appearance():
+    """The document is the thing every destination is written from, so what it loses is lost everywhere."""
+    from lineweight import Appearance, Document, Path
+
+    doc = Document(width=200, height=100)
+    doc.layer('LINE').add(Path(points=[(0, 0), (10, 0), (10, 10)], appearance=Appearance(fill='#112233')))
+    doc.layer('DETAIL').add(Path(points=[(0, 50), (200, 50)],
+                                  appearance=Appearance(filled=False, stroke='#445566', stroke_width=3.0),
+                                  closed=False))
+    assert doc.counts() == {'layers': 2, 'paths': 2, 'points': 5}
+    # get-or-create by name, so a caller can address a layer without holding it
+    assert doc.layer('LINE') is doc.layers[0]
+    assert doc.layer('NEW').name == 'NEW' and len(doc.layers) == 3
+    # a stroked path must not silently become filled, or a construction line arrives as a wedge
+    assert doc.layers[1].paths[0].appearance.filled is False
+
+
+def test_the_canvas_is_sized_to_the_drawing():
+    """A canvas that ignores its contents is a drawing positioned off its own page in every destination."""
+    from lineweight import from_strokes
+
+    doc = from_strokes([{'outline': [(10.0, 20.0), (110.0, 20.0), (110.0, 70.0)], 'opacity': 1.0}])
+    assert doc.width == 130 and doc.height == 90, (doc.width, doc.height)
+    # an explicit size still wins
+    sized = from_strokes([{'outline': [(10.0, 20.0), (110.0, 20.0)], 'opacity': 1.0}], width=1000, height=500)
+    assert (sized.width, sized.height) == (1000, 500)
+
+
+def test_the_illustrator_script_flips_y_and_keeps_the_palette():
+    """Illustrator's y axis points up and SVG's points down, so a generated script that forgets it draws the picture
+    upside down, which looks plausible in the code and wrong on the screen."""
+    from lineweight import Appearance, Document, Path, jsx_document
+
+    doc = Document(width=400, height=300)
+    doc.layer('LINE').add(Path(points=[(10, 0), (10, 300)], appearance=Appearance(fill='#0A0B0C', opacity=0.5)))
+    jsx = jsx_document(doc)
+    assert 'setEntirePath([[10,300],[10,0]])' in jsx, jsx[jsx.index('setEntirePath'):][:60]
+    assert 'colour.red = 10; colour.green = 11; colour.blue = 12;' in jsx
+    assert 'item.opacity = 50;' in jsx
+    # the constant that actually exists in Illustrator 28.5; SVGFORMAT does not, despite being the obvious name
+    svg_jsx = jsx_document(doc, export_svg='out.svg')
+    code = [line for line in svg_jsx.splitlines() if not line.strip().startswith('//')]
+    assert any('ExportType.SVG' in line for line in code), 'the working export constant is missing'
+    assert not any('SVGFORMAT' in line for line in code), \
+        'ExportType.SVGFORMAT does not exist in Illustrator 28.5 and must not be emitted as code'
+
+
+def test_the_psd_round_trips_its_layers(tmp_path):
+    """The bytes have to be walked back out, because a writer that reports success after writing is exactly the
+    failure this project keeps meeting -- and a checker that shares the writer's bug is not a check."""
+    from lineweight import Appearance, Document, Path
+    from lineweight.psd import layers_from_document, read_psd_header, save_psd
+
+    doc = Document(width=64, height=48)
+    doc.layer('LINE').add(Path(points=[(4, 4), (40, 4), (40, 30), (4, 30)],
+                               appearance=Appearance(fill='#19151F')))
+    doc.layer('COLOUR').add(Path(points=[(10, 36), (54, 36)], closed=False,
+                                 appearance=Appearance(filled=False, stroke='#6E1E2E', stroke_width=3.0)))
+    layers = layers_from_document(doc, scale=1.0)
+    out = str(tmp_path / 'layers.psd')
+    save_psd(layers, out)
+    head = read_psd_header(out)
+    assert head['layers'] == 2, head
+    assert head['names'] == ['LINE', 'COLOUR'], head['names']
+    assert (head['width'], head['height']) == (64, 48)
+    assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 4
+    assert head['merged_bytes_present'], 'the merged image data is missing or truncated'
+    # every layer's four channels, each with its two-byte compression flag
+    assert head['channel_bytes'] == 2 * 4 * (2 + 64 * 48), head['channel_bytes']
+
+
+def test_the_psd_layers_hold_the_drawing():
+    """Structure that verifies but is empty is the failure mode this library has hit before: the outline is what has
+    to be in the pixels, so the check is on pixels rather than on the header."""
+    from lineweight import Appearance, Document, Path
+    from lineweight.psd import flatten, layers_from_document
+
+    doc = Document(width=50, height=50)
+    doc.layer('LINE').add(Path(points=[(5, 5), (45, 5), (45, 45), (5, 45)],
+                               appearance=Appearance(fill='#19151F')))
+    layers = layers_from_document(doc, scale=1.0)
+    inside = layers[0]
+    i = (25 * 50 + 25) * 4
+    assert tuple(inside.data[i:i + 3]) == (0x19, 0x15, 0x1F)
+    assert inside.data[i + 3] == 255
+    # a corner is outside the rectangle and must stay transparent
+    j = (0 * 50 + 0) * 4
+    assert inside.data[j + 3] == 0
+    merged = flatten(layers, 50, 50)
+    assert merged[i + 3] == 255 and merged[j + 3] == 0
+
+
+def test_the_xfl_document_has_the_shape_encoding_animate_reads(tmp_path):
+    """Animate has no scripting interface, so this file *is* the Animate bridge -- and its shape encoding is not a
+    polygon: it is a chain of quadratics, each carrying an anchor and a control point."""
+    from lineweight import Appearance, Document, Path, write_xfl
+
+    doc = Document(width=100, height=100)
+    doc.layer('LINE').add(Path(points=[(10, 10), (90, 10), (50, 90)],
+                               appearance=Appearance(fill='#19151F')))
+    folder = write_xfl(doc, str(tmp_path / 'drawing.xfl'))
+    with open(folder + '/DOMDocument.xml', encoding='utf-8') as handle:
+        xml = handle.read()
+    assert 'xmlns="http://ns.adobe.com/xfl/2008/"' in xml
+    # a version Animate will accept: its own exporter names its property xflversion2_1
+    assert 'xflVersion="2.1"' in xml
+    assert xml.count('<DOMShape') == 1
+    # three corners, so three edges, each a quadratic with the control point on the line
+    assert xml.count('<Edge cubics=') == 3
+    assert '<Edge cubics="10 10 10 10 90 10"/>' in xml
+    assert '<DOMLayer name="LINE"' in xml
+    with open(folder + '/mimetype', encoding='ascii') as handle:
+        assert handle.read() == 'application/vnd.adobe.xfl'
+
+
+# ------------------------------------------------------------------ measuring real artwork
+
+def _write_test_png(path, width, height, rows):
+    """A greyscale PNG written by hand, so the decoder is checked against real PNG bytes rather than against itself."""
+    import struct
+    import zlib
+
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)                      # filter type 0: none
+        raw.extend(rows[y])
+
+    def chunk(kind, body):
+        return (struct.pack('>I', len(body)) + kind + body
+                + struct.pack('>I', zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+    png = (b'\x89PNG\r\n\x1a\n'
+           + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 0))
+           + chunk(b'IDAT', zlib.compress(bytes(raw)))
+           + chunk(b'IEND', b''))
+    with open(path, 'wb') as handle:
+        handle.write(png)
+
+
+def test_the_taper_knobs_are_not_interchangeable():
+    """**Two things named like the same dial behave completely differently, and only one of them moves the line.**
+
+    The library's `taper_ratio` came back at 0.41 against the model's 0.50, which reads as "the tapers are too
+    shallow", so the obvious move is to let the ends thin further. Doing that -- lowering the floor at which a taper
+    starts from 0.25 to 0.06 -- changed the measured ratio by nothing at all, at any render scale. Chasing the reason
+    produced something worth keeping:
+
+    * the **floor** only sets the value at the very first sample. It does not change how the stroke gets there, and
+      the previous sample in any measured run already rounds to the same integer, so no pixel measurement can see it.
+    * the **taper length** changes the profile itself -- a longer taper spends a larger share of the stroke below full
+      width, which does move the spread statistic.
+
+    So a taper is calibrated by its length, not by how thin its extreme is, and a test that only lowered the floor
+    would have concluded the metric was broken when the model was being changed in a way it could not express.
+    """
+    from lineweight import BRUSHES, pressures
+
+    path = [(float(x) * 10.0, 0.0) for x in range(0, 61)]
+    brush = dict(BRUSHES['ink'])
+
+    def spread(values):
+        """The thinnest fifth against the mean: the shape of `taper_ratio`, on pressures so the test does not need a
+        renderer."""
+        ordered = sorted(values)
+        thin = ordered[:max(1, len(ordered) // 5)]
+        return (sum(thin) / len(thin)) / (sum(ordered) / len(ordered))
+
+    normal = pressures(path, brush, seed=5)
+    long_taper = pressures(path, {**brush, 'taper_in': 0.20, 'taper_out': 0.25}, seed=5)
+
+    # the profile itself is different, and visible directly: the opening reaches full width much later
+    assert long_taper[3] < normal[3] - 0.3, (long_taper[3], normal[3])
+    # and that difference reaches the statistic, so the metric is not blind to taper length
+    assert spread(long_taper) < spread(normal) - 0.1, (spread(long_taper), spread(normal))
+
+    # the floor, by contrast, only moves the first sample; the rest of the opening is untouched
+    assert abs(normal[1] - pressures(path, brush, seed=5)[1]) < 1e-9
+    tip_only = [normal[0]]                       # the floor's whole contribution is this one value
+    assert tip_only[0] == min(normal) or tip_only[0] >= 0.18
+
+
+def test_the_png_decoder_undoes_the_filters(tmp_path):
+    """**A filter is applied per scanline and undoing it is not optional.** Reading the bytes without undoing the
+    predictor does not produce an image that is slightly off -- the error accumulates along the row, so the right-hand
+    side of the picture is noise. This test writes a PNG whose second row is deliberately Up-filtered, which is what a
+    real encoder emits, and checks the decoded pixels rather than the header."""
+    path = str(tmp_path / 'filtered.png')
+    width, height = 8, 3
+    row0 = bytes([10] * width)
+    # an Up-filtered row stores the difference from the row above, which for a constant row is all zeros
+    row1_up = bytes([0] * width)
+    row2 = bytes([200] * width)
+    import struct
+    import zlib
+
+    raw = bytes([0]) + row0 + bytes([2]) + row1_up + bytes([0]) + row2
+
+    def chunk(kind, body):
+        return (struct.pack('>I', len(body)) + kind + body
+                + struct.pack('>I', zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+    with open(path, 'wb') as handle:
+        handle.write(b'\x89PNG\r\n\x1a\n'
+                     + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 0))
+                     + chunk(b'IDAT', zlib.compress(raw))
+                     + chunk(b'IEND', b''))
+
+    from lineweight.ref import decode_png
+    image = decode_png(path)
+    assert (image.width, image.height) == (8, 3)
+    # the filtered row must reconstruct to the row above it, not to zeros
+    assert list(image.pixels[0:8]) == [10] * 8
+    assert list(image.pixels[8:16]) == [10] * 8, 'the Up filter was not undone'
+    assert list(image.pixels[16:24]) == [200] * 8
+
+
+def test_measurement_separates_lines_from_filled_areas(tmp_path):
+    """**A run of ink is not necessarily a line.** A colour illustration's dark regions read as strokes tens of pixels
+    wide and drag the mean width to a number that describes no line in the picture; the first real measurement here
+    came back at 81% ink with a mean width of 13 px for exactly that reason."""
+    path = str(tmp_path / 'mixed.png')
+    width, height = 60, 20
+    rows = []
+    for y in range(height):
+        row = bytearray([255] * width)
+        if y in (5, 6):                      # a two-pixel line across the top
+            for x in range(width):
+                row[x] = 0
+        if y >= 12:                          # a filled block along the bottom
+            for x in range(10, 50):
+                row[x] = 0
+        rows.append(bytes(row))
+    _write_test_png(path, width, height, rows)
+
+    from lineweight.ref import measure
+    result = measure(path)
+    assert result.line_runs > 0
+    assert result.area_runs > 0, 'the filled block was not detected as an area rather than a line'
+    # the two-pixel line is what the width means; the 40-pixel block must not be averaged into it
+    assert result.width_max <= 16, result.width_max
+    assert result.width_mean < 4.0, result.width_mean
+
+
+def test_compare_refuses_to_call_widths_comparable_across_scales():
+    """The ratios that survive a change of canvas, and the ones that do not, have to be told apart or the report is a
+    confident number with no meaning behind it."""
+    from lineweight.ref import check, compare
+
+    generated = {'taper_ratio': 0.54, 'ink_ratio': 0.025, 'width_mean': 9.4}
+    reference = {'taper_ratio': 0.43, 'ink_ratio': 0.18, 'width_mean': 5.2}
+    ratios = compare(generated, reference)
+    # the arithmetic is checked against the raw division rather than against a number typed from memory; `compare`
+    # rounds its ratios to four decimals, so the tolerance has to allow for that rounding
+    assert abs(ratios['taper_ratio'] - (0.54 / 0.43)) < 1e-3
+    assert abs(ratios['width_mean'] - (9.4 / 5.2)) < 1e-3
+    verdicts = check(generated, reference)['verdicts']
+    assert verdicts['taper_ratio'] == 'ok'          # within 40%, so the taper curves are broadly right
+    assert 'off by' in verdicts['ink_ratio']        # several times too sparse, and it must say so
+
