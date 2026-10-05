@@ -144,9 +144,9 @@ any of them; the counts are printed so that is visible rather than plausible.
 
 What the measurement says about the current model. The numbers are **ratios of one length to another inside a single
 drawing**, which is the only kind of comparison that survives two pictures being different sizes. The targets come
-from 262 line drawings pooled out of 914 measured images across two corpora -- 75 illustration files and 872 files of
-character art, emoji and textures -- and the pooled summary is checked in as `tests/data/corpus_summary.json` so the
-targets can be re-derived rather than taken on trust:
+from 276 line drawings pooled out of 929 measured images across three private collections -- character art, design
+sheets and illustration files -- and the pooled summary is checked in as `tests/data/corpus_summary.json` so the targets
+can be re-derived rather than taken on trust:
 
 | | reference, inside one drawing | the model | verdict |
 |---|---|---|---|
@@ -154,9 +154,11 @@ targets can be re-derived rather than taken on trust:
 | `max/median` -- how far the heavy end reaches | 5.33 | 5.33 | equal |
 | `taper_ratio` | 0.42 | 0.50 | unresolved -- the whole-stroke statistic cannot see an end; see below |
 
-**Two independent corpora agree.** The 26-image library used first gave `p90/median` 2.750 and `taper_ratio` 0.410;
-the 262-image pool gives 2.750 and 0.423. The same targets falling out of a set ten times the size is worth more than
-either number alone, and it is the only kind of check available here -- the model cannot be its own referee.
+**Three independent collections agree, and that is the whole argument.** The 26-image library used first gave
+`p90/median` 2.750 and `taper_ratio` 0.410; the 262-image pool gave 2.750 and 0.423; adding seventeen character-art
+sheets moved the pool to 276 and returned 2.750 and 0.421. A number that survives being computed from three separate
+sets of artwork is worth more than any one of them, and this is the only kind of check available here -- the model
+cannot be its own referee, which this file has had to learn twice.
 
 **Two of these three numbers were wrong before they were right, and both times the fault was in the experiment.**
 
@@ -191,7 +193,8 @@ checks live in `tests/tools/` and are run deliberately:
     python tests/tools/stress_inked.py     # inked_svg over real vector artwork: nothing lost, XML still valid
     python tests/tools/where.py            # do the weighted outlines land on the shape, or somewhere the transform left them
     python tests/tools/verify_all.py       # one end-to-end run per destination
-    CORPUS_LIMIT=200 python tests/tools/run_corpus.py   # measure a corpus into a resumable library
+    LW_CORPUS=... python tests/tools/run_corpus.py       # measure a corpus into a resumable library
+    python tests/tools/add_corpus.py LIB.jsonl TAG DIR   # add a collection without re-measuring the rest
 
 Each is a script rather than a test because each needs something this repository cannot supply: an Illustrator
 installation, an Animate installation, a directory of artwork. Two of them are worth more than the library's own tests,
@@ -201,8 +204,18 @@ because what they check is the thing this project has got wrong most often -- **
 understand and did exactly that once, taking a figure's eyes with it.
 
 `--fit` and `--fit-dir` measure a drawing or a folder on the same scale as the reference library, so a sheet drawn by
-hand can be read against `tests/data/corpus_summary.json` directly. The pooled summary is checked in; the 914 raw
-measurements it came from are not, since they are 300 KB of numbers and the summary is re-derivable from them.
+hand can be read against `tests/data/corpus_summary.json` directly.
+
+**The corpora are private and are not here.** They are collections of artwork, so what is shared is the distribution --
+lengths and ratios -- and the code that produced it. The per-image measurements stay on the machine that made them, the
+corpus directories are named by environment variable rather than in the source, and `.gitignore` refuses images,
+archives and `.jsonl` outright, because a rule that depends on remembering is not a rule.
+
+**A UI kit is not linework.** Several thousand PNGs from two game UI packs were offered to this library and are not in
+it. A line-width distribution describes strokes, and a UI kit is filled rectangles, gradients and sprite-sheet slices;
+measuring those describes the widths of nothing, and pooling them would move the targets in a direction that has nothing
+to do with drawing. What that material would need is a different measurement -- corner radii, border weights, a palette
+-- which is a different question from this one.
 
 ## Licence
 
