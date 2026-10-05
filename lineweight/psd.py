@@ -43,7 +43,11 @@ SIGNATURE_RESOURCE = b'8BIM'
 BLEND_NORMAL = b'norm'
 
 # A layer record's channel order in a file written by Photoshop and read by everything else.
-CHANNEL_IDS = (0, 1, 2, -1)          # R, G, B, alpha (negative = the layer's transparency mask)
+# **The order is the order SAI 1 writes, which is not the order this used to use.** Its own layered file lists
+# the transparency channel first and then the colours; writing them the other way round produced a file whose
+# records parse and whose layers a reader can name, and which no channel of ink ever reached the canvas from.
+# Matching the application that has to open the file is the requirement.
+CHANNEL_IDS = (-1, 0, 1, 2)          # alpha, then R, G, B
 
 
 def _pad2(data: bytes) -> bytes:
@@ -264,6 +268,11 @@ def unpackbits(data: bytes, expected: int) -> bytes:
             index += count
         elif header > 128:
             count = 257 - header
+            if index >= len(data):
+                # **A run whose value byte is missing ends the stream instead of raising.** Truncated input reaches
+                # here whenever a caller's offsets are off, and an IndexError from deep inside a decoder says nothing
+                # about which field was wrong; stopping says the stream ended, which is the fact that helps.
+                break
             out += bytes([data[index]]) * count
             index += 1
         # header == 128 is a no-op per the specification
@@ -359,7 +368,9 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         record += SIGNATURE_RESOURCE + BLEND_NORMAL
         record += bytes([int(round(layer.opacity * 255))])       # opacity
         record += bytes([0])                                     # clipping: base
-        record += bytes([0x08 | (0x01 if layer.visible else 0x02)])   # flags: visible bit set = shown
+        # SAI writes zero here for a normal, visible layer. 0x09 was this project's own guess at "visible", and a
+        # guess in a field a reader interprets is a risk taken for no benefit.
+        record += bytes([0x00])                                  # flags, as SAI writes them
         record += b'\x00'                                        # filler
         extra = bytearray()
         extra += b'\x00' * 4                                     # layer mask data
