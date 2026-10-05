@@ -16,10 +16,26 @@ file that fails:
 * The layer section is the **obsolete `0x043B` block**, and it must be written even though the spec calls it
   obsolete, because it is what SAI, Krita and Photoshop all read. Writing only the "modern" tagged blocks produces a
   flattened-looking file.
-* `layer count` is written as a **negative** number when the first alpha channel holds transparency -- the convention
-  that distinguishes a normal layered file from one whose bottom layer is flattened.
-* A layer's channel data is stored **bottom-up**, like the image data and unlike the layer *order* in the records,
-  which is bottom-up to top-down from the first record.
+* **Every layer record begins with the `8BIM` resource signature** before its blend mode. Two signatures in this format
+  look alike and mean different things: `8BPS` opens a document, `8BIM` opens a resource. Writing the file-header one in
+  a record makes a file whose layers no reader can find -- it opens, shows its canvas, and lists nothing.
+* **The layer count is positive**, matching the file SAI writes itself. It was written negative for several rounds on the
+  strength of an experiment whose reference file also carried the signature fault above, so the observation was
+  contaminated. The sign is a real convention and the reader reports it as a flag; it is not what decides whether layers
+  appear.
+* **Each channel is a 2-byte compression tag, then a table of 2-byte row lengths for every row, then the rows.** Not
+  one-byte lengths, and not a length immediately before each row. This was wrong for several rounds and the round trip
+  passed anyway because the reader made the same two mistakes.
+* **Rows are top-down**, the same order as everywhere else in this library. They were reversed here on a belief that
+  layer channels are stored bottom-up; a PSD written by `psd-tools` with known colours in known quadrants decodes them
+  exactly where they were placed, with no flip.
+* **The alpha channel is written as it is**: 255 opaque, 0 transparent. It was written inverted, which turns every
+  opaque pixel into zero -- a layer that displays as nothing while being listed correctly.
+
+**The recurring lesson, stated here because this file has cost the most time in the project.** Each of those faults
+survived because the reader in this module made the same mistake as the writer, so every round trip passed. A reader and
+a writer that share a mistake validate each other perfectly. What finds these is an outside artifact: a file the target
+application wrote itself, or an independent parser. `PSD-REPORT.md` has the full account.
 """
 from __future__ import annotations
 

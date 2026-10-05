@@ -179,3 +179,33 @@ which has no PSD layer support at all) turned "my reader agrees with my writer" 
 **The rule worth keeping:** a reader and a writer that share a mistake validate each other perfectly. Faults 1 and 9
 both survived round-trip tests for that reason. Any check that is only the project's own code reading the project's own
 output is not a check.
+
+## Evidence status at this revision
+
+Written as a list of claims with what backs each, because the documentation in this repository drifted from the code
+twice and the cost of that drift was real: a comment asserting the alpha was stored inverted sat beside code that
+relied on it while the report recorded it as unproven.
+
+**Confirmed, each by a file rather than by reasoning:**
+
+| claim | evidence |
+|---|---|
+| layer record begins with `8BIM` | SAI's own file; `psd-tools` parses the record only with it |
+| layer count positive | SAI's own file writes `+1` / `+2` |
+| channel order `-1, 0, 1, 2` | SAI's own file |
+| rows are **top-down** | a `psd-tools` file with four known colours decodes them in place |
+| alpha is **not** inverted | SAI's own layer reads min 0, max 1, ink high where drawn |
+| row counts are 2 bytes, in a table before the rows | `psd-tools`' decoder; SAI's file sums exactly |
+| PackBits coding correct | byte-identical to `psd-tools` on the same rows |
+| merged image correct | decodes to the expected picture |
+
+**Unresolved, and the only thing left:**
+
+* **The layer channels' contents.** SAI opens the file, sizes the canvas, lists the layer names -- and draws nothing.
+  The four channel blobs are present verbatim in the file and the coding is right, yet `psd-tools` reads the layer as
+  though the channels were shifted, and two consecutive blobs were found at the same file offset by this project's own
+  inspection. That last observation is itself suspect, being this project's own arithmetic, which has been wrong
+  repeatedly; it is recorded as a lead, not a finding.
+
+**Not attempted:** SAI's rendering of a *drawn* SAI file was decoded and is a recognisable picture, so it is available
+as an oracle. It has not been used to settle the above.

@@ -91,17 +91,26 @@ On the command line:
 drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator itself exported --
 including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build.
 
-SAI is the honest limit of this project, and the README says so rather than claiming the whole of it. SAI opens the
-generated PSD, displays its canvas, and reports no error -- and **shows no layers**. An earlier version was refused
-outright ("canvas creation failed") because every channel was stored raw, which is legal PSD; that was fixed by
-writing the PackBits compression real files use, and the size went from 1.7 MB to 44 KB. What remains wrong is the
-layer section: the layer records, their channel layout and the merged image all check out against the file's own
-bytes, and SAI still treats the document as a single flat image. Writing the layer count negative -- the flag that
-means the first alpha channel is the transparency, which is what this writer produces -- did not change that.
+SAI is where this project stops, and the README says so rather than claiming the whole of it. What is true at this
+revision: SAI **opens** the generated PSD, **sizes the canvas correctly**, and **lists the layer names in its panel** --
+and does not draw the layer's pixels. An earlier version was refused outright ("canvas creation failed") because every
+channel was stored raw, which is legal PSD; PackBits fixed that, and the structural faults after it are listed in
+`PSD-REPORT.md` with the measurement behind each.
 
-So the PSD writer's *structure* is verified and its *acceptance by its target application* is not. Anyone continuing
-here should expect to work from a PSD SAI itself saved, the way the Animate format was finally settled, because
-guessing at a container format has a poor record in this repository.
+What remains is specifically the layer channels' contents: the writer's four channel blobs are present verbatim in the
+file, its PackBits coding agrees byte for byte with `psd-tools` on the same rows, and `psd-tools` still reads the layer
+as though the channels were shifted. The merged image of the same file decodes correctly, so the fault is in the
+per-layer data and not in the container.
+
+**Two claims this README previously made are withdrawn**: that a negative layer count is required, and that a layer's
+channel data is stored bottom-up. Both came from experiments whose reference file also carried another fault, so the
+observations were contaminated. The second was "confirmed" by an experiment that read the file back with the same
+assumption the writer used -- which is the mistake this project has now made three times, and the reason `PSD-REPORT.md`
+exists.
+
+Anyone continuing here should work from a file the target application wrote itself, or from an independent parser.
+Guessing at a container format has a poor record in this repository; a PSD SAI saved found four faults in one pass that
+several rounds of reasoning had not.
 
 Animate works, and getting there was mostly about finding out what the format actually is. Nine hand-written skeletons
 opened as documents while importing nothing, because an XFL is a **directory** holding `DOMDocument.xml` beside a
