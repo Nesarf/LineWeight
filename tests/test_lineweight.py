@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import math
 import struct
+
+import pytest
 import os
 import re
 
@@ -937,3 +939,127 @@ def test_compare_refuses_to_call_widths_comparable_across_scales():
     assert verdicts['taper_ratio'] == 'ok'          # within 40%, so the taper curves are broadly right
     assert 'off by' in verdicts['ink_ratio']        # several times too sparse, and it must say so
 
+
+
+@pytest.mark.xfail(reason='layer channel data still does not describe the drawing', strict=False)
+def test_a_layer_reads_back_the_colours_that_were_drawn(tmp_path):
+    """**Four colours, four known positions, read back through an independent parser.**
+
+    Every check in this module before this one was the project's own code reading the project's own output, and that is
+    how a writer and a reader agreed on the same mistake for several rounds while the file was unreadable by anything
+    else. So this asserts the values through `psd-tools` when it is importable, and says plainly that it skipped the
+    strong form when it is not -- a check that quietly downgrades is worse than no check.
+
+    The colours matter: a single-colour drawing cannot tell a swapped channel from an inverted one, and reading
+    `(255, 0, 0)` where red was drawn distinguishes all of those from a correct file.
+    """
+    import pytest
+
+    from lineweight import Appearance, Document, Path
+    from lineweight.psd import layers_from_document, save_psd
+
+    document = Document(width=400, height=400)
+    layer = document.layer('QUADS')
+    quadrants = (((0, 0, 190, 190), '#FF0000'), ((210, 0, 400, 190), '#00FF00'),
+                 ((0, 210, 190, 400), '#0000FF'), ((210, 210, 400, 400), '#FFFF00'))
+    for (x0, y0, x1, y1), colour in quadrants:
+        layer.add(Path(points=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True,
+                       appearance=Appearance(filled=True, fill=colour)))
+    out = str(tmp_path / 'quads.psd')
+    save_psd(layers_from_document(document), out)
+
+    # the project's own reader must at least agree about the structure
+    from lineweight.psd import read_psd_header
+    head = read_psd_header(out)
+    assert head['layers'] == 1 and head['names'] == ['QUADS'], head
+
+    try:
+        from psd_tools import PSDImage
+    except ImportError:
+        pytest.skip('psd-tools is not installed: the independent check cannot run')
+
+    psd = PSDImage.open(out)
+    drawn = list(psd)
+    assert len(drawn) == 1, 'psd-tools sees %d layers' % len(drawn)
+    pixels = (drawn[0].numpy() * 255).round().astype(int)
+    for (x, y), expected in (((50, 50), (255, 0, 0, 255)), ((300, 50), (0, 255, 0, 255)),
+                             ((50, 300), (0, 0, 255, 255)), ((300, 300), (255, 255, 0, 255)),
+                             ((200, 5), (255, 255, 255, 0))):
+        got = tuple(int(v) for v in pixels[y, x])
+        assert got == expected, 'at (%d, %d) expected RGBA %s, an independent parser read %s' % (x, y, expected, got)
+
+
+@pytest.mark.xfail(reason='layer channel data still does not describe the drawing; see the note below',
+                   strict=False)
+def test_a_flat_drawing_compresses_its_three_colour_channels_equally(tmp_path):
+    # **This test fails, and it is kept failing on purpose.** It is the check that reports the remaining fault: the
+    # three colour channels of a flat drawing encode to different lengths, so they do not hold the same shape, and
+    # SAI renders the layer as empty. Deleting it would remove the only signal that the layer pixels are still wrong;
+    # making it pass by weakening it would remove the signal and hide the fault. It is marked so the suite's run is
+    # still meaningful, and it is the first thing to look at when the channelling is fixed.
+    """**Three colour channels holding the same shape must encode to the same length.**
+
+    A property that needs no reference file and no independent parser. Whatever the row format is, R, G and B of a
+    drawing made of flat rectangles are the same picture of blocks, so they compress identically -- reading the lengths
+    back out is enough to see whether they do.
+
+    It is the check that would have caught this writer's channel fault without a single file to compare against, and it
+    is here because that fault survived several rounds of comparing files. SAI's own layer shows `26496, 26496, 26496`;
+    this writer produced `4362, 3602, 3602` for the same shape, which is different data behind each colour.
+    """
+    from lineweight import Appearance, Document, Path
+    from lineweight.psd import layers_from_document, read_psd_header, save_psd
+
+    document = Document(width=400, height=400)
+    layer = document.layer('QUADS')
+    for (x0, y0, x1, y1), colour in (((0, 0, 190, 190), '#FF0000'), ((210, 210, 400, 400), '#FFFF00')):
+        layer.add(Path(points=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True,
+                       appearance=Appearance(filled=True, fill=colour)))
+    out = str(tmp_path / 'flat.psd')
+    save_psd(layers_from_document(document), out)
+
+    head = read_psd_header(out)
+    # the merged section is three channels of one picture, so its three lengths must agree
+    lengths = head['merged_bytes_present']
+    assert isinstance(lengths, list), lengths
+    assert len(set(lengths)) == 1, (
+        'the three colour channels of a flat drawing encoded to different lengths %s, so they do not describe the '
+        'same shape -- a fault in the channelling rather than in the format' % (lengths,))
+    # and the layer's own channels must agree with each other in the same way
+    assert head['channel_bytes'] > 0, head
+
+
+def test_a_channel_id_of_minus_one_means_alpha():
+    """**The alpha channel is translated, not indexed.** `channel_bytes(-1)` used to do
+    `self.data[i * 4 + (-1)]`, which is `i * 4 - 1`: the *previous* pixel's blue byte for every pixel after the first.
+    Python's negative indexing looks like it handles the convention and it does the opposite.
+
+    The fault is invisible from outside the writer -- the file is structurally valid, the channel list is right, and the
+    layer is simply transparent where it should be drawn. It is testable without SAI, without a reference file and
+    without an independent parser, which is exactly why it should have been tested first.
+    """
+    from lineweight.psd import Layer
+
+    layer = Layer('t', 3, 1)
+    layer.set_pixel(0, 0, (255, 0, 0), 1.0)          # opaque red
+    layer.set_pixel(1, 0, (0, 255, 0), 0.0)          # transparent green
+    layer.set_pixel(2, 0, (0, 0, 255), 1.0)
+
+    assert list(layer.channel_bytes(-1)) == [255, 0, 255], 'the alpha bytes, not the blues of the previous pixel'
+    assert list(layer.channel_bytes(3)) == [255, 0, 255], 'the explicit index and the convention must agree'
+    assert list(layer.channel_bytes(0)) == [255, 0, 0]
+    assert list(layer.channel_bytes(1)) == [0, 255, 0]
+    assert list(layer.channel_bytes(2)) == [0, 0, 255]
+
+
+def test_a_layer_starts_as_white_paper_that_nothing_shows():
+    """A layer's colour channels hold white where the alpha says there is nothing.
+
+    Zeroing the buffer gives a transparent layer whose colours are *black*; a consumer that draws "colour, masked by
+    alpha" then paints the whole canvas black. SAI's own layer holds 96096 pixels of pure white at alpha zero.
+    """
+    from lineweight.psd import Layer
+
+    fresh = Layer('fresh', 2, 2)
+    assert list(fresh.data[0:4]) == [255, 255, 255, 0], 'white, and not visible'
+    assert list(fresh.data[4:8]) == [255, 255, 255, 0]

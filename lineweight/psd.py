@@ -73,7 +73,19 @@ class Layer:
         self.height = height
         self.opacity = max(0.0, min(1.0, opacity))
         self.visible = visible
+        # **Everything is white and nothing is opaque.** A layer starts as a sheet of white paper with the alpha channel
+        # at zero, and drawing puts colour where the alpha then says there is something. Zeroing the whole buffer
+        # instead -- which is what this did -- gives a transparent layer whose colour channels are *black*, and a
+        # consumer that composites a layer as "colour, masked by alpha" paints the entire canvas black: the drawing is
+        # then on top of that in near-black and cannot be seen at all. That is what SAI showed, with the layer names
+        # correctly listed beside a blank canvas.
+        #
+        # SAI's own picture layer settles it: 96096 pixels of pure white at alpha zero, and the stroke in black at
+        # alpha 255. White is what its transparent areas hold, and its alpha is nearly eight times its ink coverage,
+        # because the shape is carried by the alpha rather than by the colour.
         self.data = bytearray(width * height * 4)
+        for i in range(0, len(self.data), 4):
+            self.data[i] = self.data[i + 1] = self.data[i + 2] = 255
 
     def set_pixel(self, x: int, y: int, colour: tuple[int, int, int], alpha: float) -> None:
         if not (0 <= x < self.width and 0 <= y < self.height):
@@ -92,7 +104,17 @@ class Layer:
                 self.set_pixel(x, y, colour, alpha)
 
     def channel_bytes(self, channel: int) -> bytes:
-        """One channel, rows top-down, which the writer reverses for the file."""
+        """One channel, rows top-down, which the writer reverses for the file.
+
+        **A channel id of -1 means the alpha channel, and it is translated rather than indexed.** Writing
+        `self.data[i * 4 + channel]` looked as though Python's negative indexing took care of it, and it does not:
+        `i * 4 + (-1)` is `i * 4 - 1`, which for every pixel after the first is the *previous* pixel's blue byte. The
+        alpha channel was therefore filled with the blue channel's values shifted by one pixel -- and at zero for the
+        first pixel only. That is a layer whose transparency is derived from the wrong data entirely, which reads as a
+        blank or black canvas while the layers are listed correctly beside it.
+        """
+        if channel == -1:
+            channel = 3
         out = bytearray(self.width * self.height)
         for i in range(self.width * self.height):
             out[i] = self.data[i * 4 + channel]
@@ -322,9 +344,16 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
     # shorter than a reader walking it expected and shifted every following field by three. SAI's file carries the same
     # resource and its name field is two bytes wide.
     resolution = bytearray(SIGNATURE_RESOURCE + struct.pack('>H', 1005) + b'\x00\x00')   # id, empty name + pad
+    # **Sixteen bytes of data: six fields, not four.** The resolution resource is horizontal resolution and its unit,
+    # the unit the document's *width* is measured in, vertical resolution and its unit, then the unit for the height --
+    # `I 2H I 2H`. This wrote only the four obvious ones, twelve bytes, and announced twelve, so the block was
+    # internally consistent and four fields short of the format; `psd-tools` refused it with "read=12, expected=16".
+    # SAI writes all sixteen, which is where the number in its file came from and what was mistaken for padding.
     resolution += struct.pack('>I', 16)
-    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # horizontal: 72 dpi, unit 1 (inches)
-    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # vertical
+    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # horizontal dpi, unit 1 = inches
+    resolution += struct.pack('>H', 1)                                 # width unit
+    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # vertical dpi, unit
+    resolution += struct.pack('>H', 1)                                 # height unit
     out += struct.pack('>I', len(resolution))
     out += resolution
 
@@ -343,9 +372,15 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         headers = b''
         blobs = bytearray()
         for cid in CHANNEL_IDS:
-            # the transparency channel is stored inverted, which is the PSD convention for a negative channel id
-            raw = (bytes(255 - v for v in layer.channel_bytes(3)) if cid == -1
-                   else layer.channel_bytes(cid))
+            # **The transparency channel is stored inverted, which is what a negative channel id means.** The value in
+            # a layer's transparency channel is a *mask*, and PSD writes it white-for-opaque like the colour channels;
+            # the layer's own alpha is its complement. `channel_bytes(-1)` returns the alpha byte through Python's
+            # negative indexing, so the complement is what this must write.
+            #
+            # Both halves of this were doubted in one round and both were right: the inversion was removed and the
+            # buffer's initial colour changed to white, and the result read as an entirely empty layer. Only the second
+            # change was needed. The lesson is the one this file keeps relearning -- change one thing and look.
+            raw = bytes(255 - v for v in layer.channel_bytes(-1)) if cid == -1 else layer.channel_bytes(cid)
             # channel data is written bottom-up, unlike the row order used everywhere else in this library
             rows = [raw[y * w:(y + 1) * w] for y in range(h)]
             blob = _packed_channel(b''.join(reversed(rows)), w, h)
