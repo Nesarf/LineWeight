@@ -25,10 +25,10 @@ __version__ = '0.1.0'
 from .doc import (Appearance, Document, Layer, Path, from_strokes, parse_colour,  # noqa: E402,F401
                   resize_to_fit)
 from .app import jsx_document  # noqa: E402,F401
-from .xfl import write_xfl, zip_xfl  # noqa: E402,F401
+from .xfl import write_xfl  # noqa: E402,F401
 from .ref import Greyscale, measure, scan, summarise, compare, check  # noqa: E402,F401
 from . import run  # noqa: E402,F401
 
 __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',
-            'write_xfl', 'zip_xfl', 'run', 'resize_to_fit',
+            'write_xfl', 'run', 'resize_to_fit',
             'Greyscale', 'measure', 'scan', 'summarise', 'compare', 'check']

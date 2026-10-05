@@ -251,22 +251,3 @@ def write_xfl(document: Document, path: str | os.PathLike) -> str:
     with open(os.path.join(target, 'bin', 'SymDepend.cache'), 'wb') as handle:
         handle.write(bytes([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
     return target
-
-
-def zip_xfl(folder: str | os.PathLike, archive: str | os.PathLike) -> str:
-    """Not used by the Animate path, and kept only for packaging an XFL to hand to something else.
-
-    `Animate.exe` opens the folder directly, so this is not part of getting a drawing in -- and it is worth saying so,
-    because zipping was tried extensively before the folder was understood and every zip opened as a document that
-    imported nothing.
-    """
-    import zipfile
-    folder = str(folder)
-    archive = str(archive)
-    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
-        for root, _dirs, files in os.walk(folder):
-            for name in files:
-                full = os.path.join(root, name)
-                rel = os.path.relpath(full, folder).replace('\\', '/')
-                z.write(full, rel)
-    return archive

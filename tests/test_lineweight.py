@@ -793,6 +793,26 @@ def test_the_psd_uses_the_compression_real_files_use(tmp_path):
     assert head['bytes'] < raw_size, (head['bytes'], raw_size)
 
 
+def test_fit_measures_the_way_the_library_measures(tmp_path):
+    """**One measurement, not two.** `--fit` used to have its own implementation: it required Pillow, had its own ink
+    threshold, and reported percentiles that shared no code with `ref.py`. Numbers from it could not be pooled with the
+    library or compared to it, which is most of the reason for having a library at all."""
+    from lineweight.core import _library_targets, fit_report
+
+    path = str(tmp_path / 'sheet.png')
+    _write_test_png(path, 40, 40, [bytes([0] * 40) for _ in range(4)] + [bytes([255] * 40) for _ in range(36)])
+    assert fit_report(path) == 0
+    # and a file it cannot read is a message, not a traceback
+    assert fit_report(str(tmp_path / 'missing.png')) == 2
+
+    # the targets come from the checked-in summary, so the comparison is re-derivable rather than asserted from memory
+    targets = _library_targets()
+    if targets:
+        assert targets['images'] > 100, targets
+        assert 0.0 < targets['taper_ratio'] < 1.0, targets
+        assert targets['p90_over_median'] > 2.0, targets
+
+
 def test_the_png_decoder_undoes_the_filters(tmp_path):
     """**A filter is applied per scanline and undoing it is not optional.** Reading the bytes without undoing the
     predictor does not produce an image that is slightly off -- the error accumulates along the row, so the right-hand

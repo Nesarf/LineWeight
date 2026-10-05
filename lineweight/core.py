@@ -797,35 +797,94 @@ def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) 
 
 
 def fit_report(image_path: str) -> int:
-    """Measures a real illustration's linework, so the brushes above can be checked against art rather than taste.
+    """Measure one drawing the same way the reference library is measured.
 
-    What is measurable from a flat image is the *appearance* of pressure: how the darkness of a line varies along
-    it, and how its thickness is distributed. Both are reported as distributions, which is what a brush's curves
-    would have to reproduce.
+    **This used to be a second, separate measurement.** It loaded the image, counted dark pixels per row and column,
+    and printed two percentiles -- sharing no code with `ref.py`, and disagreeing with it in the ways two independent
+    implementations always do: it needed Pillow where `ref.py` decodes PNG by hand, it had its own ink threshold
+    constant, and it could not be pooled with anything. A drawing measured by `--fit` and a drawing measured into the
+    library were not comparable numbers, which defeats the point of having a library.
+
+    Now there is one measurement. What `--fit` prints are the quantities the library records, so a sheet drawn by hand
+    can be read against the numbers in `tests/data/corpus_summary.json` directly.
     """
+    from .ref import ImageError, measure
+
     try:
-        from PIL import Image
-    except ImportError:
-        print('pillow is needed for --fit')
+        result = measure(image_path)
+    except (ImageError, FileNotFoundError) as exc:
+        print('  cannot measure %s: %s' % (image_path, exc))
         return 2
-    image = Image.open(image_path).convert('L')
-    w, h = image.size
-    px = image.load()
-    dark = [sum(1 for x in range(w) if px[x, y] < 128) for y in range(h)]
-    ink_rows = [c for c in dark if c > 0]
-    vertical = [sum(1 for y in range(h) if px[x, y] < 128) for x in range(w)]
-    ink_cols = [c for c in vertical if c > 0]
-    print('  %s  %dx%d' % (os.path.basename(image_path), w, h))
-    if ink_rows:
-        ink_rows.sort()
-        print('  horizontal ink per row: min %d, median %d, p90 %d, max %d'
-              % (ink_rows[0], ink_rows[len(ink_rows) // 2], ink_rows[int(len(ink_rows) * 0.9)], ink_rows[-1]))
-    if ink_cols:
-        ink_cols.sort()
-        print('  vertical ink per column: median %d, p90 %d' % (ink_cols[len(ink_cols) // 2],
-                                                               ink_cols[int(len(ink_cols) * 0.9)]))
-    print('  a brush whose widths have the same spread is a brush that matches this drawing')
+    print('  %s  %dx%d' % (os.path.basename(image_path), result.width, result.height))
+    if result.note:
+        print('  %s' % result.note)
+    print('  ink fraction      %.4f      (linework in the library sits at 0.15)' % result.ink_ratio)
+    print('  mean darkness     %.1f' % result.darkness)
+    print('  line-like runs    %d of %d runs' % (result.line_runs, result.runs))
+    if result.line_runs:
+        print('  width             median %.1f  p90 %.1f  max %d'
+              % (result.width_median, result.width_p90, result.width_max))
+        print('  taper ratio       %.4f      (linework in the library sits at 0.42)' % result.taper_ratio)
+        spread = result.width_p90 / result.width_median if result.width_median else 0.0
+        print('  p90/median        %.3f      (linework in the library sits at 2.75)' % spread)
+        print('  the last two are ratios inside this drawing, so they are comparable with the library at any size')
     return 0
+
+
+def fit_directory(root: str) -> int:
+    """Measure a folder of drawings and print the pooled distribution, against the library's targets.
+
+    The point of pooling is that one drawing's distribution is noisy and a folder's is not; the point of printing the
+    targets beside it is that "does this brush match the artwork" stops being a judgement.
+    """
+    import json
+
+    from .ref import ImageError, scan, summarise
+
+    if not os.path.isdir(root):
+        print('  not a directory: %s' % root)
+        return 2
+    measurements = scan(root)
+    summary = summarise(measurements)
+    print('  %s' % root)
+    print('  %d images, %d measurable, %d skipped' % (summary['images'], summary['usable'], summary['skipped']))
+    if not summary.get('runs'):
+        print('  nothing measurable in this folder')
+        return 1
+    targets = _library_targets()
+    print('  %-14s %10s %10s' % ('', 'this folder', 'library'))
+    for key, label in (('ink_ratio', 'ink fraction'), ('width_median', 'width median'),
+                       ('width_p90', 'width p90'), ('taper_ratio', 'taper ratio')):
+        reference = targets.get(key)
+        print('  %-14s %10.4f %10s'
+              % (label, summary[key], '%.4f' % reference if isinstance(reference, (int, float)) else '-'))
+    print('  the library column comes from %d pooled line drawings; the checked-in summary is'
+          % targets.get('images', 0))
+    print('  tests/data/corpus_summary.json, so both sides can be re-derived.')
+    return 0
+
+
+def _library_targets() -> dict:
+    """The pooled linework distribution, from the checked-in summary when it is there."""
+    import json
+
+    targets: dict = {}
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'tests', 'data', 'corpus_summary.json')
+    try:
+        with open(path, encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return targets
+    for key in ('ink_ratio', 'width_median', 'width_p90', 'taper_ratio'):
+        block = data.get('linework_' + key)
+        if isinstance(block, dict) and isinstance(block.get('median'), (int, float)):
+            targets[key] = block['median']
+    targets['images'] = data.get('totals', {}).get('linework', 0)
+    spread = data.get('linework_p90_over_median', {}).get('median')
+    if isinstance(spread, (int, float)):
+        targets['p90_over_median'] = spread
+    return targets
 
 
 def demo(out_path: str) -> int:
@@ -991,7 +1050,10 @@ def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='strokes.svg')
-    parser.add_argument('--fit', default='', help='measure an illustration\'s linework instead of drawing')
+    parser.add_argument('--fit', default='', metavar='IMAGE',
+                        help="measure one drawing's linework, on the same scale as the reference library")
+    parser.add_argument('--fit-dir', default='', metavar='DIR',
+                        help='measure a folder of drawings and pool them against the library')
     parser.add_argument('--bridge', default='', metavar='JSX',
                         help='write the demo sheet as a script for Illustrator')
     parser.add_argument('--svg-out', default='', help='with --bridge: ask Illustrator to export SVG here')
@@ -1004,6 +1066,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.fit:
         return fit_report(args.fit)
+    if args.fit_dir:
+        return fit_directory(args.fit_dir)
     if args.bridge:
         return bridge(args.bridge, svg_out=args.svg_out, report=args.report, run=args.run)
     if args.psd:
