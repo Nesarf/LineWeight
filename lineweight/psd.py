@@ -371,14 +371,21 @@ def read_psd_header(path: str) -> dict:
     section_start = offset
     info_len, = struct.unpack('>I', data[offset:offset + 4])
     offset += 4
-    count, = struct.unpack('>h', data[offset:offset + 2])
+    # **The count and its sign are two different facts.** The field is read as a signed 16-bit number because that is
+    # how it is stored, and its sign is a flag: negative means the bottom layer's alpha carries the image's
+    # transparency. Reporting the raw signed value as `layers` conflates the two -- a caller asking how many layers
+    # there are gets `-2`, and a test asserting `-2` pins the flag to the number. The count is reported as a count, and
+    # the flag beside it.
+    signed_count, = struct.unpack('>h', data[offset:offset + 2])
+    transparency_flag = signed_count < 0
+    count = abs(signed_count)
     offset += 2
 
     names: list[str] = []
     opacities: list[str] = []
     channel_total = 0
     blob_expectations: list[int] = []
-    for _ in range(abs(count)):
+    for _ in range(count):
         offset += 16                                   # rectangle
         nch, = struct.unpack('>H', data[offset:offset + 2])
         offset += 2
@@ -434,7 +441,9 @@ def read_psd_header(path: str) -> dict:
     # the merged channel data must decompress to the image that was handed in, or the file is not what it claims
     merged_ok = len(merged_decoded) == CHANNELS and all(len(c) == width * height for c in merged_decoded)
     return {'version': version, 'channels': channels, 'width': width, 'height': height,
-            'depth': depth, 'mode': mode, 'layers': count, 'names': names, 'opacities': opacities,
+            'depth': depth, 'mode': mode, 'layers': count,
+            'first_alpha_is_transparency': transparency_flag,
+            'names': names, 'opacities': opacities,
             'channel_bytes': channel_total, 'merged_compression': merged_channels,
             'merged_decoded_ok': merged_ok, 'merged_bytes_present': mo <= len(data),
             'bytes': len(data), 'layer_info_bytes': info_len}
