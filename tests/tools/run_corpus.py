@@ -26,9 +26,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from lineweight.ref import measure
 
-def _sources():
-    """The corpora come from the environment: they are private collections of artwork, so the measurements are
-    portable and the material, and the paths it lives at, are not."""
+# **The corpora are not in this repository and neither are their paths.** A corpus is somebody's private collection of
+# artwork, and where it lives on their disk is not something an open-source tool should publish; the tool is useful
+# without it because the roots come from the environment. Point LW_CORPUS at one or more directories -- separated by
+# the platform's path separator -- and the measurements are portable even when the material is not.
+def _sources() -> list[tuple[str, str]]:
     raw = os.environ.get('LW_CORPUS', '')
     if not raw:
         return []
@@ -37,6 +39,8 @@ def _sources():
         tag = os.path.basename(path.rstrip('/' + os.sep)) or 'corpus%d' % index
         out.append((tag, path))
     return out
+
+
 EXTS = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
 OUT = os.environ.get('LW_CORPUS_OUT',
                      os.path.join(os.environ.get('TEMP', '.'), 'lineweight-corpus.jsonl'))
@@ -123,7 +127,10 @@ def main() -> int:
         remaining = remaining[:limit]
     print('to measure: %d%s' % (len(remaining), ' (sliced)' if limit else ''), flush=True)
     if not remaining:
-        print('nothing to do')
+        if not todo:
+            print('no corpus configured: set LW_CORPUS to one or more directories of images')
+        else:
+            print('nothing to do')
         release_lock()
         return 0
 

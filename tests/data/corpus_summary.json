@@ -1,13 +1,15 @@
 {
   "corpora": [
     {
+      "description": "a private illustration collection",
       "images": 75,
-      "description": "a private collection of artwork", "shared": false,
+      "shared": false,
       "tag": "md"
     },
     {
-      "images": 840,
-      "description": "a private collection of artwork", "shared": false,
+      "description": "a private collection of character art, emoji and textures",
+      "images": 872,
+      "shared": false,
       "tag": "mat"
     }
   ],
@@ -39,7 +41,7 @@
     "p10": 7.0,
     "p90": 13.0
   },
-  "note": "Pooled measurement of two corpora, kept so the calibration targets in the README can be checked against the material they came from rather than taken on trust.",
+  "note": "Pooled measurement of two private corpora, kept so the calibration targets in the README can be checked against the material they came from rather than taken on trust. The images themselves are not part of this repository and neither are their paths: what is shared is the distribution, which is a set of lengths and ratios, and the code that produced it.",
   "totals": {
     "linework": 263,
     "paintings": 644,

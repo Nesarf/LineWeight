@@ -5,3 +5,22 @@ __pycache__/
 dist/
 build/
 .venv/
+
+# **No artwork, and no measured corpora.** The reference library is built from private collections of illustrations; the
+# distribution it produces is shared as tests/data/corpus_summary.json, and the images and the raw per-image records are
+# not. Ignored here so that a corpus placed beside the code by habit cannot be committed by accident -- a rule that
+# depends on remembering is not a rule.
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.gif
+*.psd
+*.fla
+*.xfl
+*.ai
+*.svg
+*.jsonl
