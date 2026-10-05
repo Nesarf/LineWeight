@@ -95,14 +95,18 @@ merged image, and that every channel decompresses to a full image. **Whether SAI
 SAI has no scripting interface and no reliable signal here that it has loaded a file, so the claim stops at the
 format.
 
-Animate is a folder, not a zip, and it opens as a document. That took long enough to be worth writing down: nine
-hand-written skeletons opened as documents while importing nothing, because an XFL is a **directory** holding
-`DOMDocument.xml` beside a marker file named after the project and containing `PROXY-CS5`, and Animate has to be
-pointed at **the marker**, not the folder -- the folder opens the home screen. A document Animate saved itself
-supplied the rest: `xflVersion="23.0"`, `creatorInfo="Adobe Animate"`, `<scripts/>`/`<PrinterSettings/>`/
-`<publishHistory/>` on the root, `layerDepthEnabled` on the timeline, and a frame with no `duration`. A generated XFL
-now opens with its scene name and its own canvas size. **The shape encoding is the remaining unknown**: the stage
-comes up empty, so `DOMShape`'s edge chain is still wrong.
+Animate works, and getting there was mostly about finding out what the format actually is. Nine hand-written skeletons
+opened as documents while importing nothing, because an XFL is a **directory** holding `DOMDocument.xml` beside a
+marker file named after the project and containing `PROXY-CS5`, and Animate has to be pointed at **the marker**, not
+the folder -- the folder opens the home screen. A document Animate saved itself supplied the rest: `xflVersion="23.0"`,
+`creatorInfo="Adobe Animate"`, `<scripts/>`/`<PrinterSettings/>`/`<publishHistory/>` on the root,
+`layerDepthEnabled` on the timeline, and a frame with no `duration`.
+
+Two more things were settled by measurement rather than by reading. A shape's geometry is written **twice**, in a
+compact `edges` attribute and a verbose `cubics` form, and only the second is not a shape. And a drawing unit is not a
+scene unit: a contour spanning its canvas renders about a **fortieth** of the stage, so the coordinates are scaled
+before they are written. A generated XFL now opens with its own scene name and canvas and the drawing's variable-width
+strokes visible on the stage.
 
 Animate has no scriptable entry point on this machine at all, which is why the bridge is a file: JSFL passed on the
 command line opens as a document, `FlashFactory` refuses out-of-process creation, a JSFL in `Configuration/Commands`
