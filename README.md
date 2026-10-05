@@ -183,6 +183,27 @@ between strokes, not by the shape of an end.
 3. Adjust `BRUSHES` until the model's distribution matches. The four effects in `pressures()` are the dials, and
    `lineweight.ref.check` is how you know when to stop -- but only for the metrics that actually respond to a change.
 
+## Checking it, rather than believing it
+
+The measurement code has tests; the bridges cannot, because they need an application to be installed and driven. So the
+checks live in `tests/tools/` and are run deliberately:
+
+    python tests/tools/stress_inked.py     # inked_svg over real vector artwork: nothing lost, XML still valid
+    python tests/tools/where.py            # do the weighted outlines land on the shape, or somewhere the transform left them
+    python tests/tools/verify_all.py       # one end-to-end run per destination
+    CORPUS_LIMIT=200 python tests/tools/run_corpus.py   # measure a corpus into a resumable library
+
+Each is a script rather than a test because each needs something this repository cannot supply: an Illustrator
+installation, an Animate installation, a directory of artwork. Two of them are worth more than the library's own tests,
+because what they check is the thing this project has got wrong most often -- **output that is well formed and wrong**.
+`where.py` compares the box the outlines occupy against the box of the input geometry with its transforms applied;
+`stress_inked.py` counts the elements that survived, because a pass that rebuilds a document deletes what it does not
+understand and did exactly that once, taking a figure's eyes with it.
+
+`--fit` and `--fit-dir` measure a drawing or a folder on the same scale as the reference library, so a sheet drawn by
+hand can be read against `tests/data/corpus_summary.json` directly. The pooled summary is checked in; the 914 raw
+measurements it came from are not, since they are 300 KB of numbers and the summary is re-derivable from them.
+
 ## Licence
 
 MIT — see `LICENSE`.
