@@ -381,15 +381,17 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         headers = b''
         blobs = bytearray()
         for cid in CHANNEL_IDS:
-            # **The transparency channel is stored inverted, which is what a negative channel id means.** The value in
-            # a layer's transparency channel is a *mask*, and PSD writes it white-for-opaque like the colour channels;
-            # the layer's own alpha is its complement. `channel_bytes(-1)` returns the alpha byte through Python's
-            # negative indexing, so the complement is what this must write.
+            # **The alpha channel is written as it is: 255 for opaque, 0 for transparent.** This wrote
+            # `255 - alpha`, which turns every opaque pixel into zero and every transparent one into 255 -- the layer
+            # comes out entirely inverted, so a consumer displays nothing while the layer is listed correctly beside
+            # the blank canvas. The evidence is SAI's own layer, read by `psd-tools`: `min 0.000 max 1.000 mean
+            # 0.20592`, with ink *high* where the stroke is. Zero is transparent and 255 is drawn, which is also what
+            # the in-memory buffer holds.
             #
-            # Both halves of this were doubted in one round and both were right: the inversion was removed and the
-            # buffer's initial colour changed to white, and the result read as an entirely empty layer. Only the second
-            # change was needed. The lesson is the one this file keeps relearning -- change one thing and look.
-            raw = bytes(255 - v for v in layer.channel_bytes(-1)) if cid == -1 else layer.channel_bytes(cid)
+            # The inversion had been justified by a comment claiming the format stores it inverted. That is not
+            # established, and the measurement says the opposite. `PSD-REPORT.md` had already recorded it as unproven
+            # while the code treated it as settled -- the divergence was the signal.
+            raw = layer.channel_bytes(-1)
             # channel data is written bottom-up, unlike the row order used everywhere else in this library
             rows = [raw[y * w:(y + 1) * w] for y in range(h)]
             blob = _packed_channel(b''.join(reversed(rows)), w, h)
