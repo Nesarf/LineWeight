@@ -575,6 +575,14 @@ def test_the_xfl_folder_has_the_furniture_animate_needs(tmp_path):
     assert '<Edge cubics="10 10 10 10 90 10"/>' in xml
     assert '<DOMLayer name="LINE"' in xml
 
+    # **The compact `edges` attribute is the representation a shape is drawn from.** Hand-written shapes that carried
+    # only the verbose `cubics` form opened, imported, and drew nothing -- nine of them, before Animate's own template
+    # documents were read. The grammar is `!x y` to move, `|x y` to draw a line, `[cx cy x y` to curve.
+    assert '<Edge fillStyle1="1" edges="' in xml, 'the compact edge notation is missing'
+    assert 'edges="!10 10|90 10|50 90|10 10"' in xml, xml[xml.index('edges='):][:80]
+    # and the coordinates are whole numbers, because every one of the fifty shapes Animate ships uses whole numbers
+    assert '.' not in xml.split('<edges>')[1].split('</edges>')[0], 'the edge notation was fed fractions'
+
 
 # ------------------------------------------------------------------ measuring real artwork
 

@@ -65,27 +65,43 @@ def _hex(rgb: tuple[int, int, int]) -> str:
     return '#%02X%02X%02X' % rgb
 
 
-def edge_xml(start: tuple[float, float], end: tuple[float, float],
-             control: tuple[float, float] | None = None) -> str:
-    """One edge of a shape.
+def encode_edges(points: list[tuple[float, float]]) -> str:
+    """A closed contour in the compact notation that the `edges` attribute actually holds.
 
-    Animate does not describe a shape as a polygon. It describes a **chain of quadratic segments**, each carrying an
-    anchor, a control point and the next anchor, so a straight side is a quadratic whose control point lies on the
-    line. Writing a list of vertices as if it were a polygon is the obvious thing to do and produces a shape Animate
-    silently refuses to import.
+    **This is the representation a shape is drawn from**, and writing only the verbose `cubics` form produces a shape
+    that opens, imports, and draws nothing -- which is exactly what nine hand-written skeletons did. Animate writes
+    both; the compact one is short and the verbose one spells the same path out.
+
+    Read off fifty shapes in Animate's own template documents: `!x y` moves, `|x y` draws a line, `[cx cy x y` draws a
+    quadratic, and each anchor is followed by either a line or a curve to the *next* anchor. Animate's writer emits
+    whole numbers throughout, so these are rounded -- a coordinate the format is never fed in practice is a coordinate
+    whose reader has never been exercised.
     """
-    cx, cy = control if control else start
-    return ('            <Edge cubics="%s %s %s %s %s %s"/>\n'
-            % (_num(start[0]), _num(start[1]), _num(cx), _num(cy), _num(end[0]), _num(end[1])))
+    if len(points) < 2:
+        return ''
+    out = ['!%d %d' % (round(points[0][0]), round(points[0][1]))]
+    body = list(points[1:])
+    if points[0] != points[-1]:
+        body.append(points[0])
+    for x, y in body:
+        out.append('|%d %d' % (round(x), round(y)))
+    return ''.join(out)
 
 
-def contour_edges(points: list[tuple[float, float]]) -> str:
-    """A closed contour as quadratics, which is what a filled outline is once it reaches Animate."""
-    out = []
+def cubics_for(points: list[tuple[float, float]]) -> str:
+    """The same contour as the verbose `cubics` form: six numbers per edge, control point on the line.
+
+    Redundant with `encode_edges`, and emitted anyway because Animate emits both. A reader that trusts one of the two
+    finds the other consistent; a writer that omits one has written half a shape.
+    """
+    parts = []
     count = len(points)
     for i in range(count):
-        out.append(edge_xml(points[i], points[(i + 1) % count]))
-    return ''.join(out)
+        a = points[i]
+        b = points[(i + 1) % count]
+        parts.append('<Edge cubics="%s %s %s %s %s %s"/>'
+                     % (_num(a[0]), _num(a[1]), _num(a[0]), _num(a[1]), _num(b[0]), _num(b[1])))
+    return '\n'.join(parts)
 
 
 def shape_xml(path: Path, indent: str = '        ') -> str:
@@ -118,7 +134,11 @@ def shape_xml(path: Path, indent: str = '        ') -> str:
                   indent + '    </StrokeStyle>',
                   indent + '  </strokes>']
     lines.append(indent + '  <edges>')
-    lines.append(contour_edges(path.points))
+    # **Both representations, in the order Animate writes them.** The compact `edges` attribute is what the shape is
+    # drawn from; the `cubics` elements spell the same path out. Emitting only the second is what produced shapes that
+    # opened and drew nothing.
+    lines.append('%s       <Edge fillStyle1="1" edges="%s"/>' % (indent, encode_edges(path.points)))
+    lines.append(cubics_for(path.points))
     lines.append(indent + '  </edges>')
     lines.append(indent + '</DOMShape>')
     return '\n'.join(lines) + '\n'
