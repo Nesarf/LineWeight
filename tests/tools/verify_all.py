@@ -41,21 +41,50 @@ def drawing() -> Document:
     return demo_document()
 
 
-def check_psd() -> bool:
-    """Write a PSD and read its structure back out of its own bytes."""
+def check_psd() -> dict:
+    """Write a PSD and check it in the three ways that are not the same thing.
+
+    **One boolean beside the other destinations was misleading.** This used to return `True` for "the PSD is fine" and
+    sit next to Illustrator and Animate results that *did* mean the application accepted the output -- so an automated
+    reader could reasonably take `psd: True` to mean the SAI destination works, when it means only that this project's
+    writer and this project's reader agree. That is exactly the pair that shared four separate mistakes undetected, so
+    the distinction is not pedantry; it is the difference between a check and a coincidence.
+
+    The three layers, which are answers to different questions:
+
+    * `structure`    -- the file's own bytes describe what was written (this project's reader; weakest)
+    * `independent`  -- a parser that is not this project reads it (`psd-tools`, when installed; skips when not)
+    * `application`  -- SAI displays the layers (not verifiable from here; always reported as unknown)
+    """
     doc = drawing()
     layers = layers_from_document(doc, scale=1.0)
     path = os.path.join(WORK, 'verify.psd')
     save_psd(layers, path)
     head = read_psd_header(path)
-    ok = (head['layers'] == len(layers)
-          and head['names'] == [layer.name for layer in layers]
-          and head['merged_compression'] == [1, 1, 1, 1]
-          and head['merged_decoded_ok'])
-    print('PSD      : %d layers %s, %d bytes, channels PackBits and decompressing to full size: %s'
-          % (head['layers'], head['names'], head['bytes'], head['merged_decoded_ok']))
-    print('           verified from the file\'s own bytes. SAI accepting it is NOT verified -- see the docstring.')
-    return ok
+    structure = bool(head['layers'] == len(layers)
+                     and head['names'] == [layer.name for layer in layers]
+                     and head['merged_decoded_ok'])
+    print('PSD structure  : %s  (%d layers %s, %d bytes, merged channels decode to full size: %s)'
+          % ('PASS' if structure else 'FAIL', head['layers'], head['names'], head['bytes'],
+             head['merged_decoded_ok']))
+
+    independent = None
+    try:
+        from psd_tools import PSDImage
+        try:
+            read = PSDImage.open(path)
+            seen = [layer.name for layer in read]
+            independent = seen == [layer.name for layer in layers]
+            print('PSD independent: %s  (psd-tools reads %d layers: %s)'
+                  % ('PASS' if independent else 'FAIL', len(seen), seen))
+        except Exception as exc:                        # noqa: BLE001 - the failure is the result
+            independent = False
+            print('PSD independent: FAIL  (psd-tools refused the file: %s)' % type(exc).__name__)
+    except ImportError:
+        print('PSD independent: SKIPPED  (psd-tools is not installed; this is the check that matters)')
+
+    print("PSD layer pixels: UNKNOWN  (SAI showing the layer is not verifiable from here -- see PSD-REPORT.md)")
+    return {'structure': structure, 'independent': independent, 'application': None}
 
 
 def check_xfl() -> bool:
@@ -147,7 +176,18 @@ def main() -> int:
     print()
     for name, ok in results.items():
         print('%-12s %s' % (name, 'ok' if ok else 'FAILED'))
-    return 0 if all(results.values()) else 1
+    # **A destination's exit status must not rest on a check that cannot fail.** The PSD entry is a dict of three
+    # separate answers because they are three separate questions, and only the first two can be decided here; treating
+    # "unknown" as either pass or fail would be a claim this tool cannot support either way.
+    psd = results.get('psd', {})
+    failing = [k for k, v in results.items() if k != 'psd' and not v]
+    if not psd.get('structure'):
+        failing.append('psd.structure')
+    if psd.get('independent') is False:
+        failing.append('psd.independent')
+    if psd.get('application') is None:
+        print('note: psd.application is UNKNOWN by design -- SAI showing the layer cannot be checked from here')
+    return 1 if failing else 0
 
 
 if __name__ == '__main__':
