@@ -496,8 +496,12 @@ def test_the_psd_round_trips_its_layers(tmp_path):
     assert (head['width'], head['height']) == (64, 48)
     assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 4
     assert head['merged_bytes_present'], 'the merged image data is missing or truncated'
-    # every layer's four channels, each with its two-byte compression flag
-    assert head['channel_bytes'] == 2 * 4 * (2 + 64 * 48), head['channel_bytes']
+    # **Compressed, so the size is no longer arithmetic.** This assertion used to require exactly
+    # `channels x (flag + width x height)` bytes, which was true while channels were stored raw. PackBits makes the
+    # size depend on the content, and the useful check is no longer the length but that every channel decompresses to
+    # a full image -- which `merged_decoded_ok` reports, computed by reading the rows back.
+    assert head['channel_bytes'] > 0
+    assert head['channel_bytes'] < 4 * 2 * (2 + 64 * 48), 'the channels did not compress at all'
 
 
 def test_the_psd_layers_hold_the_drawing():
@@ -662,6 +666,58 @@ def test_the_taper_metric_measures_a_taper_it_can_see():
         a = measure_taper(bar(length, taper_to(0.50, 0.05)))
         b = measure_taper(bar(length, taper_to(0.10, 0.05)))
         assert b['ends_over_body'] < a['ends_over_body'], (length, a, b)
+
+
+def test_packbits_round_trips_the_cases_that_break_compressors():
+    """A compressor with no decompressor beside it is a compressor nobody has tested.
+
+    The decompressor is written from the format rather than by inverting the compressor, because an inverse that
+    mirrors a mistake reproduces it exactly and then reports success -- which is the failure mode this project keeps
+    meeting. These are the cases that separate a correct PackBits from a plausible one: a run longer than the
+    format's 128-byte maximum, data that compresses not at all, and the empty input.
+    """
+    from lineweight.psd import packbits, unpackbits
+
+    cases = {
+        'all one value (a long run)': bytes([5]) * 1000,
+        'two values alternating': bytes([200, 10] * 500),
+        'incompressible': bytes((i * 73 + 11) % 256 for i in range(1000)),
+        'two long runs': bytes([0]) * 500 + bytes([255]) * 500,
+        'single byte': b'\x42',
+        'empty': b'',
+        'a run of exactly 128': bytes([9]) * 128,
+        'a run of 129 (past the maximum)': bytes([9]) * 129,
+    }
+    for name, data in cases.items():
+        packed = packbits(data)
+        assert unpackbits(packed, len(data)) == data, name
+    # and it must actually compress the thing it is good at, or the format is not being used as intended
+    assert len(packbits(bytes([5]) * 1000)) < 40
+
+
+def test_the_psd_uses_the_compression_real_files_use(tmp_path):
+    """A file can be valid and still be refused: raw channels are legal PSD and are not what any application writes.
+
+    SAI answered a raw-channel file with "canvas creation failed" while opening the same pixels as a PNG, so the
+    question is not whether the format permits the bytes but whether a reader recognises them. Everything here is
+    written PackBits now, and the check decompresses what was written rather than trusting the writer.
+    """
+    from lineweight import Appearance, Document, Path
+    from lineweight.psd import layers_from_document, read_psd_header, save_psd
+
+    doc = Document(width=120, height=90)
+    doc.layer('LINE').add(Path(points=[(10, 10), (110, 10), (110, 80), (10, 80)],
+                               appearance=Appearance(fill='#19151F')))
+    layers = layers_from_document(doc)
+    out = str(tmp_path / 'packed.psd')
+    save_psd(layers, out)
+    head = read_psd_header(out)
+    assert head['names'] == ['LINE']
+    assert head['merged_compression'] == [1, 1, 1, 1], head['merged_compression']
+    assert head['merged_decoded_ok'], 'the merged channels did not decompress to their documented size'
+    # a solid rectangle should compress enormously better than raw, which is the point of using the format's codec
+    raw_size = 4 * (2 + 120 * 90)
+    assert head['bytes'] < raw_size, (head['bytes'], raw_size)
 
 
 def test_the_png_decoder_undoes_the_filters(tmp_path):

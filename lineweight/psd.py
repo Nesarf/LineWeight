@@ -192,6 +192,79 @@ def _raw_channel(data: bytes) -> bytes:
     return struct.pack('>H', 0) + data
 
 
+def packbits(data: bytes) -> bytes:
+    """PackBits compression, which is what Photoshop and everything that reads its files actually writes.
+
+    **Raw channels are legal and are not what applications expect.** The specification allows compression 0, and a
+    reader that supports the format must accept it -- but a file that arrives with raw channels is unlike every PSD a
+    drawing application has ever been handed, and SAI refused one outright with "canvas creation failed" while
+    accepting the same pixels through PNG. Writing the compression that real files use is the difference between a
+    file that is *valid* and a file that is *accepted*, and only the second one is useful.
+    """
+    out = bytearray()
+    index = 0
+    length = len(data)
+    while index < length:
+        # find the run of identical bytes starting here, capped at the format's maximum of 128
+        run = 1
+        while index + run < length and run < 128 and data[index + run] == data[index]:
+            run += 1
+        if run >= 2:
+            out.append(257 - run)                      # a run: 1 - n, as a signed byte
+            out.append(data[index])
+            index += run
+            continue
+        # otherwise gather literals until a run of three starts, which is where compressing becomes worthwhile
+        start = index
+        while index < length and index - start < 128:
+            if index + 2 < length and data[index] == data[index + 1] == data[index + 2]:
+                break
+            index += 1
+        count = index - start
+        out.append(count - 1)
+        out += data[start:index]
+    return bytes(out)
+
+
+def unpackbits(data: bytes, expected: int) -> bytes:
+    """The inverse, used to check that what was written can be read back.
+
+    A compressor with no decompressor beside it is a compressor nobody has tested. This is deliberately written from
+    the format rather than by inverting `packbits`, because an inverse that mirrors a mistake in the original will
+    reproduce it exactly and report success.
+    """
+    out = bytearray()
+    index = 0
+    while index < len(data) and len(out) < expected:
+        header = data[index]
+        index += 1
+        if header < 128:
+            count = header + 1
+            out += data[index:index + count]
+            index += count
+        elif header > 128:
+            count = 257 - header
+            out += bytes([data[index]]) * count
+            index += 1
+        # header == 128 is a no-op per the specification
+    return bytes(out)
+
+
+def _packed_channel(data: bytes, width: int, height: int) -> bytes:
+    """One channel as PackBits, one compressed run per scanline, which is how the format stores images.
+
+    Each row is prefixed with its own compressed length -- writing one stream for the whole channel is a plausible
+    simplification that no reader accepts, because the length prefixes are how a reader finds row boundaries without
+    decompressing everything first.
+    """
+    out = bytearray(struct.pack('>H', 1))
+    for y in range(height):
+        row = data[y * width:(y + 1) * width]
+        packed = packbits(bytes(row))
+        out += struct.pack('>H', len(packed)) + packed
+    return bytes(out)
+
+
 def save_psd(layers: list[Layer], path: str, width: int | None = None, height: int | None = None) -> str:
     """Write the layers as a layered PSD that SAI can open with its names and transparency intact."""
     if not layers:
@@ -223,7 +296,7 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
                    else layer.channel_bytes(cid))
             # channel data is written bottom-up, unlike the row order used everywhere else in this library
             rows = [raw[y * w:(y + 1) * w] for y in range(h)]
-            blob = _raw_channel(b''.join(reversed(rows)))
+            blob = _packed_channel(b''.join(reversed(rows)), w, h)
             # **The 6-byte header belongs to its own data, and it is the header that carries the length.** Collecting
             # the headers first and the blobs afterwards is a plausible-looking layout that no reader accepts: a
             # reader takes the length from the first header, skips that much data, and expects the next header there.
@@ -255,10 +328,10 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
     out += struct.pack('>I', len(layer_info))
     out += layer_info
 
-    # ---- merged image data, raw ----
+    # ---- merged image data, PackBits per scanline like every PSD a drawing application has ever seen ----
     for c in range(CHANNELS):
         raw = bytes(merged[i * 4 + c] for i in range(w * h))
-        out += struct.pack('>H', 0) + raw
+        out += _packed_channel(raw, w, h)
     out = bytearray(_pad2(bytes(out)))
 
     with open(path, 'wb') as handle:
@@ -333,12 +406,31 @@ def read_psd_header(path: str) -> dict:
 
     merged_start = section_start + layer_mask_len
     merged_channels = []
+    merged_decoded = []
     mo = merged_start
     for _c in range(channels):
         comp, = struct.unpack('>H', data[mo:mo + 2])
         merged_channels.append(comp)
-        mo += 2 + width * height
+        mo += 2
+        if comp == 0:
+            merged_decoded.append(data[mo:mo + width * height])
+            mo += width * height
+        elif comp == 1:
+            # **Row lengths are read, not assumed.** Each scanline carries its own compressed length, so the only way
+            # to find the next row -- and the end of this channel -- is to follow them one at a time.
+            rows = []
+            for _y in range(height):
+                row_len, = struct.unpack('>H', data[mo:mo + 2])
+                mo += 2
+                rows.append(unpackbits(data[mo:mo + row_len], width))
+                mo += row_len
+            merged_decoded.append(b''.join(rows))
+        else:
+            merged_decoded.append(b'')
+    # the merged channel data must decompress to the image that was handed in, or the file is not what it claims
+    merged_ok = len(merged_decoded) == CHANNELS and all(len(c) == width * height for c in merged_decoded)
     return {'version': version, 'channels': channels, 'width': width, 'height': height,
             'depth': depth, 'mode': mode, 'layers': count, 'names': names, 'opacities': opacities,
             'channel_bytes': channel_total, 'merged_compression': merged_channels,
-            'merged_bytes_present': mo <= len(data), 'bytes': len(data), 'layer_info_bytes': info_len}
+            'merged_decoded_ok': merged_ok, 'merged_bytes_present': mo <= len(data),
+            'bytes': len(data), 'layer_info_bytes': info_len}
