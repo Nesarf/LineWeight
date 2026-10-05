@@ -16,17 +16,24 @@ import subprocess
 import sys
 import time
 
+# **Paths come from the environment, not from whoever wrote this.** The applications' install locations and the working
+# directory differ per machine, and a repository that hard-codes one person's disk layout is a repository that only
+# works on one disk. The defaults below are where an ordinary Windows install puts them.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lineweight import Appearance, Document, Path
-from lineweight.psd import layers_from_document, read_psd_header, save_psd
-from lineweight.ref import decode_png
-from lineweight.xfl import write_xfl
+from lineweight import Appearance, Document, Path                    # noqa: E402
+from lineweight.psd import layers_from_document, read_psd_header, save_psd   # noqa: E402
+from lineweight.ref import decode_png                                # noqa: E402
+from lineweight.xfl import write_xfl                                 # noqa: E402
 
-WORK = os.environ.get('LW_VERIFY_DIR',
-                      os.path.join(os.environ.get('TEMP', '.'), 'lineweight-verify'))
-ANIMATE = r'D:\Anmt\Adobe Animate 2024\Animate.exe'
-ILLUSTRATOR = r'D:\Ai\Adobe Illustrator 2024\Support Files\Contents\Windows\Illustrator.exe'
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from windowing import capture, ink_fraction, stage_rect               # noqa: E402
+
+WORK = os.environ.get('LW_VERIFY_DIR', os.path.join(os.environ.get('TEMP', '.'), 'lineweight-verify'))
+ANIMATE = os.environ.get('LINEWEIGHT_ANIMATE',
+                         r'C:\Program Files\Adobe\Adobe Animate 2024\Animate.exe')
+ILLUSTRATOR = os.environ.get('LINEWEIGHT_ILLUSTRATOR',
+                             r'C:\Program Files\Adobe\Adobe Illustrator 2024\Support Files\Contents\Windows\Illustrator.exe')
 
 
 def drawing() -> Document:
