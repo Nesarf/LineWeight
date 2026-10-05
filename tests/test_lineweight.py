@@ -8,6 +8,7 @@ zero because a floating-point position can land a hair above 1.0.
 from __future__ import annotations
 
 import math
+import struct
 import os
 import re
 
@@ -525,8 +526,44 @@ def test_the_psd_round_trips_its_layers(tmp_path):
     # `layers` makes a caller asking how many layers there are receive `-2`, and makes this test pin the flag to the
     # number. Both are asserted separately now, so neither can be changed without the other being noticed.
     assert head['layers'] == 2, head
-    assert head['first_alpha_is_transparency'] is True, 'the sign flag was dropped'
     assert head['names'] == ['LINE', 'COLOUR'], head['names']
+    # **The sign is reported, not asserted to be a particular value.** This writer matches SAI's own file, which
+    # writes a positive count; the flag in the API exists so a reader can report the convention when it is used, and
+    # asserting `True` here would pin the writer to a choice that a real application does not make.
+    assert head['first_alpha_is_transparency'] is False, 'a positive count means no transparency flag'
+
+    # **The signature is asserted in the raw bytes, not through the reader.** Putting the check only in
+    # `read_psd_header` would have been no protection: that reader skipped the signature field too, so it happily
+    # validated a file whose records began with a bare `norm`. A reader and a writer that agree on the same mistake
+    # pass every round trip -- which is exactly what this pair did, for several rounds, while SAI showed an empty
+    # layer panel.
+    with open(out, 'rb') as handle:
+        raw = handle.read()
+    assert raw.count(b'8BIM') >= 2, 'a layer record must carry the 8BIM signature before its blend mode'
+    # and not the file-header signature, which is what this used to write
+    assert raw.count(b'8BPSnorm') == 0, 'the header signature was used where the resource signature belongs'
+
+    # **The flag is read from the bytes, so the reader is tested on a file this writer does not produce.** The layer
+    # count sits at a fixed offset once the three preceding sections are located, and negating it is the whole change.
+    def _count_offset(blob: bytes) -> int:
+        at = 26
+        at += 4 + struct.unpack('>I', blob[at:at + 4])[0]        # colour mode data
+        at += 4 + struct.unpack('>I', blob[at:at + 4])[0]        # image resources
+        at += 4                                                  # layer and mask section length
+        at += 4                                                  # layer info length
+        return at
+
+    flipped_bytes = bytearray(raw)
+    at = _count_offset(raw)
+    flipped_bytes[at:at + 2] = struct.pack('>h', -2)
+    flipped = str(tmp_path / 'flagged.psd')
+    with open(flipped, 'wb') as handle:
+        handle.write(bytes(flipped_bytes))
+    flagged = read_psd_header(flipped)
+    assert flagged['layers'] == 2, flagged
+    assert flagged['first_alpha_is_transparency'] is True, flagged
+    assert flagged['names'] == ['LINE', 'COLOUR'], flagged['names']
+
     assert (head['width'], head['height']) == (64, 48)
     assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 4
     assert head['merged_bytes_present'], 'the merged image data is missing or truncated'

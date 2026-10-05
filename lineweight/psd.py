@@ -27,12 +27,18 @@ import struct
 
 from .doc import Document, parse_colour
 
-SIGNATURE = b'8BPS'
+SIGNATURE = b'8BPS'                 # the file header's
 VERSION = 1
 MODE_RGB = 3
 CHANNELS = 4
 DEPTH = 8
 
+# **Two signatures that look alike and mean different things.** `8BPS` opens a document; `8BIM` opens an image
+# resource, and a layer record carries one before its blend mode. Using the first where the second belongs produces a
+# file that is structurally neat, opens in SAI, shows its canvas, reports no error, and has no layer panel -- because a
+# reader scanning for records finds none and concludes the document is flat. That is exactly what happened here, and it
+# survived several rounds of a round-trip test whose reader shared the writer's mistake.
+SIGNATURE_RESOURCE = b'8BIM'
 BLEND_NORMAL = b'norm'
 
 # A layer record's channel order in a file written by Photoshop and read by everything else.
@@ -279,15 +285,26 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
     out += struct.pack('>H', CHANNELS) + struct.pack('>I', h) + struct.pack('>I', w)
     out += struct.pack('>H', DEPTH) + struct.pack('>H', MODE_RGB)
     out += struct.pack('>I', 0)                         # colour mode data
-    out += struct.pack('>I', 0)                         # image resources
+    # **The resolution resource, because it is the one block SAI's own files always carry.** A PSD with no image
+    # resources is legal and this wrote one for a while; SAI's own 512x512 document writes 58 bytes here, of which this
+    # is the useful part -- resource 1005, the resolution, as two 32-bit fixed-point values. Whether SAI needs it is not
+    # established, and it is written because matching the application that has to open the file is the whole
+    # requirement, not minimality.
+    resolution = bytearray(SIGNATURE_RESOURCE + struct.pack('>H', 1005) + b'\x00\x00')  # id, empty name, no padding
+    resolution += struct.pack('>I', 16)
+    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # horizontal: 72 dpi, unit 1 (inches)
+    resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # vertical
+    out += struct.pack('>I', len(resolution))
+    out += resolution
 
     # ---- layer and mask information ----
     layer_info = bytearray()
-    # **Written negative, because the first alpha channel *is* the transparency.** The sign is a flag, not a
-    # count: a negative layer count tells a reader that the bottom layer's alpha holds the image's
-    # transparency, which is exactly what this writer produces. Written positive, SAI opened the file and
-    # showed no layer panel at all -- it read the document as one flat image.
-    layer_info += struct.pack('>h', -len(layers))
+    # **Written positive, matching the file SAI writes itself.** This was negative for several rounds, on the strength
+    # of an experiment where a positive count appeared to produce an empty layer panel -- but that file also carried the
+    # broken layer-record signature fixed below, so the observation was contaminated and the conclusion drawn from it
+    # was wrong. SAI's own 512x512 document writes `+2`. The sign is a real convention and the reader still reports it;
+    # what it is not is the thing that decides whether layers appear.
+    layer_info += struct.pack('>h', len(layers))
     records = bytearray()
     channel_blobs = bytearray()
     for layer in layers:
@@ -312,7 +329,16 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         record = bytearray()
         record += rect
         record += struct.pack('>H', CHANNELS) + headers
-        record += BLEND_NORMAL
+        # **The signature is not decoration -- it is how a reader finds the record.** A layer record carries an
+        # eight-byte block: the `8BIM` signature and then the blend mode. This wrote the four-byte blend mode alone,
+        # and the consequence was not a wrong blend mode but *no layers at all*: SAI opens such a file, shows its
+        # canvas, reports nothing, and presents an empty layer panel, because a reader that scans for `8BIM` finds no
+        # records and concludes the document is flat.
+        #
+        # Nothing here caught it for several rounds, and the reason is worth keeping: `read_psd_header` is this
+        # module's own reader, and it skipped the signature field too. A reader and a writer that agree on the same
+        # mistake validate each other perfectly. What found it was diffing against a file SAI wrote itself.
+        record += SIGNATURE_RESOURCE + BLEND_NORMAL
         record += bytes([int(round(layer.opacity * 255))])       # opacity
         record += bytes([0])                                     # clipping: base
         record += bytes([0x08 | (0x01 if layer.visible else 0x02)])   # flags: visible bit set = shown
@@ -390,16 +416,23 @@ def read_psd_header(path: str) -> dict:
         nch, = struct.unpack('>H', data[offset:offset + 2])
         offset += 2
         # **Layer records come first, and every layer's channel data follows the last record.** A reader that walks
-        # header-blob-header-blob -- which this one did -- lands in pixel data on its second step and reports the
-        # blend mode as `\xff\xff\xff\xff`, the opacity as 255 and the name as garbage. The file was correct; the
-        # checker was the thing that was wrong, which is worth writing down because it sent the search into the
-        # writer for a round.
+        # header-blob-header-blob lands in pixel data on its second step and reports the blend mode as
+        # `\xff\xff\xff\xff`. That misread sent the search into the writer for a round, and the writer turned out to
+        # have a real defect as well -- see the signature check below.
         for _c in range(nch):
             offset += 2                                # channel id
             clen, = struct.unpack('>I', data[offset:offset + 4])
             offset += 4
             blob_expectations.append(clen)
             channel_total += clen
+        # **Eight bytes: the signature and then the blend mode.** Skipping four was this reader agreeing with a writer
+        # that wrote four, which is why neither noticed. The result was a file whose layer records began with the bare
+        # string `norm` where a reader looks for `8BIM` -- SAI opened it with an empty layer panel. The signature is
+        # read rather than skipped now, so the two cannot drift apart again without a test failing.
+        if data[offset:offset + 4] != SIGNATURE_RESOURCE:
+            raise ImageError('layer record %d has no 8BIM signature: %r'
+                             % (len(opacities), data[offset:offset + 4]))
+        offset += 4                                    # 8BIM
         offset += 4                                    # blend mode
         opacities.append('%d/255' % data[offset])
         offset += 1 + 1 + 1 + 1                        # opacity, clipping, flags, filler
