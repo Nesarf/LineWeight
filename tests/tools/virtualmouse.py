@@ -145,6 +145,8 @@ def wheel(notches: int, settle: float = 0.1) -> None:
 
 
 VK = {'enter': 0x0D, 'esc': 0x1B, 'tab': 0x09, 'space': 0x20, 'back': 0x08,
+      'oem_plus': 0xBB, 'oem_minus': 0xBD, 'oem_4': 0xDB, 'oem_6': 0xDD,   # + - [ ]
+      'plus': 0xBB, 'minus': 0xBD, 'lbracket': 0xDB, 'rbracket': 0xDD,
       'ctrl': 0x11, 'alt': 0x12, 'shift': 0x10, 'home': 0x24, 'end': 0x23,
       'left': 0x25, 'up': 0x26, 'right': 0x27, 'down': 0x28, 'delete': 0x2E}
 
