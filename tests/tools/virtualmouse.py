@@ -72,14 +72,53 @@ def cursor() -> tuple[int, int]:
     return point.x, point.y
 
 
+_GAIN: float | None = None
+
+
+def calibrate(settle: float = 0.05) -> float:
+    """Measure how far the cursor moves per unit of requested delta.
+
+    **Windows scales relative mouse motion.** The system's pointer speed and "enhance pointer precision" apply a gain to
+    every relative delta, which is why asking for 120 pixels produced about 144 and the error grew with the distance. A
+    sequence of absolute moves had landed exactly, so the gain does not apply to them -- but absolute motion needs
+    normalization that depends on the monitor layout, and it missed by hundreds of pixels here.
+
+    Rather than guess which effect is in play, this asks the system: move one pixel at a time, measure, and divide the
+    answer out of every later request. The gain is a property of the machine, so it is measured once.
+    """
+    global _GAIN
+    start = cursor()
+    _send(INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=MOUSEINPUT(50, 0, 0, MOUSEEVENTF_MOVE, 0, None))))
+    time.sleep(settle)
+    moved = cursor()[0] - start[0]
+    _send(INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=MOUSEINPUT(-50, 0, 0, MOUSEEVENTF_MOVE, 0, None))))
+    time.sleep(settle)
+    _GAIN = (moved / 50.0) if moved else 1.0
+    return _GAIN
+
+
 def move(x: int, y: int, settle: float = 0.05) -> tuple[int, int]:
-    """Move the pointer and **return where it actually is**, which is the check the old code never made."""
-    width, height = screen_size()
-    # absolute coordinates are normalized to 0..65535 over the primary monitor
-    nx = int(x * 65535 / max(1, width - 1))
-    ny = int(y * 65535 / max(1, height - 1))
-    _send(INPUT(type=INPUT_MOUSE,
-                union=_INPUTunion(mi=MOUSEINPUT(nx, ny, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, 0, None))))
+    """Move the pointer and **return where it actually is**, which is the check the old code never made.
+
+    **By relative steps, not by absolute coordinates.** Absolute motion needs the position normalized to 0..65535 over
+    the desktop, and that normalization depends on the resolution, the monitor layout and any display scaling: on this
+    machine a move to (834, 476) landed at (19, 6), which is the kind of miss that looks like "the click did nothing".
+    A relative delta is computed from the position the system itself reports, so scaling cannot enter into it.
+
+    Large jumps are sent in steps too -- a single delta of several hundred pixels can be clamped by the driver.
+    """
+    if _GAIN is None:
+        calibrate()
+    for _ in range(60):
+        here = cursor()
+        dx, dy = x - here[0], y - here[1]
+        if abs(dx) <= 1 and abs(dy) <= 1:
+            break
+        # divide the system's gain out of the request, then bound the step so the driver cannot clamp it
+        step_x = max(-120, min(120, int(dx / _GAIN)))
+        step_y = max(-120, min(120, int(dy / _GAIN)))
+        _send(INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=MOUSEINPUT(step_x, step_y, 0, MOUSEEVENTF_MOVE, 0, None))))
+        time.sleep(settle / 4)
     time.sleep(settle)
     return cursor()
 
@@ -159,3 +198,39 @@ def type_text(text: str, settle: float = 0.02) -> None:
         _send(INPUT(type=INPUT_KEYBOARD,
                     union=_INPUTunion(ki=KEYBDINPUT(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, None))))
         time.sleep(settle)
+
+def drag(points: list[tuple[int, int]], button: str = 'left', steps_per_segment: int = 8,
+         settle: float = 0.012) -> bool:
+    """Press at the first point, move through the rest, release at the last.
+
+    **Every intermediate position is sent.** A drawing application samples the pointer while the button is down, so a
+    single move from the start to the end of a stroke produces either a straight line or nothing at all depending on how
+    it reads the queue -- and a stroke is what is being tested, not a click. The interpolation is in *screen* steps
+    rather than in time, because what SAI records is the path.
+
+    Returns whether the pointer was where it was asked to be at the start, which is the one part of this that can be
+    checked rather than hoped for.
+    """
+    if len(points) < 2:
+        return False
+    down, up = ((MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP) if button == 'left'
+                else (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP))
+    landed = move(*points[0])
+    if abs(landed[0] - points[0][0]) > 2 or abs(landed[1] - points[0][1]) > 2:
+        return False
+    _send(INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=MOUSEINPUT(0, 0, 0, down, 0, None))))
+    time.sleep(settle)
+    for index in range(len(points) - 1):
+        x0, y0 = points[index]
+        x1, y1 = points[index + 1]
+        for step in range(1, steps_per_segment + 1):
+            fraction = step / steps_per_segment
+            _send(INPUT(type=INPUT_MOUSE,
+                        union=_INPUTunion(mi=MOUSEINPUT(int(x0 + (x1 - x0) * fraction),
+                                                        int(y0 + (y1 - y0) * fraction), 0,
+                                                        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, 0, None))))
+            time.sleep(settle / 2)
+    time.sleep(settle)
+    _send(INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=MOUSEINPUT(0, 0, 0, up, 0, None))))
+    time.sleep(settle)
+    return True
