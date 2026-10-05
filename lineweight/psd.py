@@ -317,7 +317,11 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
     # is the useful part -- resource 1005, the resolution, as two 32-bit fixed-point values. Whether SAI needs it is not
     # established, and it is written because matching the application that has to open the file is the whole
     # requirement, not minimality.
-    resolution = bytearray(SIGNATURE_RESOURCE + struct.pack('>H', 1005) + b'\x00\x00')  # id, empty name, no padding
+    # **The name field is a Pascal string padded to an even length, so an empty one is two bytes.** A zero length byte
+    # on its own is odd and takes a pad byte with it; this wrote a single zero, which made the block three bytes
+    # shorter than a reader walking it expected and shifted every following field by three. SAI's file carries the same
+    # resource and its name field is two bytes wide.
+    resolution = bytearray(SIGNATURE_RESOURCE + struct.pack('>H', 1005) + b'\x00\x00')   # id, empty name + pad
     resolution += struct.pack('>I', 16)
     resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # horizontal: 72 dpi, unit 1 (inches)
     resolution += struct.pack('>I', 72 << 16) + struct.pack('>H', 1)   # vertical
@@ -376,16 +380,28 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         extra += b'\x00' * 4                                     # layer mask data
         extra += b'\x00' * 4                                     # blending ranges
         extra += _pascal_name(layer.name)
+        # **The Unicode name too.** SAI writes a `luni` block holding the name as UTF-16, and so does every file this
+        # project has compared against; the Pascal string above is the legacy form that predates it. A reader that
+        # wants a name for a layer whose name is not Latin-1 has only the `luni` block to read it from.
+        unicode_name = layer.name.encode('utf-16-be')
+        extra += SIGNATURE_RESOURCE + b'luni' + struct.pack('>I', 4 + len(unicode_name))
+        extra += struct.pack('>I', len(layer.name)) + unicode_name
+        if (4 + len(unicode_name)) % 2:
+            extra += b'\x00'                                     # resource blocks are padded to even
         record += struct.pack('>I', len(extra)) + extra
         records += record
         channel_blobs += blobs
     layer_info += records
     layer_info += channel_blobs
-    layer_info += struct.pack('>I', 0)                  # global layer mask info
 
-    out += struct.pack('>I', 4 + len(layer_info))
-    out += struct.pack('>I', len(layer_info))
+    # **The global mask is its own field, not part of the layer info.** It sat inside `layer_info`, so its four bytes
+    # were counted in the layer info length -- a section that announced four bytes more than it held. A reader that
+    # trusts the length walks past the end of the data it was promised, and `psd-tools` refused the whole file with
+    # "Invalid data section size" because of it.
+    out += struct.pack('>I', 4 + len(layer_info) + 4)   # the layer and mask section
+    out += struct.pack('>I', len(layer_info))           # the layer info block within it
     out += layer_info
+    out += struct.pack('>I', 0)                         # global layer mask info: empty
 
     # ---- merged image data, PackBits per scanline like every PSD a drawing application has ever seen ----
     for c in range(3):                              # RGB; an alpha channel here is read as data and rejected
