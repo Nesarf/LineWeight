@@ -392,9 +392,20 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
             # established, and the measurement says the opposite. `PSD-REPORT.md` had already recorded it as unproven
             # while the code treated it as settled -- the divergence was the signal.
             raw = layer.channel_bytes(-1)
-            # channel data is written bottom-up, unlike the row order used everywhere else in this library
+            # **Rows are written top-down, the same order as everywhere else in this library.**
+            #
+            # This reversed them, on the belief that layer channel data is stored bottom-up. It is not, and the
+            # evidence is a PSD written by `psd-tools` -- an encoder that is known to work -- with red, green, blue and
+            # yellow placed in four known quadrants. Decoding its channels back gives channel 0 high at top-left and
+            # bottom-right, channel 1 high at top-right and bottom-right, channel 2 high at bottom-left: the colours
+            # where they were put, with no flip.
+            #
+            # The earlier evidence for reversing was an experiment that drew a bar near the top and found it near the
+            # bottom of the file -- but the file was read back with the same decoding assumption the writer used, so
+            # the two agreed and neither was checked against anything. The same trap as the row count and the record
+            # signature, met a third time.
             rows = [raw[y * w:(y + 1) * w] for y in range(h)]
-            blob = _packed_channel(b''.join(reversed(rows)), w, h)
+            blob = _packed_channel(b''.join(rows), w, h)
             # **The 6-byte header belongs to its own data, and it is the header that carries the length.** Collecting
             # the headers first and the blobs afterwards is a plausible-looking layout that no reader accepts: a
             # reader takes the length from the first header, skips that much data, and expects the next header there.
