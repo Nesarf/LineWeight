@@ -53,6 +53,14 @@ BUILD_NUMBER = '19'
 MARKER_FILE_TEXT = 'PROXY-CS5'
 MIMETYPE = 'application/vnd.adobe.xfl'
 
+# **A drawing unit is not a scene unit, and the ratio is measured rather than assumed.** A shape whose points span its
+# whole canvas renders at about a fortieth of the stage when written with `<Matrix a="1" d="1"/>`; the same points
+# scaled by this factor fill it. Swept, not guessed: identity gives a small square in the corner, ten gives a fraction
+# of the stage, forty fills it, and a hundred is indistinguishable from forty because it is already past the edge. The
+# matrix Animate writes on its own shapes does not explain the factor -- its templates carry `a="2.28"` over
+# coordinates in the thousands -- so the scale is applied to the coordinates themselves, where its effect was seen.
+SCENE_SCALE = 40.0
+
 # Layer colours Animate uses for new layers, cycled so a generated document is readable in its timeline.
 LAYER_COLOURS = ['#00FFFF', '#4FFF4F', '#4F4FFF', '#FF4F4F', '#FFFF4F', '#FF4FFF']
 
@@ -65,7 +73,7 @@ def _hex(rgb: tuple[int, int, int]) -> str:
     return '#%02X%02X%02X' % rgb
 
 
-def encode_edges(points: list[tuple[float, float]]) -> str:
+def encode_edges(points: list[tuple[float, float]], scale: float = 1.0) -> str:
     """A closed contour in the compact notation that the `edges` attribute actually holds.
 
     **This is the representation a shape is drawn from**, and writing only the verbose `cubics` form produces a shape
@@ -76,19 +84,24 @@ def encode_edges(points: list[tuple[float, float]]) -> str:
     quadratic, and each anchor is followed by either a line or a curve to the *next* anchor. Animate's writer emits
     whole numbers throughout, so these are rounded -- a coordinate the format is never fed in practice is a coordinate
     whose reader has never been exercised.
+
+    `scale` is applied here rather than baked into a `<Matrix>` because the matrix does not mean what it looks like:
+    measured, a shape whose points span its whole canvas at `a="1"` renders about a fortieth of the stage, while the
+    same points scaled up in the path fill it. Applying the factor to the coordinates is the version whose effect was
+    measured rather than assumed.
     """
     if len(points) < 2:
         return ''
-    out = ['!%d %d' % (round(points[0][0]), round(points[0][1]))]
+    out = ['!%d %d' % (round(points[0][0] * scale), round(points[0][1] * scale))]
     body = list(points[1:])
     if points[0] != points[-1]:
         body.append(points[0])
     for x, y in body:
-        out.append('|%d %d' % (round(x), round(y)))
+        out.append('|%d %d' % (round(x * scale), round(y * scale)))
     return ''.join(out)
 
 
-def cubics_for(points: list[tuple[float, float]]) -> str:
+def cubics_for(points: list[tuple[float, float]], scale: float = 1.0) -> str:
     """The same contour as the verbose `cubics` form: six numbers per edge, control point on the line.
 
     Redundant with `encode_edges`, and emitted anyway because Animate emits both. A reader that trusts one of the two
@@ -100,7 +113,9 @@ def cubics_for(points: list[tuple[float, float]]) -> str:
         a = points[i]
         b = points[(i + 1) % count]
         parts.append('<Edge cubics="%s %s %s %s %s %s"/>'
-                     % (_num(a[0]), _num(a[1]), _num(a[0]), _num(a[1]), _num(b[0]), _num(b[1])))
+                     % (_num(a[0] * scale), _num(a[1] * scale),
+                        _num(a[0] * scale), _num(a[1] * scale),
+                        _num(b[0] * scale), _num(b[1] * scale)))
     return '\n'.join(parts)
 
 
@@ -137,8 +152,9 @@ def shape_xml(path: Path, indent: str = '        ') -> str:
     # **Both representations, in the order Animate writes them.** The compact `edges` attribute is what the shape is
     # drawn from; the `cubics` elements spell the same path out. Emitting only the second is what produced shapes that
     # opened and drew nothing.
-    lines.append('%s       <Edge fillStyle1="1" edges="%s"/>' % (indent, encode_edges(path.points)))
-    lines.append(cubics_for(path.points))
+    lines.append('%s       <Edge fillStyle1="1" edges="%s"/>'
+                 % (indent, encode_edges(path.points, SCENE_SCALE)))
+    lines.append(cubics_for(path.points, SCENE_SCALE))
     lines.append(indent + '  </edges>')
     lines.append(indent + '</DOMShape>')
     return '\n'.join(lines) + '\n'

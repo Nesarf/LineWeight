@@ -917,24 +917,32 @@ def to_psd(out_path: str, scale: float = 1.0) -> int:
 def to_xfl(out_path: str, launch: bool = False) -> int:
     """The demo sheet as XFL, the one form Animate opens without a click.
 
-    Animate has no scriptable entry point on this machine -- verified four ways -- so the drawing is written as
-    Animate's own uncompressed project format and handed over as a file.
+    Animate has no scriptable entry point on this machine -- verified every way tried -- so the drawing is written as
+    Animate's own project format and handed over as a folder.
+
+    **The folder is the deliverable, and it is not zipped.** This used to pack it into a `.xfl` archive, which was
+    wrong in a way that cost rounds: Animate must be pointed at the marker file *inside* the folder, and a zip has no
+    such file to point at. The runner resolves a folder to its marker; nothing here should undo that.
     """
-    from .xfl import write_xfl, zip_xfl
+    from .xfl import write_xfl
 
     document = demo_document()
-    folder = out_path[:-4] if out_path.lower().endswith('.xfl') else out_path
+    # **The folder name is the project name, and it does not need the extension stripped or added.** The marker file
+    # inside is named after the folder, and Animate is pointed at that marker -- so a caller who asks for `drawing.xfl`
+    # gets a folder `drawing.xfl` holding a marker `drawing.xfl`. Stripping the extension here made the folder and its
+    # marker disagree, which reads as "the file is not there" when a later step goes looking for it.
+    folder = out_path
     parent = os.path.dirname(folder)
     if parent:
         os.makedirs(parent, exist_ok=True)
     write_xfl(document, folder)
-    archive = zip_xfl(folder, folder + '.xfl')
-    print('  %s  (%s)' % (archive, ', '.join('%s=%d' % (k, v) for k, v in document.counts().items())))
+    marker = os.path.join(folder, os.path.basename(folder))
+    print('  %s  (%s)' % (folder, ', '.join('%s=%d' % (k, v) for k, v in document.counts().items())))
     if not launch:
-        print('  open it with:  Animate.exe "%s"' % archive)
+        print('  open it with:  Animate.exe "%s"   (the marker file, not the folder)' % marker)
         return 0
     from .run import open_in_animate
-    result = open_in_animate(archive)
+    result = open_in_animate(folder)
     print('  %s' % result.describe())
     return 0 if result.ok else 1
 

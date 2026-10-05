@@ -572,16 +572,22 @@ def test_the_xfl_folder_has_the_furniture_animate_needs(tmp_path):
     # the shape encoding: three corners, so three quadratics with the control point on the line
     assert xml.count('<DOMShape') == 1
     assert xml.count('<Edge cubics=') == 3
-    assert '<Edge cubics="10 10 10 10 90 10"/>' in xml
+    assert '<Edge cubics="400 400 400 400 3600 400"/>' in xml
     assert '<DOMLayer name="LINE"' in xml
 
     # **The compact `edges` attribute is the representation a shape is drawn from.** Hand-written shapes that carried
     # only the verbose `cubics` form opened, imported, and drew nothing -- nine of them, before Animate's own template
     # documents were read. The grammar is `!x y` to move, `|x y` to draw a line, `[cx cy x y` to curve.
     assert '<Edge fillStyle1="1" edges="' in xml, 'the compact edge notation is missing'
-    assert 'edges="!10 10|90 10|50 90|10 10"' in xml, xml[xml.index('edges='):][:80]
-    # and the coordinates are whole numbers, because every one of the fifty shapes Animate ships uses whole numbers
-    assert '.' not in xml.split('<edges>')[1].split('</edges>')[0], 'the edge notation was fed fractions'
+    # **And the coordinates are scaled into the scene's units.** A drawing unit is not a scene unit: swept by
+    # measurement, a shape spanning its whole canvas at scale 1 renders a fortieth of the stage, and the same points
+    # at this factor fill it. The test pins the factor so a later change to it has to be deliberate.
+    assert 'edges="!400 400|3600 400|2000 3600|400 400"' in xml, xml[xml.index('edges='):][:90]
+    # the coordinates are whole numbers, because every one of the fifty shapes Animate ships uses whole numbers
+    edge_block = xml.split('<edges>')[1].split('</edges>')[0]
+    assert '.' not in edge_block, 'the edge notation was fed fractions'
+    # both representations describe the same corners, so a reader that trusts either finds the other consistent
+    assert edge_block.count('<Edge cubics=') == 3
 
 
 # ------------------------------------------------------------------ measuring real artwork
