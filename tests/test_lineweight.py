@@ -8,6 +8,7 @@ zero because a floating-point position can land a hair above 1.0.
 from __future__ import annotations
 
 import math
+import os
 import re
 
 from lineweight import BRUSHES, inked_svg, outline, parse_path, pressures, stroke
@@ -525,27 +526,54 @@ def test_the_psd_layers_hold_the_drawing():
     assert merged[i + 3] == 255 and merged[j + 3] == 0
 
 
-def test_the_xfl_document_has_the_shape_encoding_animate_reads(tmp_path):
-    """Animate has no scripting interface, so this file *is* the Animate bridge -- and its shape encoding is not a
-    polygon: it is a chain of quadratics, each carrying an anchor and a control point."""
+def test_the_xfl_folder_has_the_furniture_animate_needs(tmp_path):
+    """Animate has no scripting interface, so this folder *is* the Animate bridge -- and what it contains is not
+    decoration.
+
+    Nine hand-written skeletons opened as documents while importing nothing, because they were XML in a zip and an XFL
+    is a **folder with a marker file in it**. The marker is named after the project, contains `PROXY-CS5`, and is the
+    file Animate must be pointed at: passing the folder path opens the home screen, and passing the marker opens the
+    document. That single fact took an orthogonal sweep of sixteen skeletons plus a saved reference document to
+    establish, and it is the sort of thing a future reader should not have to rediscover.
+    """
     from lineweight import Appearance, Document, Path, write_xfl
 
     doc = Document(width=100, height=100)
     doc.layer('LINE').add(Path(points=[(10, 10), (90, 10), (50, 90)],
                                appearance=Appearance(fill='#19151F')))
     folder = write_xfl(doc, str(tmp_path / 'drawing.xfl'))
-    with open(folder + '/DOMDocument.xml', encoding='utf-8') as handle:
+
+    # the marker file, named after the project, holding the marker text
+    marker = os.path.join(folder, 'drawing.xfl')
+    assert os.path.exists(marker), 'the marker file is what Animate opens'
+    with open(marker, encoding='ascii') as handle:
+        assert handle.read() == 'PROXY-CS5'
+    # and the folder furniture a saved document also carries
+    assert os.path.isdir(os.path.join(folder, 'LIBRARY'))
+    assert os.path.isdir(os.path.join(folder, 'META-INF'))
+    assert os.path.isdir(os.path.join(folder, 'bin'))
+    assert os.path.exists(os.path.join(folder, 'bin', 'SymDepend.cache'))
+
+    with open(os.path.join(folder, 'DOMDocument.xml'), encoding='utf-8') as handle:
         xml = handle.read()
     assert 'xmlns="http://ns.adobe.com/xfl/2008/"' in xml
-    # a version Animate will accept: its own exporter names its property xflversion2_1
-    assert 'xflVersion="2.1"' in xml
+    # **Read off a document Animate saved itself.** The earlier value was inferred from a property name found in the
+    # binary and was wrong in a way that produced no error: the file opened and imported nothing.
+    assert 'xflVersion="23.0"' in xml
+    assert 'creatorInfo="Adobe Animate"' in xml
+    assert 'platform="Windows"' in xml
+    assert 'frameRate=' in xml and 'fileGUID=' in xml
+    # the root children and timeline attribute a saved document has and a hand-written one omitted
+    assert '<scripts/>' in xml and '<PrinterSettings/>' in xml and '<publishHistory/>' in xml
+    assert 'layerDepthEnabled="true"' in xml
+    # the frame carries no `duration`, and its elements container is present
+    assert '<DOMFrame index="0" keyMode="9728">' in xml
+    assert 'duration=' not in xml
+    # the shape encoding: three corners, so three quadratics with the control point on the line
     assert xml.count('<DOMShape') == 1
-    # three corners, so three edges, each a quadratic with the control point on the line
     assert xml.count('<Edge cubics=') == 3
     assert '<Edge cubics="10 10 10 10 90 10"/>' in xml
     assert '<DOMLayer name="LINE"' in xml
-    with open(folder + '/mimetype', encoding='ascii') as handle:
-        assert handle.read() == 'application/vnd.adobe.xfl'
 
 
 # ------------------------------------------------------------------ measuring real artwork

@@ -167,19 +167,30 @@ def open_in_animate(path: str | FsPath, app_path: str | None = None, wait: float
                     expect_title: bool = True) -> RunResult:
     """Opens a drawing in Animate. No script, because Animate has no scriptable entry point.
 
-    This is the whole Animate bridge: `Animate.exe drawing.xfl` opens a generated XFL and presents it as a document,
-    verified by watching the window title become the file's own name. It is deliberately *not* a fake automation
-    layer over a menu that cannot be driven -- the measured state of Animate on this machine is that JSFL cannot be
-    launched, COM refuses out-of-process creation, the UI Automation tree is empty, and a background process cannot
-    take focus, so anything that looked like driving Animate would be a lie with a click hidden inside it.
+    This is the whole Animate bridge: Animate opens a generated XFL and presents it as a document. It is deliberately
+    *not* a fake automation layer over a menu that cannot be driven -- the measured state of Animate on this machine is
+    that JSFL cannot be launched, COM refuses out-of-process creation, the UI Automation tree is empty, a background
+    process cannot take focus, and it opens the home screen for an SVG. Anything that looked like driving Animate
+    would be a lie with a click hidden inside it.
+
+    **Point it at the marker file, not the folder.** An XFL is a folder with a file inside it named after the project
+    and containing `PROXY-CS5`; handing Animate the folder gets the home screen, and handing it that file gets the
+    document. This was established by controlled experiment against a document Animate saved itself, after sixteen
+    hand-written skeletons had failed for reasons that turned out to be two layers of the same mistake.
 
     **Process hygiene is part of the function, not the caller's problem.** Measured: killing Animate with a hard
     process kill leaves it in a state where the *next* launch silently ignores its file argument -- which made an
-    earlier sweep report a known-good file as un-openable and sent the search for a fault into the wrong layer for
-    two rounds. So the wait here is for the window title to actually change, and a caller that has an instance open is
+    earlier sweep report a known-good file as un-openable and sent the search for a fault into the wrong layer for two
+    rounds. So the wait here is for the window title to actually change, and a caller that has an instance open is
     told rather than silently left with a stale window.
     """
     target = FsPath(path)
+    if target.is_dir():
+        # a folder was given: the document is the marker file inside it, named after the folder
+        marker = target / (target.name if target.name.lower().endswith('.xfl') else target.name + '.xfl')
+        if not marker.exists():
+            return RunResult(ok=False, message='no marker file in %s -- an XFL is a folder plus this file' % target)
+        target = marker
     if not target.exists():
         return RunResult(ok=False, message='nothing to open: %s' % target)
     exe = app_path or animate_path()
@@ -187,24 +198,37 @@ def open_in_animate(path: str | FsPath, app_path: str | None = None, wait: float
         return RunResult(ok=False, message='application not found: %s' % exe)
 
     already = _tasklist('Animate.exe')
+    # **Record what the window says before launching, or a stale document reports itself as this run's success.**
+    # Measured: with an earlier document still open, this returned `ok` after 0.3 seconds because the title already
+    # matched -- a bridge that lies in exactly the way this project keeps being caught by.
+    title_before = _window_title('Animate.exe')
     started = time.time()
     try:
         subprocess.Popen([exe, str(target)], close_fds=True)
     except OSError as exc:
         return RunResult(ok=False, message='could not start %s: %s' % (exe, exc))
 
+    wanted = target.name.lower()
     deadline = time.time() + wait
     title = ''
     while time.time() < deadline:
-        title = _window_title('Animate.exe')
-        if title and title.lower() != 'adobe animate 2024':
-            break
         time.sleep(1.0)
-    result = RunResult(ok=bool(title and (not expect_title or target.name.lower() in title.lower())),
+        title = _window_title('Animate.exe')
+        if not title:
+            continue
+        if title.lower() == (title_before or '').lower():
+            continue                      # unchanged from before the launch: not evidence of anything
+        if not expect_title or wanted in title.lower():
+            break
+    result = RunResult(ok=bool(title and title.lower() != (title_before or '').lower()
+                               and (not expect_title or wanted in title.lower())),
                        seconds=time.time() - started, spawned=not already)
     result.artifacts = [str(target)]
     if result.ok:
         result.message = 'opened in Animate as "%s"' % title
+    elif title and title.lower() == (title_before or '').lower():
+        result.message = ('the window still says %r, which is what it said before the launch: the document did not '
+                          'open' % title)
     else:
         result.message = ('Animate window title stayed %r after %.0fs, so the document did not open'
                           % (title or '(none)', wait))
