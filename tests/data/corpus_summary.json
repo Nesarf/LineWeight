@@ -1,35 +1,41 @@
 {
   "corpora": [
     {
-      "description": "a private illustration collection",
+      "description": "a private collection of artwork",
+      "images": 17,
+      "shared": false,
+      "tag": "lucia"
+    },
+    {
+      "description": "a private collection of artwork",
+      "images": 837,
+      "shared": false,
+      "tag": "mat"
+    },
+    {
+      "description": "a private collection of artwork",
       "images": 75,
       "shared": false,
       "tag": "md"
-    },
-    {
-      "description": "a private collection of character art, emoji and textures",
-      "images": 872,
-      "shared": false,
-      "tag": "mat"
     }
   ],
   "linework_ink_ratio": {
-    "median": 0.1482,
-    "p10": 0.0616,
-    "p90": 0.2607
+    "median": 0.1485,
+    "p10": 0.0623,
+    "p90": 0.2611
   },
   "linework_p90_over_median": {
     "median": 2.75,
-    "note": "scale-free; the model measured 2.667 against the older 26-image library, which gave 2.750"
+    "note": "scale-free; the number a brush has to be able to reach inside one drawing"
   },
   "linework_resolution": {
-    "median_height": 554,
-    "median_width": 591
+    "median_height": 566,
+    "median_width": 656
   },
   "linework_taper_ratio": {
-    "median": 0.4234,
-    "p10": 0.3553,
-    "p90": 0.5133
+    "median": 0.4213,
+    "p10": 0.3474,
+    "p90": 0.5074
   },
   "linework_width_median": {
     "median": 4.0,
@@ -41,10 +47,10 @@
     "p10": 7.0,
     "p90": 13.0
   },
-  "note": "Pooled measurement of two private corpora, kept so the calibration targets in the README can be checked against the material they came from rather than taken on trust. The images themselves are not part of this repository and neither are their paths: what is shared is the distribution, which is a set of lengths and ratios, and the code that produced it.",
+  "note": "Pooled measurement of private corpora, kept so the calibration targets in the README can be checked against the material they came from rather than taken on trust. The images themselves are not part of this repository and neither are their paths: what is shared is the distribution, which is a set of lengths and ratios, and the code that produced it.",
   "totals": {
-    "linework": 263,
-    "paintings": 644,
-    "records": 915
+    "linework": 276,
+    "paintings": 645,
+    "records": 929
   }
 }
