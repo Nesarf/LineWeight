@@ -610,6 +610,60 @@ def test_the_taper_knobs_are_not_interchangeable():
     assert tip_only[0] == min(normal) or tip_only[0] >= 0.18
 
 
+def test_the_taper_metric_measures_a_taper_it_can_see():
+    """A metric for the ends of a line, and the floor beneath it.
+
+    `taper_ratio` compares the thinnest fifth of *every* run against the mean, which is dominated by differences
+    between strokes, so it barely responds to a change in the ends. This metric instead follows each stroke along its
+    own length and compares its ends with its own body, which does respond -- and this test pins both halves: what it
+    measures correctly, and where it stops being able to measure at all.
+
+    The floor is a real one and worth knowing: a stroke's width comes from the runs on successive scanlines, and when
+    a taper is shorter than a few pixels the thinnest part stops overlapping the part below it, so it is read as a
+    separate and too-short stroke and dropped. A taper occupying 5% of a 60-pixel line is three pixels, and that is
+    below the floor. Longer tapers are measured correctly, which is what makes the number usable on real artwork whose
+    lines are long enough.
+    """
+    from lineweight.ref import Greyscale, measure_taper
+
+    def bar(height, width_at, width=60, canvas=None):
+        # the canvas is sized from the stroke, so a long bar cannot run off the bottom of a fixed one
+        canvas = canvas or (height + 40)
+        pixels = bytearray([255]) * (width * canvas)
+        top = (canvas - height) // 2
+        for i in range(height):
+            w = max(1, int(round(width_at(i / (height - 1)))))
+            left = width // 2 - w // 2
+            for x in range(left, left + w):
+                pixels[(top + i) * width + x] = 0
+        return Greyscale(width=width, height=canvas, pixels=pixels)
+
+    def taper_to(fraction, span):
+        return lambda t: 6.0 * (1.0 - (1.0 - fraction) * min(t, 1 - t) / span) if min(t, 1 - t) < span else 6.0
+
+    # a uniform line is exactly 1.0, at any length: the metric has no built-in bias
+    for length in (60, 160, 300):
+        uniform = measure_taper(bar(length, lambda t: 6.0))
+        assert uniform['strokes'] == 1, uniform
+        assert uniform['ends_over_body'] == 1.0, uniform
+
+    # **An abrupt taper -- the kind a real stroke has -- is measured, and deeper reads deeper.** The taper has to
+    # happen over a short span, which is what the camera does: a stroke thins in its last few pixels, not over a fifth
+    # of its length. A gentle taper is not measured proportionally, because a 5% end window sits inside it and samples
+    # only part of the way down; that limit is real, so the test asserts the case the metric can actually answer
+    # rather than the case it was hoped it would.
+    shallow = measure_taper(bar(160, taper_to(0.50, 0.05)))
+    deeper = measure_taper(bar(160, taper_to(0.10, 0.05)))
+    assert shallow['ends_over_body'] < 1.0, shallow
+    assert deeper['ends_over_body'] < shallow['ends_over_body'] - 0.05, (deeper, shallow)
+
+    # and the ordering holds across lengths, so the number does not drift with the size of the stroke
+    for length in (60, 160, 300):
+        a = measure_taper(bar(length, taper_to(0.50, 0.05)))
+        b = measure_taper(bar(length, taper_to(0.10, 0.05)))
+        assert b['ends_over_body'] < a['ends_over_body'], (length, a, b)
+
+
 def test_the_png_decoder_undoes_the_filters(tmp_path):
     """**A filter is applied per scanline and undoing it is not optional.** Reading the bytes without undoing the
     predictor does not produce an image that is slightly off -- the error accumulates along the row, so the right-hand

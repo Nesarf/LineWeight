@@ -304,6 +304,150 @@ def measure(path: str, axis: str = 'both') -> Measurement:
     )
 
 
+def _width_profiles(image: Greyscale, ceiling: int = 16) -> list[list[int]]:
+    """Width-along-the-stroke profiles, for strokes that run roughly vertically.
+
+    **The width of a stroke is the length of its run on a scanline**, and the sequence of those lengths down the
+    scanlines is its width profile -- the thing a taper shows up in. Getting this the wrong way round is easy and
+    silent: reading runs *along* a column measures how long the stroke is, not how wide, and a filter meant to reject
+    filled regions then rejects every stroke in the picture. That version reported zero strokes for a plain uniform
+    bar, which is at least a loud way to be wrong.
+
+    Runs in successive scanlines are chained into one stroke when they overlap or nearly touch, which is what turns a
+    column of numbers into a line.
+    """
+    profiles: list[list[int]] = []
+    open_strokes: list[tuple[int, int, list[int]]] = []      # (first x, last x, widths so far)
+    for y in range(image.height):
+        row = image.pixels[y * image.width:(y + 1) * image.width]
+        runs: list[tuple[int, int]] = []
+        start = 0
+        length = 0
+        for index, value in enumerate(list(row) + [255]):
+            if value < INK_THRESHOLD:
+                if length == 0:
+                    start = index
+                length += 1
+                continue
+            if length:
+                runs.append((start, length))
+                length = 0
+        still_open: list[tuple[int, int, list[int]]] = []
+        continued: set[int] = set()
+        for first_x, width in runs:
+            last_x = first_x + width - 1
+            centre = first_x + width / 2.0
+            matched = None
+            for index_candidate, candidate in enumerate(open_strokes):
+                c_first, c_last, _widths = candidate
+                c_centre = (c_first + c_last) / 2.0
+                # **Match on the centre, not on whether the ends touch.** A taper changes a stroke's width quickly,
+                # so consecutive runs can belong to the same stroke while their extents barely overlap: a 2-pixel run
+                # and a 6-pixel run of one stroke share only their middle. An overlap test breaks the chain there and
+                # the stroke is read as several -- the profile came out as [6,5,4,3,2] then [6,...] then [2,3,4,5,6],
+                # which inverted its ends and made a tapered line measure as having *wider* ends than its body.
+                if -1.5 <= centre - c_centre <= 1.5:
+                    matched = index_candidate
+                    break
+            if matched is None:
+                # a run seen for the first time: open a stroke for it, and do NOT close it this row
+                still_open.append((first_x, last_x, [width]))
+            else:
+                c_first, c_last, widths = open_strokes[matched]
+                still_open.append((first_x, last_x, widths + [width]))
+                continued.add(matched)
+        # **Only the strokes that failed to continue are finished.** Closing everything left open -- which is what
+        # this did first -- closes each stroke on the same row it was opened, so no profile is ever longer than one
+        # row and every measurement silently describes a single scanline instead of a line.
+        for index_candidate, (_f, _l, widths) in enumerate(open_strokes):
+            if index_candidate in continued:
+                continue
+            if len(widths) >= 6 and all(w <= ceiling for w in widths):
+                profiles.append(widths)
+        open_strokes = still_open
+    for _first_x, _last_x, widths in open_strokes:
+        if len(widths) >= 6 and all(w <= ceiling for w in widths):
+            profiles.append(widths)
+    return profiles
+
+
+def _ends_over_body(profile: list[int], end_fraction: float = 0.05) -> float:
+    """One stroke's ends against its own body. Scale-free by construction.
+
+    **The end window has to stay small, and this is where the first version went wrong.** At 15% of a stroke's
+    length, a line whose taper occupies the last few percent reports almost no taper at all -- the window averages
+    over mostly-full-width pixels -- so every long stroke reads as uniform and the metric saturates near 1.0 whatever
+    the brush does. Measuring the ends where they are means a window small enough to be *inside* a taper, and for a
+    drawing whose lines are hundreds of pixels long that is a few percent, not a sixth.
+    """
+    count = len(profile)
+    if count < 6:
+        return 0.0
+    cut = max(1, int(count * end_fraction))
+    ends = profile[:cut] + profile[-cut:]
+    body = profile[cut:count - cut] or profile
+    body_mean = sum(body) / len(body)
+    return (sum(ends) / len(ends)) / body_mean if body_mean else 0.0
+
+
+def _tip_over_peak(profile: list[int]) -> float:
+    """This stroke's thinnest end against its own widest point.
+
+    A second view of the same property, and a more robust one: it does not depend on choosing a window at all, so a
+    long line and a short one are directly comparable. A uniform line gives 1.0; a line that thins to a fifth at its
+    tip gives 0.2.
+    """
+    if len(profile) < 6:
+        return 0.0
+    peak = max(profile)
+    if peak <= 0:
+        return 0.0
+    tip = min(profile[0], profile[-1])
+    return tip / peak
+
+
+def measure_taper(image: Greyscale, ceiling: int = 16) -> dict:
+    """How thin a drawing's lines get at their ends, measured where the ends actually are.
+
+    **Why the whole-stroke statistic cannot answer this.** `taper_ratio` compares the thinnest fifth of every run in a
+    picture against the mean, and a taper occupies a few percent of a stroke's length -- so that statistic is
+    dominated by differences between strokes and barely moves when the ends change. Lowering a brush's taper floor
+    from 0.25 to 0.06 changed it by nothing at all in a rendered measurement, which first looked like a broken metric
+    and turned out to be a metric being asked a question it does not answer.
+
+    What does answer it is taking each line's width *along its own length* and comparing its ends with its middle.
+    Both axes are scanned, because a drawing's lines mostly run one way and measuring only one axis would measure only
+    the strokes that happen to cross it. The ratio is scale-free, so a sketch and a 1920-pixel illustration can be
+    compared, which is the property the earlier comparisons kept losing.
+    """
+    profiles = _width_profiles(image, ceiling)
+    transposed = Greyscale(width=image.height, height=image.width,
+                           pixels=bytearray(_transpose(image)))
+    profiles += _width_profiles(transposed, ceiling)
+    if not profiles:
+        return {'strokes': 0, 'ends_over_body': 0.0, 'tip_over_peak': 0.0}
+    ends = [r for r in (_ends_over_body(p) for p in profiles) if r > 0]
+    tips = [r for r in (_tip_over_peak(p) for p in profiles) if r > 0]
+    ends.sort()
+    tips.sort()
+    return {
+        'strokes': len(profiles),
+        # ends_over_body uses a 5% window at each end; tip_over_peak needs no window at all
+        'ends_over_body': round(sum(ends) / len(ends), 4) if ends else 0.0,
+        'tip_over_peak': round(sum(tips) / len(tips), 4) if tips else 0.0,
+        'tip_over_peak_median': round(tips[len(tips) // 2], 4) if tips else 0.0,
+    }
+
+
+def _transpose(image: Greyscale) -> bytes:
+    out = bytearray(image.width * image.height)
+    for y in range(image.height):
+        row = image.pixels[y * image.width:(y + 1) * image.width]
+        for x in range(image.width):
+            out[x * image.height + y] = row[x]
+    return bytes(out)
+
+
 def scan(root: str, limit: int = 0, axis: str = 'both') -> list[Measurement]:
     """Measure every image under a directory, skipping what cannot be read and saying so."""
     found: list[Measurement] = []
