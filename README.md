@@ -142,15 +142,21 @@ wide, so runs are split into lines (2-16 px) and areas, and a width that repeats
 region rather than a stroke. A library of paintings measured naively returns a mean width that describes no line in
 any of them; the counts are printed so that is visible rather than plausible.
 
-What the measurement says about the current model, on 26 line drawings from a 75-image library. The numbers are
-**ratios of one length to another inside a single drawing**, which is the only kind of comparison that survives two
-pictures being different sizes:
+What the measurement says about the current model. The numbers are **ratios of one length to another inside a single
+drawing**, which is the only kind of comparison that survives two pictures being different sizes. The targets come
+from 262 line drawings pooled out of 914 measured images across two corpora -- 75 illustration files and 872 files of
+character art, emoji and textures -- and the pooled summary is checked in as `tests/data/corpus_summary.json` so the
+targets can be re-derived rather than taken on trust:
 
 | | reference, inside one drawing | the model | verdict |
 |---|---|---|---|
 | `p90/median` -- a few heavy lines among many light ones | 2.75 | 2.67 | close: the model does produce a drawing's spread |
 | `max/median` -- how far the heavy end reaches | 5.33 | 5.33 | equal |
-| `taper_ratio` | 0.41 | 0.50 | unresolved -- the whole-stroke statistic cannot see an end; see below |
+| `taper_ratio` | 0.42 | 0.50 | unresolved -- the whole-stroke statistic cannot see an end; see below |
+
+**Two independent corpora agree.** The 26-image library used first gave `p90/median` 2.750 and `taper_ratio` 0.410;
+the 262-image pool gives 2.750 and 0.423. The same targets falling out of a set ten times the size is worth more than
+either number alone, and it is the only kind of check available here -- the model cannot be its own referee.
 
 **Two of these three numbers were wrong before they were right, and both times the fault was in the experiment.**
 

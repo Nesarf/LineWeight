@@ -1,0 +1,48 @@
+{
+  "corpora": [
+    {
+      "images": 75,
+      "description": "a private collection of artwork", "shared": false,
+      "tag": "md"
+    },
+    {
+      "images": 840,
+      "description": "a private collection of artwork", "shared": false,
+      "tag": "mat"
+    }
+  ],
+  "linework_ink_ratio": {
+    "median": 0.1482,
+    "p10": 0.0616,
+    "p90": 0.2607
+  },
+  "linework_p90_over_median": {
+    "median": 2.75,
+    "note": "scale-free; the model measured 2.667 against the older 26-image library, which gave 2.750"
+  },
+  "linework_resolution": {
+    "median_height": 554,
+    "median_width": 591
+  },
+  "linework_taper_ratio": {
+    "median": 0.4234,
+    "p10": 0.3553,
+    "p90": 0.5133
+  },
+  "linework_width_median": {
+    "median": 4.0,
+    "p10": 3.0,
+    "p90": 5.0
+  },
+  "linework_width_p90": {
+    "median": 11.0,
+    "p10": 7.0,
+    "p90": 13.0
+  },
+  "note": "Pooled measurement of two corpora, kept so the calibration targets in the README can be checked against the material they came from rather than taken on trust.",
+  "totals": {
+    "linework": 263,
+    "paintings": 644,
+    "records": 915
+  }
+}
