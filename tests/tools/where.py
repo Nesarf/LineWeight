@@ -25,12 +25,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from lineweight import inked_svg
 from lineweight.core import apply_transform, parse_path, parse_transform
 
-CASES = [
-    (r'E:\hollow-court\art\miku-tall.svg', 'every path carries a transform'),
-    (r'E:\hollow-court\art\miku-wide.svg', 'flat, no transforms'),
-    (r'E:\hollow-court\art\icon-hc.svg', 'nested groups and a few transforms'),
-    (r'E:\hollow-court\art\cups-v1.svg', 'small, uniform'),
-]
+# **The artwork is a parameter, not a constant.** This named four files on one machine, which made the check unrunnable
+# elsewhere and put somebody's directory layout in a public repository. Name one or more directories instead and it
+# measures what is in them; a file can also be named directly.
+def _cases() -> list[tuple[str, str]]:
+    raw = os.environ.get('LW_SVG_DIR', '')
+    out: list[tuple[str, str]] = []
+    for root in (p for p in raw.split(os.pathsep) if p.strip()):
+        if os.path.isfile(root):
+            out.append((root, 'named directly'))
+            continue
+        for base, _dirs, files in os.walk(root):
+            for name in sorted(files):
+                if os.path.splitext(name)[1].lower() == '.svg':
+                    out.append((os.path.join(base, name), 'from the folder'))
+    return out
 
 
 def input_box(svg: str, min_extent: float = 30.0) -> tuple[float, float, float, float] | None:
@@ -99,7 +108,11 @@ def outline_box(svg: str) -> tuple[float, float, float, float] | None:
 
 
 def main() -> int:
-    for path, note in CASES:
+    cases = _cases()
+    if not cases:
+        print('no artwork configured: set LW_SVG_DIR to one or more directories of .svg files')
+        return 2
+    for path, note in cases:
         if not os.path.exists(path):
             print('%-16s missing' % os.path.basename(path))
             continue

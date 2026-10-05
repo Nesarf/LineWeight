@@ -24,17 +24,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from lineweight import inked_svg
 from lineweight.core import parse_path
 
-SOURCES = [
-    r'E:\hollow-court\art\hma\motif.svg',
-    r'E:\hollow-court\art\hma\divider.svg',
-    r'E:\hollow-court\art\hma\wash.svg',
-    r'E:\hollow-court\art\hma\panel-9slice.svg',
-    r'E:\hollow-court\art\cups-v1.svg',
-    r'E:\hollow-court\art\cups-v2.svg',
-    r'E:\hollow-court\art\icon-hc-a128.svg',
-    r'E:\hollow-court\art\icon-hc-a48.svg',
-    r'E:\hollow-court\art\miku-wide.svg',
-]
+# **The artwork is a parameter, not a constant.** This listed one machine's SVG files, which made the check unrunnable
+# anywhere else and put somebody's directory layout in a public repository -- the same mistake the corpus tools had, and
+# it gets the same fix: name a directory (or several, separated by the platform's path separator) and measure what is
+# in it. Any folder of real vector art will do, and real files matter here: nested groups, transforms, `<defs>` and
+# arcs appear in artwork and mostly do not appear in the synthetic documents the test suite builds.
+def _sources() -> list[str]:
+    raw = os.environ.get('LW_SVG_DIR', '')
+    roots = [p for p in raw.split(os.pathsep) if p.strip()]
+    out: list[str] = []
+    for root in roots:
+        if os.path.isfile(root):
+            out.append(root)
+            continue
+        for base, _dirs, files in os.walk(root):
+            out.extend(os.path.join(base, name) for name in sorted(files)
+                       if os.path.splitext(name)[1].lower() == '.svg')
+    return out
 
 
 def count_elements(svg: str) -> dict:
@@ -58,10 +64,14 @@ def outline_bounds(svg: str) -> tuple[float, float, float, float] | None:
 
 
 def main() -> int:
+    sources = _sources()
+    if not sources:
+        print('no artwork configured: set LW_SVG_DIR to a directory of .svg files, or to one file')
+        return 2
     print('%-24s %8s %8s %7s %7s %9s  %s'
           % ('file', 'in', 'out', 'paths', 'guards', 'outlines', 'verdict'))
     problems = 0
-    for path in SOURCES:
+    for path in _sources():
         name = os.path.basename(path)
         if not os.path.exists(path):
             print('%-24s MISSING' % name)
@@ -98,7 +108,7 @@ def main() -> int:
             print('%-24s   outlines span x %.0f..%.0f  y %.0f..%.0f'
                   % ('', outlines[0], outlines[2], outlines[1], outlines[3]))
     print()
-    print('%d of %d files had a problem.' % (problems, len(SOURCES)))
+    print('%d of %d files had a problem.' % (problems, len(sources)))
     return 0 if problems == 0 else 1
 
 
