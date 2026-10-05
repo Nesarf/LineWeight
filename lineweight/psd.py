@@ -26,11 +26,12 @@ from __future__ import annotations
 import struct
 
 from .doc import Document, parse_colour
+from .ref import ImageError
 
 SIGNATURE = b'8BPS'                 # the file header's
 VERSION = 1
 MODE_RGB = 3
-CHANNELS = 4
+CHANNELS = 3                        # the merged image's: R, G, B. Layer records list their own.
 DEPTH = 8
 
 # **Two signatures that look alike and mean different things.** `8BPS` opens a document; `8BIM` opens an image
@@ -171,9 +172,22 @@ def _stroke_polyline(layer: Layer, points: list[tuple[float, float]], colour: tu
                         layer.set_pixel(x, y, colour, alpha)
 
 
-def flatten(layers: list[Layer], width: int, height: int) -> bytearray:
-    """The merged image, as straight RGBA. PSD stores this *before* the layer section, not after it."""
+def flatten(layers: list[Layer], width: int, height: int, background: int = 255) -> bytearray:
+    """The merged image, composited onto an opaque background -- which is what a PSD's merged section is.
+
+    **The merged section is not the layer stack, and it is not allowed to be transparent.** It is what a viewer that
+    ignores layers puts on screen, and its channel count is the file header's, which for RGB is three. This function
+    used to start from zeroes and leave the untouched pixels at `(0, 0, 0, 0)`: a merged image whose background is
+    transparent black. On a viewer that treats it as opaque -- which is what three channels of RGB *means* -- that is a
+    black canvas, and the drawing is invisible however correct the layers are.
+
+    Compositing onto white is a choice, and the honest statement of it is that a PSD has no alpha channel in its merged
+    data to be transparent with. Callers that want a different paper colour can pass one.
+    """
     out = bytearray(width * height * 4)
+    for i in range(0, width * height * 4, 4):
+        out[i] = out[i + 1] = out[i + 2] = background
+        out[i + 3] = 255
     for layer in layers:
         if not layer.visible:
             continue
@@ -267,7 +281,11 @@ def _packed_channel(data: bytes, width: int, height: int) -> bytes:
     for y in range(height):
         row = data[y * width:(y + 1) * width]
         packed = packbits(bytes(row))
-        out += struct.pack('>H', len(packed)) + packed
+        # **One byte, not two.** PSD prefixes each compressed scanline with a single-byte length. Writing
+        # two shifted every following row by one byte, so the first channel decoded correctly and every
+        # channel after it began mid-data -- which reads as `compression 12`, an impossible value, and is how
+        # this was finally spotted.
+        out += bytes([len(packed)]) + packed
     return bytes(out)
 
 
@@ -328,7 +346,7 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
             blobs += blob
         record = bytearray()
         record += rect
-        record += struct.pack('>H', CHANNELS) + headers
+        record += struct.pack('>H', len(CHANNEL_IDS)) + headers
         # **The signature is not decoration -- it is how a reader finds the record.** A layer record carries an
         # eight-byte block: the `8BIM` signature and then the blend mode. This wrote the four-byte blend mode alone,
         # and the consequence was not a wrong blend mode but *no layers at all*: SAI opens such a file, shows its
@@ -359,7 +377,7 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
     out += layer_info
 
     # ---- merged image data, PackBits per scanline like every PSD a drawing application has ever seen ----
-    for c in range(CHANNELS):
+    for c in range(3):                              # RGB; an alpha channel here is read as data and rejected
         raw = bytes(merged[i * 4 + c] for i in range(w * h))
         out += _packed_channel(raw, w, h)
     out = bytearray(_pad2(bytes(out)))
@@ -464,8 +482,12 @@ def read_psd_header(path: str) -> dict:
             # to find the next row -- and the end of this channel -- is to follow them one at a time.
             rows = []
             for _y in range(height):
-                row_len, = struct.unpack('>H', data[mo:mo + 2])
-                mo += 2
+                # **One byte, to match the format -- and to match the writer, which read and wrote two.** The pair
+                # agreed with each other and neither agreed with PSD, so the first channel decoded and every channel
+                # after it started a byte early per row. That showed up as `compression 12`, a value the format does not
+                # have, and it is the only reason the mistake ever became visible.
+                row_len = data[mo]
+                mo += 1
                 rows.append(unpackbits(data[mo:mo + row_len], width))
                 mo += row_len
             merged_decoded.append(b''.join(rows))

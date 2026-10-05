@@ -565,7 +565,10 @@ def test_the_psd_round_trips_its_layers(tmp_path):
     assert flagged['names'] == ['LINE', 'COLOUR'], flagged['names']
 
     assert (head['width'], head['height']) == (64, 48)
-    assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 4
+    # **Three, not four.** The header's channel count describes the *merged* image, which for RGB is three; a layer
+    # record lists its own channels separately and still carries four. Writing four here meant the merged section held
+    # a quarter more data than the header announced, which a reader walks straight into.
+    assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 3
     assert head['merged_bytes_present'], 'the merged image data is missing or truncated'
     # **Compressed, so the size is no longer arithmetic.** This assertion used to require exactly
     # `channels x (flag + width x height)` bytes, which was true while channels were stored raw. PackBits makes the
@@ -593,7 +596,11 @@ def test_the_psd_layers_hold_the_drawing():
     j = (0 * 50 + 0) * 4
     assert inside.data[j + 3] == 0
     merged = flatten(layers, 50, 50)
-    assert merged[i + 3] == 255 and merged[j + 3] == 0
+    # **The merged image is opaque, so a pixel the layers never touched is the background and not transparency.**
+    # This used to assert alpha 0 there, which described a merged image that composites as transparent black -- and a
+    # viewer that treats three RGB channels as opaque, which is what three channels mean, draws that as a black canvas.
+    assert merged[i + 3] == 255 and merged[j + 3] == 255, 'the merged section has no alpha to be transparent with'
+    assert tuple(merged[j:j + 3]) == (255, 255, 255), 'an untouched pixel is the paper, not nothing'
 
 
 def test_the_xfl_folder_has_the_furniture_animate_needs(tmp_path):
@@ -825,7 +832,7 @@ def test_the_psd_uses_the_compression_real_files_use(tmp_path):
     save_psd(layers, out)
     head = read_psd_header(out)
     assert head['names'] == ['LINE']
-    assert head['merged_compression'] == [1, 1, 1, 1], head['merged_compression']
+    assert head['merged_compression'] == [1, 1, 1], head['merged_compression']
     assert head['merged_decoded_ok'], 'the merged channels did not decompress to their documented size'
     # a solid rectangle should compress enormously better than raw, which is the point of using the format's codec
     raw_size = 4 * (2 + 120 * 90)
