@@ -283,7 +283,11 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
 
     # ---- layer and mask information ----
     layer_info = bytearray()
-    layer_info += struct.pack('>h', len(layers))        # negative would mean "first alpha is transparency"
+    # **Written negative, because the first alpha channel *is* the transparency.** The sign is a flag, not a
+    # count: a negative layer count tells a reader that the bottom layer's alpha holds the image's
+    # transparency, which is exactly what this writer produces. Written positive, SAI opened the file and
+    # showed no layer panel at all -- it read the document as one flat image.
+    layer_info += struct.pack('>h', -len(layers))
     records = bytearray()
     channel_blobs = bytearray()
     for layer in layers:

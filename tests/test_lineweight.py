@@ -519,8 +519,12 @@ def test_the_psd_round_trips_its_layers(tmp_path):
     out = str(tmp_path / 'layers.psd')
     save_psd(layers, out)
     head = read_psd_header(out)
-    assert head['layers'] == 2, head
-    assert head['names'] == ['LINE', 'COLOUR'], head['names']
+    # **The count is negative on purpose.** The sign is a flag rather than a number: a negative layer count tells a
+    # reader that the bottom layer's alpha holds the image's transparency, which is what this writer produces. The
+    # earlier version wrote it positive and SAI opened the document with an empty layer panel, reading it as one flat
+    # image. Asserting the sign keeps that from being quietly "fixed" back.
+    assert head['layers'] == -2, head
+    assert abs(head['layers']) == 2 and head['names'] == ['LINE', 'COLOUR'], head['names']
     assert (head['width'], head['height']) == (64, 48)
     assert head['mode'] == 3 and head['depth'] == 8 and head['channels'] == 4
     assert head['merged_bytes_present'], 'the merged image data is missing or truncated'

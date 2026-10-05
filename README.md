@@ -89,11 +89,19 @@ On the command line:
 
 **What is measured, and what is not.** Illustrator 28.5 runs a generated script from a command line and returns the
 drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator itself exported --
-including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build. The
-PSD writer's output is verified by walking its own bytes back out: layer names, dimensions, channel layout, the
-merged image, and that every channel decompresses to a full image. **Whether SAI accepts the PSD is not verified** --
-SAI has no scripting interface and no reliable signal here that it has loaded a file, so the claim stops at the
-format.
+including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build.
+
+SAI is the honest limit of this project, and the README says so rather than claiming the whole of it. SAI opens the
+generated PSD, displays its canvas, and reports no error -- and **shows no layers**. An earlier version was refused
+outright ("canvas creation failed") because every channel was stored raw, which is legal PSD; that was fixed by
+writing the PackBits compression real files use, and the size went from 1.7 MB to 44 KB. What remains wrong is the
+layer section: the layer records, their channel layout and the merged image all check out against the file's own
+bytes, and SAI still treats the document as a single flat image. Writing the layer count negative -- the flag that
+means the first alpha channel is the transparency, which is what this writer produces -- did not change that.
+
+So the PSD writer's *structure* is verified and its *acceptance by its target application* is not. Anyone continuing
+here should expect to work from a PSD SAI itself saved, the way the Animate format was finally settled, because
+guessing at a container format has a poor record in this repository.
 
 Animate works, and getting there was mostly about finding out what the format actually is. Nine hand-written skeletons
 opened as documents while importing nothing, because an XFL is a **directory** holding `DOMDocument.xml` beside a
