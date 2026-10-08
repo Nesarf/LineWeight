@@ -568,8 +568,18 @@ def read_psd_header(path: str) -> dict:
         offset += 4
         extra = data[offset:offset + extra_len]
         offset += extra_len
-        name_len = extra[8] if len(extra) > 8 else 0
-        names.append(extra[9:9 + name_len].decode('utf-8', 'replace'))
+        # **Walk the extra block by its own length fields rather than assuming the name sits at a fixed offset.** It
+        # does not: the layer mask data comes first and declares its length, then the blending ranges declare theirs,
+        # and only then the Pascal name. Reading `extra[8]` worked exactly as long as the blending ranges were
+        # zero-length -- so fixing the writer to write them broke this reader, which is the pair drifting apart again,
+        # in the other direction this time.
+        at = 0
+        mask_len = struct.unpack('>I', extra[at:at + 4])[0] if len(extra) >= at + 4 else 0
+        at += 4 + mask_len
+        ranges_len = struct.unpack('>I', extra[at:at + 4])[0] if len(extra) >= at + 4 else 0
+        at += 4 + ranges_len
+        name_len = extra[at] if len(extra) > at else 0
+        names.append(extra[at + 1:at + 1 + name_len].decode('utf-8', 'replace'))
     # now step over the channel data that belongs to all of those records
     blob_bytes = sum(blob_expectations)
     offset += blob_bytes
