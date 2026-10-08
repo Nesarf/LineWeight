@@ -63,7 +63,12 @@ BLEND_NORMAL = b'norm'
 # the transparency channel first and then the colours; writing them the other way round produced a file whose
 # records parse and whose layers a reader can name, and which no channel of ink ever reached the canvas from.
 # Matching the application that has to open the file is the requirement.
-CHANNEL_IDS = (-1, 0, 1, 2)          # alpha, then R, G, B
+# **The fifth channel is a user mask, and it is written all-white.** `psd-tools`' own writer emits `-1, 0, 1, 2, -2`
+# for a layer, and this wrote the first four only. The `-2` is the layer's user mask; white means "no mask", so it
+# masks nothing and costs a channel. It is written because matching the encoder whose output is known to read back
+# correctly is worth more than the byte it saves -- and a reader that expects the channel list to match its own
+# convention is exactly the kind of reader this file has been failing.
+CHANNEL_IDS = (-1, 0, 1, 2, -2)      # transparency, R, G, B, user mask
 
 
 def _pad2(data: bytes) -> bytes:
@@ -407,7 +412,8 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
             # The inversion had been justified by a comment claiming the format stores it inverted. That is not
             # established, and the measurement says the opposite. `PSD-REPORT.md` had already recorded it as unproven
             # while the code treated it as settled -- the divergence was the signal.
-            raw = layer.channel_bytes(-1)
+            raw = (bytes([255]) * (w * h) if cid == -2        # an all-white user mask masks nothing
+                   else layer.channel_bytes(-1))
             # **Rows are written top-down, the same order as everywhere else in this library.**
             #
             # This reversed them, on the belief that layer channel data is stored bottom-up. It is not, and the
@@ -450,8 +456,12 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         record += bytes([0x00])                                  # flags, as SAI writes them
         record += b'\x00'                                        # filler
         extra = bytearray()
-        extra += b'\x00' * 4                                     # layer mask data
-        extra += b'\x00' * 4                                     # blending ranges
+        extra += b'\x00' * 4                                     # layer mask data: length 0, "no mask"
+        # **Eight bytes of blending ranges per channel, not zero.** A zero-length block is legal and means "no
+        # restricted ranges", and this wrote one. `psd-tools` -- whose output is the one known to read back correctly
+        # -- writes `8 x channels` zero bytes and declares that length. The whole approach here is to match the encoder
+        # that works rather than to argue from the specification, so that is what this writes now.
+        extra += struct.pack('>I', 8 * len(CHANNEL_IDS)) + b'\x00' * (8 * len(CHANNEL_IDS))
         extra += _pascal_name(layer.name)
         # **The Unicode name too.** SAI writes a `luni` block holding the name as UTF-16, and so does every file this
         # project has compared against; the Pascal string above is the legacy form that predates it. A reader that
