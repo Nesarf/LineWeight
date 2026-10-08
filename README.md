@@ -91,26 +91,33 @@ On the command line:
 drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator itself exported --
 including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build.
 
-SAI is where this project stops, and the README says so rather than claiming the whole of it. What is true at this
-revision: SAI **opens** the generated PSD, **sizes the canvas correctly**, and **lists the layer names in its panel** --
-and does not draw the layer's pixels. An earlier version was refused outright ("canvas creation failed") because every
-channel was stored raw, which is legal PSD; PackBits fixed that, and the structural faults after it are listed in
-`PSD-REPORT.md` with the measurement behind each.
+**SAI works, and it is the destination that took the longest to reach.** A generated PSD opens in SAI 1.2.6 with its
+canvas, its layer, its layer name, and its pixels -- verified by looking at the screen, because SAI has no scripting
+interface and no other kind of evidence exists for it. Two independent parsers agree with that reading: `psd-tools` and
+this project's own reader both return the exact colours written.
 
-What remains is specifically the layer channels' contents: the writer's four channel blobs are present verbatim in the
-file, its PackBits coding agrees byte for byte with `psd-tools` on the same rows, and `psd-tools` still reads the layer
-as though the channels were shifted. The merged image of the same file decodes correctly, so the fault is in the
-per-layer data and not in the container.
+Getting there took several rounds, and `PSD-REPORT.md` has the full account. The short version is that **four separate
+faults each produced a file that opened, parsed, and showed nothing**, and every one of them survived this project's own
+round-trip tests because the reader made the same mistake as the writer:
 
-**Two claims this README previously made are withdrawn**: that a negative layer count is required, and that a layer's
-channel data is stored bottom-up. Both came from experiments whose reference file also carried another fault, so the
-observations were contaminated. The second was "confirmed" by an experiment that read the file back with the same
-assumption the writer used -- which is the mistake this project has now made three times, and the reason `PSD-REPORT.md`
-exists.
+* a layer record with no `8BIM` signature -- the file-header signature written where the resource signature belongs, so
+  no reader could find any layer at all;
+* row lengths written as one byte, and interleaved with the data, where the format has a table of two-byte lengths
+  before all the rows;
+* rows reversed, on a belief that layer channels are stored bottom-up, "confirmed" by an experiment that read the file
+  back with the same assumption the writer used;
+* the alpha channel inverted, which turns every opaque pixel into zero.
 
-Anyone continuing here should work from a file the target application wrote itself, or from an independent parser.
-Guessing at a container format has a poor record in this repository; a PSD SAI saved found four faults in one pass that
-several rounds of reasoning had not.
+And one more that no amount of comparing bytes against a reference file found, because every comparison was of the wrong
+question: **`layer.channel_bytes(-1)` was called for every channel id**, so channels 0, 1 and 2 each received the alpha
+plane. The blobs were present, the PackBits coding was byte-identical to `psd-tools`', the record parsed, the offsets
+lined up -- all of it verifying that the wrong data had been written faithfully. A unit test on `channel_bytes()` passed
+throughout, because that function was correct; its caller had stopped passing the argument.
+
+**The last piece was a channel this writer did not need.** A `-2` channel declares a user layer mask, and SAI reads one
+as a real mask and switches the layer into mask-editing mode -- so the canvas shows the mask, which is empty, while the
+layer content is perfectly correct. SAI's own saved file has four channels and no `-2`. It was added here to match
+`psd-tools`' output, which was the wrong writer to imitate.
 
 Animate works, and getting there was mostly about finding out what the format actually is. Nine hand-written skeletons
 opened as documents while importing nothing, because an XFL is a **directory** holding `DOMDocument.xml` beside a

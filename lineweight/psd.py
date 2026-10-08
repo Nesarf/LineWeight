@@ -63,12 +63,20 @@ BLEND_NORMAL = b'norm'
 # the transparency channel first and then the colours; writing them the other way round produced a file whose
 # records parse and whose layers a reader can name, and which no channel of ink ever reached the canvas from.
 # Matching the application that has to open the file is the requirement.
-# **The fifth channel is a user mask, and it is written all-white.** `psd-tools`' own writer emits `-1, 0, 1, 2, -2`
-# for a layer, and this wrote the first four only. The `-2` is the layer's user mask; white means "no mask", so it
-# masks nothing and costs a channel. It is written because matching the encoder whose output is known to read back
-# correctly is worth more than the byte it saves -- and a reader that expects the channel list to match its own
-# convention is exactly the kind of reader this file has been failing.
-CHANNEL_IDS = (-1, 0, 1, 2, -2)      # transparency, R, G, B, user mask
+# **Four channels: transparency, red, green, blue. No `-2`.**
+#
+# A `-2` channel declares a *user layer mask*, and this wrote one -- all-white, on the reasoning that a white mask masks
+# nothing and matching `psd-tools`' own output was worth the channel. Both halves of that were wrong.
+#
+# SAI reads a `-2` channel as a real layer mask and **switches the layer into mask-editing mode**. Its tooltip says so:
+# "Edit layer mask (to quit editing, click thumbnail or near the name of layer)". The canvas then shows the *mask*, which
+# is what is being edited -- so a drawing whose layer content is perfectly correct renders as nothing at all. The layer
+# panel gives it away and nothing else does: a second, black thumbnail beside the layer's.
+
+# And SAI's **own** saved file has four channels with no `-2` at all, which is the evidence that matters. `psd-tools`
+# writes five because it wants a mask; that is a difference between two writers, and this file chose the wrong one to
+# imitate.
+CHANNEL_IDS = (-1, 0, 1, 2)          # transparency, then R, G, B
 
 
 def _pad2(data: bytes) -> bytes:
@@ -421,8 +429,7 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
             # A unit test on `channel_bytes()` passed throughout, because that function was correct; it was the caller
             # that stopped using its argument. A helper that is right and a serialiser that ignores what it is given is
             # a contract nothing was checking.
-            raw = (bytes([255]) * (w * h) if cid == -2        # an all-white user mask masks nothing
-                   else layer.channel_bytes(cid))
+            raw = layer.channel_bytes(cid)
             # **Rows are written top-down, the same order as everywhere else in this library.**
             #
             # This reversed them, on the belief that layer channel data is stored bottom-up. It is not, and the
