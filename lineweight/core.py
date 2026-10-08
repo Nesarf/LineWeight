@@ -678,7 +678,18 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
                     stack.pop()
                 pos = nxt_close.end()
 
+    # **A commented-out path is not part of the drawing.** The pattern matches text, so it matched one inside an XML
+    # comment and drew a contour for a shape the document explicitly does not show. Measured rather than assumed: a
+    # document whose only `<path>` sat inside `<!-- -->` came back with one outline in it. The spans are collected once
+    # and a match starting inside one is left alone.
+    comment_spans = [(m.start(), m.end()) for m in re.finditer(r'<!--.*?-->', svg, re.S)]
+
+    def in_comment(position: int) -> bool:
+        return any(start <= position < end for start, end in comment_spans)
+
     for match in pattern.finditer(svg):
+        if in_comment(match.start()):
+            continue
         advance(match.start())
         pieces.append(svg[cursor:match.start()])
         pieces.append(_replace(match, stack[-1]))

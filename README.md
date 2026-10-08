@@ -62,6 +62,26 @@ svg = f'<path d="{d}" fill="#1A1620" opacity="{opacity:.2f}"/>'
 inked = inked_svg(open('figure.svg').read(), min_extent=46, brush='ink', colour='#2A1E26')
 ```
 
+**What `inked_svg` is, and what it is not.** It walks a document with regular expressions rather than parsing XML, which
+is a real limitation and not a detail. It works well on the vector artwork it was written against -- generated SVG, hand-
+built icons, illustration exports -- and it is not a general SVG processor. What it does is measured:
+
+| document | what happens |
+|---|---|
+| `<path d="..."/>` and `<path d="..."></path>` | inked |
+| any path command, absolute or relative, including arcs | inked |
+| `transform` on the path, and on any `<g>` above it | accumulated correctly |
+| a `<path>` inside `<!-- -->` | **left alone** -- a commented-out shape is not part of the drawing |
+| a `<path>` inside `<defs>` or `<clipPath>` | **inked**, though it is a definition rather than visible artwork |
+| `<use href="#id">` | the definition is inked where it is written, not where it is used |
+| `style="transform: ..."` (a CSS transform) | ignored, so the outline is placed as though it were not there |
+| `<svg:path>`, or any namespaced element name | not matched at all |
+| `<rect>`, `<circle>`, `<ellipse>`, `<polygon>`, `<polyline>` | not inked: only `<path>` is, whatever its size |
+
+Everything the patterns do not match is preserved verbatim -- the pass is a substitution, never a rebuild -- so an
+unsupported element is left as it was rather than deleted. The first version of this function did rebuild, and it took a
+figure's eyes with it.
+
 ## Getting the drawing into a drawing application
 
 SVG is the right output when the destination is a browser or a repository. It is the wrong output when the

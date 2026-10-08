@@ -1054,3 +1054,26 @@ def test_a_layer_starts_as_white_paper_that_nothing_shows():
     fresh = Layer('fresh', 2, 2)
     assert list(fresh.data[0:4]) == [255, 255, 255, 0], 'white, and not visible'
     assert list(fresh.data[4:8]) == [255, 255, 255, 0]
+
+
+def test_inked_svg_leaves_commented_out_paths_alone():
+    """**A commented-out path is not part of the drawing.** The pattern matches text, so it matched one inside an XML
+    comment and drew a contour for a shape the document explicitly does not show.
+
+    Found by probing the parser rather than by reading it: eight documents, each exercising one thing a real SVG can
+    contain, and the count of outlines that came back. That probe also measured the boundaries this function still has
+    -- see the note in `README.md` -- which is the point of running it rather than reasoning about the regex.
+    """
+    big = 'M 0 0 L 200 0 L 200 200 L 0 200 Z'
+    commented = inked_svg('<svg><!-- <path d="%s"/> --></svg>' % big, min_extent=46)
+    assert commented.count('opacity=') == 0, 'a commented-out path was inked'
+    assert '<!--' in commented and '-->' in commented, 'the comment itself must survive'
+
+    # a comment beside a real path: only the real one is inked, and the comment is still there
+    both = inked_svg('<svg><!-- keep --><path d="%s"/></svg>' % big, min_extent=46)
+    assert both.count('opacity=') == 1, both[:200]
+    assert 'keep' in both
+
+    # and a real path on its own is still inked, so the guard did not disable the whole pass
+    plain = inked_svg('<svg><path d="%s"/></svg>' % big, min_extent=46)
+    assert plain.count('opacity=') == 1
