@@ -1,5 +1,20 @@
 # How `lineweight` writes a PSD, and every fault found on the way
 
+**Resolved.** A generated PSD now opens in SAI 1.2.6 with its canvas, its layer and its pixels, confirmed on screen and
+independently by `psd-tools` returning the exact colours written. This document is kept as the account of how the format
+was learned and of the mistakes made learning it -- both halves are worth more than the final code.
+
+The last fault is the one worth reading first, because it was the only one not found by comparing bytes: a `-2` channel
+declaring a user layer mask, which SAI reads by switching the layer into mask-editing mode. The canvas then shows the
+mask -- empty -- while the layer's content is entirely correct, and the only visible clue is a second, black thumbnail in
+the layer panel. See `README.md` for the list of all six faults.
+
+The rest of this file is the record as it stood while the problem was still open, including the claims that turned out to
+be false. It is left in the present tense where it describes a search, because rewriting it into a tidy account
+afterwards would destroy the only useful part: which methods worked and which produced confident wrong answers.
+
+---
+
 This is the whole account: the pipeline, each defect, how it was found, and what is still broken. Every number here was
 measured against a file on disk. Reference files used are named, because a claim traced to a file can be re-checked and
 a claim traced to reasoning cannot.
