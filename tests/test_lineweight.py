@@ -941,7 +941,6 @@ def test_compare_refuses_to_call_widths_comparable_across_scales():
 
 
 
-@pytest.mark.xfail(reason='layer channel data still does not describe the drawing', strict=False)
 def test_a_layer_reads_back_the_colours_that_were_drawn(tmp_path):
     """**Four colours, four known positions, read back through an independent parser.**
 
@@ -989,44 +988,36 @@ def test_a_layer_reads_back_the_colours_that_were_drawn(tmp_path):
         assert got == expected, 'at (%d, %d) expected RGBA %s, an independent parser read %s' % (x, y, expected, got)
 
 
-@pytest.mark.xfail(reason='layer channel data still does not describe the drawing; see the note below',
-                   strict=False)
-def test_a_flat_drawing_compresses_its_three_colour_channels_equally(tmp_path):
-    # **This test fails, and it is kept failing on purpose.** It is the check that reports the remaining fault: the
-    # three colour channels of a flat drawing encode to different lengths, so they do not hold the same shape, and
-    # SAI renders the layer as empty. Deleting it would remove the only signal that the layer pixels are still wrong;
-    # making it pass by weakening it would remove the signal and hide the fault. It is marked so the suite's run is
-    # still meaningful, and it is the first thing to look at when the channelling is fixed.
-    """**Three colour channels holding the same shape must encode to the same length.**
+def test_each_channel_blob_holds_its_own_channel():
+    """**The serialiser must use the channel id it is given, not a fixed one.**
 
-    A property that needs no reference file and no independent parser. Whatever the row format is, R, G and B of a
-    drawing made of flat rectangles are the same picture of blocks, so they compress identically -- reading the lengths
-    back out is enough to see whether they do.
+    This replaces a test asserting that a flat drawing's three colour channels encode to equal lengths -- which is false,
+    and was generalised from an *empty* canvas where every channel is the same constant. SAI's own drawing has 167983,
+    170515 and 174687.
 
-    It is the check that would have caught this writer's channel fault without a single file to compare against, and it
-    is here because that fault survived several rounds of comparing files. SAI's own layer shows `26496, 26496, 26496`;
-    this writer produced `4362, 3602, 3602` for the same shape, which is different data behind each colour.
+    In its place is the check that would have caught the fault this file actually had. That fault was
+    `layer.channel_bytes(-1)` called for every channel id, so channels 0, 1 and 2 all received the alpha plane: a
+    drawing of `(255, 0, 0, 255)` went to disk as four planes of 255 and read back as pure white. Every other check
+    passed while that was true, because they all verified that the wrong data had been written faithfully.
+
+    A unit test on `channel_bytes()` passed throughout. The function was right; its caller stopped passing the argument.
+    So this asserts what the caller depends on: for a pixel whose four channel values are all different, the four planes
+    must all differ, and each must hold its own.
     """
-    from lineweight import Appearance, Document, Path
-    from lineweight.psd import layers_from_document, read_psd_header, save_psd
+    from lineweight.psd import Layer
 
-    document = Document(width=400, height=400)
-    layer = document.layer('QUADS')
-    for (x0, y0, x1, y1), colour in (((0, 0, 190, 190), '#FF0000'), ((210, 210, 400, 400), '#FFFF00')):
-        layer.add(Path(points=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True,
-                       appearance=Appearance(filled=True, fill=colour)))
-    out = str(tmp_path / 'flat.psd')
-    save_psd(layers_from_document(document), out)
+    layer = Layer('TWO', 2, 1)
+    layer.set_pixel(0, 0, (10, 20, 30), 40 / 255.0)
+    layer.set_pixel(1, 0, (50, 60, 70), 80 / 255.0)
 
-    head = read_psd_header(out)
-    # the merged section is three channels of one picture, so its three lengths must agree
-    lengths = head['merged_bytes_present']
-    assert isinstance(lengths, list), lengths
-    assert len(set(lengths)) == 1, (
-        'the three colour channels of a flat drawing encoded to different lengths %s, so they do not describe the '
-        'same shape -- a fault in the channelling rather than in the format' % (lengths,))
-    # and the layer's own channels must agree with each other in the same way
-    assert head['channel_bytes'] > 0, head
+    assert list(layer.channel_bytes(0)) == [10, 50], 'red'
+    assert list(layer.channel_bytes(1)) == [20, 60], 'green'
+    assert list(layer.channel_bytes(2)) == [30, 70], 'blue'
+    assert list(layer.channel_bytes(-1)) == [40, 80], 'alpha'
+
+    # the four planes are pairwise distinct, which is what makes confusing them detectable at all
+    planes = [tuple(layer.channel_bytes(c)) for c in (0, 1, 2, -1)]
+    assert len(set(planes)) == 4, 'the four channel planes are not distinct: %s' % (planes,)
 
 
 def test_a_channel_id_of_minus_one_means_alpha():

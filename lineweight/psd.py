@@ -412,8 +412,17 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
             # The inversion had been justified by a comment claiming the format stores it inverted. That is not
             # established, and the measurement says the opposite. `PSD-REPORT.md` had already recorded it as unproven
             # while the code treated it as settled -- the divergence was the signal.
+            # **The loop variable is the channel.** This read `layer.channel_bytes(-1)` for every id except `-2`, so
+            # channels 0, 1 and 2 all received the *alpha* plane instead of red, green and blue: a drawing whose colour
+            # was `(255, 0, 0, 255)` went to disk as four planes of 255 and read back as pure white. Every other check
+            # passed while this was true -- the blobs were present, the PackBits coding was correct, the record parsed,
+            # the offsets lined up -- because all of them verified that the wrong data had been faithfully written.
+            #
+            # A unit test on `channel_bytes()` passed throughout, because that function was correct; it was the caller
+            # that stopped using its argument. A helper that is right and a serialiser that ignores what it is given is
+            # a contract nothing was checking.
             raw = (bytes([255]) * (w * h) if cid == -2        # an all-white user mask masks nothing
-                   else layer.channel_bytes(-1))
+                   else layer.channel_bytes(cid))
             # **Rows are written top-down, the same order as everywhere else in this library.**
             #
             # This reversed them, on the belief that layer channel data is stored bottom-up. It is not, and the
