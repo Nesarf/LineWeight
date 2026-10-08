@@ -12,16 +12,15 @@ observable about a line, and the numbers can be calibrated against real artwork 
 
 ## What it does
 
-**What it does**
-
 * **Four brushes** (`fine`, `ink`, `pencil`, `wash`), each the same set of numbers a paint program exposes: width,
   opacity, dab spacing, and jitter, plus two taper curves.
 * **A pressure model.** Pressure follows four effects that a real stroke shows: it is lighter when the stroke is
   moving fast, lighter through a sharp turn, tapered at both ends of an open stroke, and drifting slowly underneath.
   Closed contours are walked once and never tapered, because a loop has no ends to taper.
 * **Stroke to outline.** SVG cannot vary a stroke's width, so the width profile is expanded into an outline — offset
-  the path to both sides by half the local width and fill the result. This is the same operation a drawing
-  application performs when a variable-width stroke is expanded, done here so the output stays plain SVG.
+  the path to both sides by half the local width and fill the result. This is what a drawing application does when it
+  expands a variable-width stroke, so the output stays plain SVG — but this implementation is the cheap version of it,
+  and "What it is not" below has the measurements that shows where it differs.
 * **Whole-document inking.** `inked_svg()` walks an existing SVG and gives every shape large enough to be part of a
   silhouette a weighted contour, leaving small details alone. Extent decides, not a list of names, so a shape added
   later is inked without anybody remembering to. The whole SVG command set is parsed — curves, arcs, relative
@@ -36,12 +35,31 @@ observable about a line, and the numbers can be calibrated against real artwork 
 
 ## What it is not
 
-**It is not an automation bridge into a paint application.** Most of them expose no scripting interface at all, and
-those that do expose a different one each; a tool that claims otherwise is a tool that will break. What is portable
-is the *model* of pressure and the *measurement* of a real drawing — so the workflow is: draw a test sheet in
-whatever program you have, at whatever pressures you can control, and fit the brushes here to it.
+**It is not a renderer and not a drawing program.** It produces path data, and now also the files three drawing
+applications open; what those applications then do with a path is their business and not this library's.
 
-**It is not a renderer and not a drawing program.** It produces path data. What you fill it with is your business.
+**The outline expansion is an approximation, and its failure mode is measured.** A stroke becomes a filled polygon by
+offsetting the centreline along its normals, which is cheap and produces the correct *appearance* -- but the offset
+curves cross each other where the stroke curves tightly, because that is what offset curves do. Counted on six shapes:
+
+| centreline | self-intersections in the outline |
+|---|---|
+| straight line | 0 |
+| right angle | 0 |
+| sharp V | 0 |
+| hairpin (out and back) | 9 |
+| overlapping zigzag | 14 |
+| **a smooth wave** | **354** |
+
+SVG's default `fill-rule` is `nonzero`, so an overlapping lobe fills as a union and the crossings are invisible when the
+shape is filled -- which is why this has not shown up as a visible defect, and why the numbers above are worth stating
+rather than discovering later. They are still wrong geometry: any boolean operation, stroke-to-path conversion, or
+geometry comparison downstream sees them. A real stroke expansion engine resamples by arc length, offsets with a variable
+radius, solves the joins (miter, round, bevel) and removes the self-intersections. This is not that, and the calibration
+numbers in this file are about *appearance*, which is the thing it does produce.
+
+**It is not a general SVG processor.** `inked_svg()` walks a document with regular expressions; the table under "Use"
+lists exactly what that reaches and what it does not.
 
 ## Install
 
