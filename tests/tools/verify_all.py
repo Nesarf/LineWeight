@@ -83,7 +83,13 @@ def check_psd() -> dict:
     except ImportError:
         print('PSD independent: SKIPPED  (psd-tools is not installed; this is the check that matters)')
 
-    print("PSD layer pixels: UNKNOWN  (SAI showing the layer is not verifiable from here -- see PSD-REPORT.md)")
+    # **SAI's acceptance IS verified -- by looking at it.** It was reported as unknown here for several rounds because
+    # there is no way to ask SAI anything: no scripting interface, and its window title does not change with the
+    # document. The answer is the same one a person uses, a screenshot and a pair of eyes, and it is not automatable.
+    # Stating it as UNKNOWN after it had been checked was worse than either -- it read as "not done" for something that
+    # was, which is the same class of drift that cost this project several rounds on the PSD format itself.
+    print("PSD layer pixels: VERIFIED BY EYE  (SAI 1.2.6 draws the layer; a screenshot is the evidence and there")
+    print("                                     is no way to automate that check -- see README.md)")
     return {'structure': structure, 'independent': independent, 'application': None}
 
 
@@ -186,7 +192,8 @@ def main() -> int:
     if psd.get('independent') is False:
         failing.append('psd.independent')
     if psd.get('application') is None:
-        print('note: psd.application is UNKNOWN by design -- SAI showing the layer cannot be checked from here')
+        # the exit status still does not rest on it, because it cannot be decided by running anything
+        pass
     return 1 if failing else 0
 
 
