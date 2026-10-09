@@ -459,10 +459,14 @@ def test_rewinding_everything_restores_the_file_exactly():
     project, before, _, _ = project_after_three_changes()
     assert json.dumps(project.to_dict(), sort_keys=True) != before
 
-    undone = project.rewind(0)
+    undone = project.rewind(None)
 
     assert [e['op'] for e in undone] == ['remove', 'supersede', 'revise'], 'newest first'
-    assert json.dumps(project.to_dict(), sort_keys=True) == before
+    # **The marks come back byte for byte; the log does not, and should not.** The rewind is itself recorded, so a
+    # project that was walked back does not look like one that was drawn in fewer steps.
+    assert json.dumps([m.to_dict() for m in project.marks], sort_keys=True) ==            json.dumps(json.loads(before)['marks'], sort_keys=True)
+    assert project.log and project.log[-1]['op'] == 'rewind'
+    assert project.log[-1]['undid'] == ['remove', 'supersede', 'revise']
     assert [m.id for m in project.marks] == ['m0001', 'm0002', 'm0003', 'm0004', 'm0005']
     assert all(m.state == LIVE for m in project.marks)
 
@@ -477,16 +481,20 @@ def test_rewinding_a_removal_puts_the_mark_back_where_it_was():
     project.remove_mark(victim.id)
     assert victim.id not in [m.id for m in project.marks]
 
-    project.rewind(0)
+    project.rewind(None)
     assert [m.id for m in project.marks] == [m['id'] for m in json.loads(before)['marks']]
-    assert json.dumps(project.to_dict(), sort_keys=True) == before
+    # The marks are exactly as they were; the log now ends with the record that a rewind happened. That difference is
+    # the point -- a project walked back must not look like one that was drawn in fewer steps.
+    assert json.dumps([m.to_dict() for m in project.marks], sort_keys=True) == \
+           json.dumps(json.loads(before)['marks'], sort_keys=True)
+    assert [e['op'] for e in project.log] == ['rewind']
 
 
 def test_rewinding_partway_lands_on_a_state_the_drawing_was_actually_in():
     """Newest first, so a partial rewind is one of the project's own past states rather than a half-applied edit."""
     project, _, stroke, fill = project_after_three_changes()
-    project.rewind(1)
-    assert [e['op'] for e in project.log] == ['revise']
+    project.rewind(2)
+    assert [e['op'] for e in project.log] == ['revise', 'rewind']
     assert project.by_id(fill.id).appearance['fill'] == '#3355AA', 'the revise should still stand'
     # the stroke is back and the removed mark is back, because both were undone
     assert project.by_id(stroke.id).state == LIVE
@@ -500,17 +508,21 @@ def test_an_operation_the_log_cannot_reverse_is_refused_without_corrupting_the_l
     project._record('teleport', ids=['m0001'])
     depth = len(project.log)
     with pytest.raises(ValueError) as err:
-        project.rewind(0)
+        project.rewind(None)
     assert 'teleport' in str(err.value)
     assert len(project.log) == depth, 'a refused rewind must not eat log entries'
 
 
-def test_rewinding_past_the_ends_is_refused():
+def test_rewinding_more_steps_than_exist_undoes_what_there_is_and_no_more():
+    """Asking to go back further than the history goes is not an error -- it undoes everything there is."""
     project = a_project_with_marks()
     project.revise_mark(project.marks[0].id, appearance={'colour': '#000000'})
-    for bad in (-1, len(project.log) + 1):
-        with pytest.raises(ValueError):
-            project.rewind(bad)
+    undone = project.rewind(999)
+    assert len(undone) == 1, 'only the one real operation existed'
+    assert [e['op'] for e in project.log] == ['rewind']
+
+    with pytest.raises(ValueError):
+        project.rewind(-1)
 
 
 def test_a_supersede_reason_is_kept_because_removed_and_never_drawn_are_different():
@@ -752,3 +764,51 @@ def test_a_rough_pass_can_sit_underneath_the_others():
     assert [m.id for m in project.upto('line')] == [clean.id]
     project.restore(rough.id)
     assert [m.id for m in project.upto('line')] == [rough.id, clean.id]
+
+
+def test_a_rewind_is_itself_recorded_because_a_truncatable_record_is_not_one():
+    """The log is the file's account of how the drawing got there. If rewinding popped the entries and said nothing,
+    a project walked back ten times would read exactly like one drawn in ten fewer steps -- the file would claim to be
+    a record while quietly losing the part where the artist changed their mind."""
+    project = a_project_with_marks()
+    project.revise_mark(project.marks[0].id, appearance={'colour': '#111111'})
+    project.supersede(project.marks[1].id, reason='not this one')
+
+    undone = project.rewind(1)
+    assert [e['op'] for e in undone] == ['supersede']
+    assert project.log[-1]['op'] == 'rewind'
+    assert project.log[-1]['undid'] == ['supersede']
+
+    # and rewinding again records that too, rather than replacing the previous record
+    project.rewind(1)
+    assert [e['op'] for e in project.log] == ['rewind', 'rewind']
+    assert [e['undid'] for e in project.log] == [['supersede'], ['revise']]
+
+
+def test_a_rewind_marker_is_not_itself_undoable():
+    """It records an action rather than being one. Otherwise rewinding twice would undo the record of the first
+    rewind, and the log would end up saying less the more the artist went back."""
+    project = a_project_with_marks()
+    project.revise_mark(project.marks[0].id, appearance={'colour': '#111111'})
+    project.rewind(1)
+    assert [e['op'] for e in project.log] == ['rewind']
+
+    undone = project.rewind(1)
+    assert undone == [], 'there is nothing left to undo'
+    assert [e['op'] for e in project.log] == ['rewind'], 'the marker must survive'
+
+
+def test_rewinding_a_commit_puts_the_mark_back_to_draft():
+    """Acceptance is a state on a mark, so undoing it restores the state it had -- the stroke goes back to being a
+    candidate rather than disappearing."""
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200, incremental=True)
+    mark = project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    assert mark.state == DRAFT
+    project.commit()
+    assert mark.state == LIVE
+
+    project.rewind(1)
+    assert mark.state == DRAFT, 'undoing an acceptance restores the draft, not nothing'
+    assert mark in project.marks

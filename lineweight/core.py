@@ -1151,10 +1151,11 @@ def log_report(project_path: str, rewind_to: int = -1) -> int:
     from .project import save_project, load_project
 
     project = load_project(project_path)
-    if rewind_to >= 0:
+    if rewind_to > 0:
         undone = project.rewind(rewind_to)
         save_project(project, project_path)
-        print('  rewound %d step(s), back to %d' % (len(undone), rewind_to))
+        print('  rewound %d step(s): %s'
+              % (len(undone), ', '.join(e.get('op', '?') for e in undone)))
 
     if not project.log:
         print('  (nothing has been changed since the project was built)')
@@ -1237,7 +1238,7 @@ def main() -> int:
     parser.add_argument('--log', default='', metavar='PROJECT',
                         help='print what has been done to a project, with reasons')
     parser.add_argument('--rewind', type=int, default=-1, metavar='N',
-                        help='with --log: undo logged steps until N remain, and save')
+                        help='with --log: undo the last N operations, and save')
     parser.add_argument('--stage', default='', metavar='ROLE',
                         help='with --render: only this pass, e.g. line, value, colour, refine')
     parser.add_argument('--upto', default='', metavar='ROLE',

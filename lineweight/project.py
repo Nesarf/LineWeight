@@ -407,24 +407,35 @@ class Project:
 
     # ---- going back -----------------------------------------------------------------------------------------
 
-    def rewind(self, to_step: int) -> list[dict]:
-        """Undoes logged operations until the log is `to_step` entries long, and says what it undid.
+    def rewind(self, steps: int | None = 1) -> list[dict]:
+        """Undoes the last `steps` operations. `None` undoes all of them. Returns what it undid, newest first.
 
         **The log is kept sufficient to reverse itself, and that is a requirement rather than a convenience.** The
         stated use of this software is describing a drawing and then correcting it, repeatedly, so "that change was
         wrong, go back" is not an edge case -- it is half of how the thing is used.
 
+        **And a rewind is itself recorded.** This used to pop the entries and say nothing, which left a project that
+        had been walked back ten times looking exactly like one that had been drawn in ten fewer steps -- the file
+        claims to be a record of what happened while quietly losing the part where the artist changed their mind. So
+        the undone operations are removed and a `rewind` entry takes their place, naming what went and how much. The
+        marker is not itself undoable: it records an action rather than being one.
+
         Newest first, so a failure partway leaves the project in a state that is still one of its own past states.
-        Returns the undone entries rather than a count, because the caller usually wants to say what it undid.
 
         `remove` is reversible only while its entry is still in the log: the entry carries the whole mark, so rewind
         can restore it exactly, id and position included.
         """
-        if to_step < 0 or to_step > len(self.log):
-            raise ValueError('cannot rewind to %d: the log has %d entries' % (to_step, len(self.log)))
+        if steps is not None and steps < 0:
+            raise ValueError('cannot rewind %d steps' % steps)
         undone: list[dict] = []
-        while len(self.log) > to_step:
-            entry = self.log.pop()
+        # Walk back over real operations; `rewind` markers are a record, not something to reverse.
+        while len(self.log) > 0 and (steps is None or len(undone) < steps):
+            index = len(self.log) - 1
+            while index >= 0 and self.log[index].get('op') == 'rewind':
+                index -= 1
+            if index < 0:
+                break                                   # nothing left but markers
+            entry = self.log.pop(index)
             op = entry.get('op')
             if op == 'revise':
                 mark = self.by_id(entry['ids'][0])
@@ -434,13 +445,19 @@ class Project:
                     else:
                         getattr(mark, field).clear()
                         getattr(mark, field).update(value)
-            elif op == 'supersede':
-                self.by_id(entry['ids'][0]).state = LIVE
-            elif op == 'restore':
-                self.by_id(entry['ids'][0]).state = SUPERSEDED
+            elif op in ('supersede', 'commit', 'restore', 'draft', 'discard'):
+                # the acceptance operations are all a state on a mark, and each one's inverse is another one's forward
+                inverse = {'supersede': LIVE, 'commit': DRAFT, 'restore': SUPERSEDED,
+                           'draft': None, 'discard': None}[op]
+                if inverse is None:
+                    self.log.insert(index, entry)
+                    raise ValueError('cannot rewind a %s: the mark is not in the file any more' % op)
+                for mark_id in entry['ids']:
+                    self.by_id(mark_id).state = inverse
             elif op == 'remove':
                 mark = Mark.from_dict(entry['mark'])
                 if mark.id in [m.id for m in self.marks]:
+                    self.log.insert(index, entry)
                     raise ValueError('cannot undo remove of %s: the id is in use again' % mark.id)
                 self.marks.append(mark)
                 # **Put it back in drawing order, not at the end of the list.** `seq` was never lost, but appending
@@ -450,9 +467,12 @@ class Project:
                 # indistinguishable from never having made the change.
                 self.marks.sort(key=lambda m: m.seq)
             else:
-                self.log.append(entry)          # an op this version does not know how to reverse
+                self.log.insert(index, entry)            # an op this version does not know how to reverse
                 raise ValueError('cannot rewind past an unknown operation: %r' % (op,))
             undone.append(entry)
+        if undone:
+            self._record('rewind', ids=[i for e in undone for i in e.get('ids', [])],
+                         undid=[e.get('op') for e in undone])
         return undone
 
     # ---- reading --------------------------------------------------------------------------------------------
