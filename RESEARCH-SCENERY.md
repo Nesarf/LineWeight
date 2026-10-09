@@ -74,3 +74,31 @@ posts at [artcoded.fr](https://artcoded.fr/posts/20260222-cubes_perspective/).
 3. **A separate calibration corpus.** The existing one is line drawings of figures; the reference set here is painted
    scenery, and the two distributions are not comparable. Measuring them against each other would be the mistake of
    dividing incomparable scales that this project has already made once.
+
+## Measuring the three reference sets, and a trap in the numbers
+
+`lineweight --fit-dir` run over each set separately. The same measurement, three kinds of artwork:
+
+| set | images | ink fraction | width median | width p90 | taper ratio |
+|---|---|---|---|---|---|
+| the line-drawing library | 276 | **0.1485** | 4.0 | 11.0 | **0.4213** |
+| `F:\素材\图\16+`, illustrations only | 14 | 0.3429 | 5.0 | 13.0 | 0.3811 |
+| `F:\素材\图\固态景色\ACG建筑` | 20 | **0.6290** | 5.0 | 13.0 | 0.3564 |
+
+**Ink fraction and taper ratio move with how painted the work is** -- 0.149 to 0.629, and 0.421 down to 0.356. That is
+the expected direction and it is a useful signal for telling the three kinds of artwork apart.
+
+**Width median and p90 barely move, and that agreement is a trap.** The metric is valid -- drawn lines of 2, 4, 8 and
+16 pixels measure as 2.0, 3.0, 8.0 and 16.0, checked directly with Pillow, so it responds correctly to the parameter it
+is supposed to measure. But `ref.py` classifies runs wider than 16 pixels as *area* and excludes them, so on a painted
+image the surviving "line-like" runs are not lines at all: they are the smaller dark features -- shadow edges, texture,
+detail -- and those happen to be 4 to 16 pixels across. **Two sets agreeing on this number does not mean their linework
+agrees; it means their small dark features are a similar size.**
+
+This is the same shape of mistake as the four retracted PSD claims: a metric that produces a number, agrees across cases,
+and means something different in each. The comparison that *would* be meaningful is lineart against lineart. Against
+painted work the only sound use of these figures is as a classifier for which corpus a file belongs to.
+
+Also worth recording: the `16+` folder is **mixed** -- Pixiv illustrations, phone photographs and screenshots in one
+directory. Pooling photographs with drawings would corrupt any corpus they were added to, and the 25-image figure is not
+25 drawings. The 14 illustrations were separated out above for that reason; the photographs were not measured.
