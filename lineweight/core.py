@@ -36,7 +36,7 @@ import random
 import re
 from typing import NamedTuple
 
-from . import curve
+from . import curve, roles
 from .curve import Cubic
 
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
@@ -929,7 +929,7 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
 
 
 def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
-                  colour: str = '#1A1620', resolution: int = 14) -> dict:
+                  colour: str = '', resolution: int = 14, role: str = '') -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -950,8 +950,15 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     return {
         'brush': brush_name,
         'seed': seed,
-        'colour': colour,
+        # **Resolved here, once.** The default used to be a literal, which meant a role could never supply its ink:
+        # `colour or role_ink(...)` never reached the second half. An explicit colour still wins, and a record with
+        # neither a colour nor a role gets the historical default.
+        'colour': colour or roles.ink(role) or '#1A1620',
         'resolution': resolution,
+        # **What this line is *for*, not how wide it is.** Stored on the record rather than passed to the expander so
+        # that the role survives into the project file and can be changed later without redrawing anything -- which is
+        # the professional order of operations: get the form right first, decide the line hierarchy afterwards.
+        'role': role,
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],
         'pressure': [round(p, 4) for p in ps],
@@ -969,7 +976,11 @@ def stroke_widths(record: dict) -> list[float]:
     """
     brush = BRUSHES[record['brush']]
     gamma = float(brush.get('curve', 1.0))
-    return [brush['width'] * (float(p) ** gamma) for p in record['pressure']]
+    # **The role multiplies the profile rather than replacing it**, so naming a line's role never removes the pressure
+    # variation -- which is the whole point of this library, and the thing the drawing convention says artists forget
+    # to add to hair. An empty role is 1.0 and changes nothing.
+    scale = roles.width_scale(record.get('role', ''))
+    return [brush['width'] * scale * (float(p) ** gamma) for p in record['pressure']]
 
 
 def outline_polygon(record: dict) -> list[tuple[float, float]]:
@@ -1517,6 +1528,85 @@ def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False
     return 0 if result.ok else 1
 
 
+def roles_report(project_path: str) -> int:
+    """**The role model checking itself against the drawing it was applied to.**
+
+    Naming a line's role is a claim about it, and a claim that nothing examines is a comment. Three of the drawing
+    convention's five-item checklist are answerable from this library's own measurements, and two of them are answered
+    here:
+
+      * *is there a difference between outer and inner line width?* -- the per-role width distributions side by side
+      * *at reduced scale, is the focal point not buried under line?* -- whether the heavy end has run away, which is
+        what the corpus ratios are for
+
+    The ratios are printed next to the corpus reference rather than as a verdict, because **the library already
+    reaches p90/median 2.67 with no roles at all** and the reference is 2.75: role multipliers add on top of a spread
+    that is already at target, so a drawing that puts everything in `silhouette` will overshoot and this is where that
+    shows. See `roles.py`.
+    """
+    from .project import load_project
+
+    project = load_project(project_path)
+    marks = [m.to_dict() for m in project.live()]
+    strokes = [m for m in marks if m['kind'] == 'stroke']
+    if not strokes:
+        print('  no strokes in this project')
+        return 0
+
+    by_role: dict[str, list[float]] = {}
+    everything: list[float] = []
+    inks: dict[str, set] = {}
+    for mark in strokes:
+        name = mark['geometry'].get('role', '')
+        widths = stroke_widths(mark['geometry'])
+        by_role.setdefault(name, []).extend(widths)
+        everything.extend(widths)
+        inks.setdefault(name, set()).add(mark.get('appearance', {}).get('colour', '#1A1620'))
+
+    def ratio(values, fraction):
+        ordered = sorted(values)
+        return ordered[min(len(ordered) - 1, int(fraction * (len(ordered) - 1)))]
+
+    median = ratio(everything, 0.5)
+    p90 = ratio(everything, 0.9)
+    print('  %d strokes, %d width samples' % (len(strokes), len(everything)))
+    print('  %-12s %5s  %7s %7s %7s   %s' % ('role', 'n', 'median', 'p90', 'max', 'ink'))
+    for name in sorted(by_role, key=lambda r: (r == '', r)):
+        values = by_role[name]
+        label = name or '(none)'
+        ink = sorted(inks[name])[0] if inks.get(name) else ''
+        note = roles.ink_verdict(ink) if ink else ''
+        print('  %-12s %5d  %7.2f %7.2f %7.2f   %s  %s'
+              % (label, len(values), median_of(values), ratio(values, 0.9), max(values), ink, note))
+
+    print()
+    print('  this drawing:  p90/median %.2f   max/median %.2f' % (p90 / median, max(everything) / median))
+    print('  corpus (276 line drawings, three collections):  %.2f   %.2f'
+          % (roles.WIDTH_P90_OVER_MEDIAN, roles.WIDTH_MAX_OVER_MEDIAN))
+    print()
+    outer = [v for r, vs in by_role.items() if r in ('silhouette', 'shadow') for v in vs]
+    inner = [v for r, vs in by_role.items() if r in ('contour', 'detail') for v in vs]
+    if outer and inner:
+        print('  outer/inner median width: %.2f  (%.2f vs %.2f)'
+              % (median_of(outer) / median_of(inner), median_of(outer), median_of(inner)))
+        print('  the convention requires a difference that survives reduction; the corpus puts the')
+        print('  heavy-to-typical ratio at %.2f, so anything far above that is spending naturalness.' % (
+            roles.WIDTH_P90_OVER_MEDIAN))
+    else:
+        print('  outer/inner comparison needs both kinds present: silhouette or shadow, and contour or detail')
+    print()
+    for name in sorted(r for r in by_role if r):
+        print('  %-12s %s' % (name, roles.trade(name)))
+    if '' in by_role:
+        print('  %-12s %s' % ('(none)', roles.trade('')))
+    return 0
+
+
+def median_of(values: list[float]) -> float:
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='strokes.svg')
@@ -1553,6 +1643,8 @@ def main() -> int:
                         help='with --audit: pixels across the longer side of the view')
     parser.add_argument('--zoom', default='', metavar='CX,CY,SPAN',
                         help='with --audit: look at one place instead of the whole canvas')
+    parser.add_argument('--roles', default='', metavar='PROJECT',
+                        help="report a project's line roles, their widths, their inks and the trade each makes")
     args = parser.parse_args()
     if args.fit:
         return fit_report(args.fit)
@@ -1575,6 +1667,8 @@ def main() -> int:
                             pixels=args.pixels, zoom=args.zoom)
     if args.judge:
         return judge_report(args.judge, scale=args.scale)
+    if args.roles:
+        return roles_report(args.roles)
     return demo(args.out)
 
 

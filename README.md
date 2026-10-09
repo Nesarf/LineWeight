@@ -257,6 +257,64 @@ thinnest fifth of the runs is mostly **full-width** runs. `taper_ratio` is only 
 3. Adjust `BRUSHES` until the model's distribution matches. The four effects in `pressures()` are the dials, and
    `lineweight.ref.check` is how you know when to stop -- but only for the metrics that actually respond to a change.
 
+## Line roles
+
+A line drawing is not a set of lines of assorted widths. It is a set of lines that **mean** different things, and the
+convention that assigns the meanings is explicit:
+
+| role | convention | formal term | width | ink |
+|---|---|---|---|---|
+| `silhouette` | 輪郭線, the outer contour | silhouette | 2.75 | `#2A1C18` |
+| `shadow` | 陰影線, the shadow or form line | suggestive contour | 1.66 | `#241A18` |
+| `contour` | 内部線, an interior line | contour | 1.00 | `#1A1620` |
+| `detail` | 補助線, fine hair tips, auxiliary lines | -- | 0.60 | `#3A2A26` |
+
+    project.add_stroke(stroke_record(jaw, 'ink', role='silhouette'))   # thicker, warmer, and it says so
+    project.add_stroke(stroke_record(eyelid, 'ink', role='contour'))
+
+**A role multiplies the width profile; it never replaces it**, so naming a line's role does not remove the weight
+variation — which is the thing this library exists to produce and the thing the convention says artists forget on
+hair. **No role is the default and means exactly the brush width**, so nothing written before roles existed changed.
+
+**The widths are placed against two measured numbers, and only two of the four are anchored.** From 276 line drawings
+pooled out of 929 images across three independent collections: within one drawing the 90th-percentile line width is
+**2.75x** the median and the maximum is **5.33x**. `contour` is the anchor at 1.0, because the brush width is
+calibrated to the median line width and interior lines are the most numerous; `silhouette` is the corpus's own
+p90/median, because in a finished drawing the p90 *is* the outer contour; `shadow` and `detail` sit one geometric
+step either side of the anchor, inside the max/median envelope. **Where inside that range each role sits is not
+measured** — the convention gives the ordering and no magnitudes — and the module says so per role.
+
+**Every role states the trade it makes, because it is a trade and not an improvement.** KEER2014 drew four characters
+with pressure deliberately removed and found that impressions of *naturalness* and *potency* are moved by the
+outline's colour and thickness **rather than by the character design**, while *activity* is moved by the design and
+not by the outlines. Thicker raises potency and lowers naturalness; brown raises naturalness and lowers potency. A
+hierarchy that only ever thickens the contour is spending naturalness to buy potency without saying so.
+
+**The colours are the other measured axis, and it is saturation rather than hue.** Black and the two browns scored
+positive on naturalness; green, blue and red scored negative. Reddish-brown and red are twenty-five degrees apart in
+hue and land on opposite sides, so `roles.measured_natural` tests saturation. Every role's default ink is checked
+against that axis by a test.
+
+**The model examines the drawing it was applied to, which is the only way to argue with it:**
+
+    python -m lineweight --roles face.json
+
+    role             n   median     p90     max   ink
+    contour         87     2.62    3.50    4.35   #1A1620  measured positive (black, or a desaturated brown)
+    detail          58     1.64    2.07    2.26   #3A2A26  measured positive (black, or a desaturated brown)
+    shadow          29     7.65   10.32   10.49   #241A18  measured positive (black, or a desaturated brown)
+    silhouette     114    16.62   17.12   17.35   #2A1C18  measured positive (black, or a desaturated brown)
+
+    this drawing:  p90/median 4.39   max/median 4.53
+    corpus (276 line drawings, three collections):  2.75   5.33
+
+    outer/inner median width: 7.51  (16.21 vs 2.16)
+
+That report is answering the first item of the drawing convention's finished-linework checklist — *is there a
+difference between outer and inner line width?* — with the library's own measurements. **It reports rather than
+refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
+sticker look, deliberate rather than accidental. What must not happen is that it is silent.
+
 ## Checking it, rather than believing it
 
 **The library marks its own homework; `--judge` does not.** A project can be drawn a second time by **cairo**, which has

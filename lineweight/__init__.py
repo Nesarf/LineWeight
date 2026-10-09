@@ -36,11 +36,13 @@ from .project import (DEFAULT_STAGES, DRAFT, LIVE, ROUGH_STAGES, SUPERSEDED, Mar
 # different kind of answer than they asked for.
 from .invariants import (Finding, MEASURES, check as check_invariants,  # noqa: E402,F401
                          check_project, format_findings, measure_layer)
-from . import run  # noqa: E402,F401
+from . import roles  # noqa: E402,F401
+from .roles import ROLES, Role  # noqa: E402,F401
 
 __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',
             'write_xfl', 'run', 'resize_to_fit',
             'Greyscale', 'measure', 'scan', 'summarise', 'compare', 'check',
             'Project', 'Mark', 'save_project', 'load_project', 'DEFAULT_STAGES',
             'LIVE', 'SUPERSEDED', 'DRAFT', 'ROUGH_STAGES',
-            'Finding', 'MEASURES', 'check_invariants', 'check_project', 'format_findings', 'measure_layer']
+            'Finding', 'MEASURES', 'check_invariants', 'check_project', 'format_findings', 'measure_layer',
+            'roles', 'ROLES', 'Role']

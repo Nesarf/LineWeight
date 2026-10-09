@@ -113,6 +113,17 @@ def _highest_id(project: 'Project') -> int:
     return top
 
 
+def _role_ink(name: str) -> str:
+    """The default ink for a role, or the historical default when there is none.
+
+    A local wrapper rather than an import at the top: `project` is the document layer and the registry is content, and
+    this keeps the dependency one-way and visible. The `or` matters -- `Mark.appearance['colour']` is read by the
+    renderer with a default of its own, so an empty string here would silently mean "whatever the renderer thinks".
+    """
+    from .roles import ink
+    return ink(name) or '#1A1620'
+
+
 @dataclass
 class Mark:
     """One stroke or one fill. **The atom: nothing in a project is smaller than this.**
@@ -198,8 +209,12 @@ class Project:
         mark = Mark(id='m%04d' % self.counter, kind='stroke', stage=stage, seq=len(self.marks),
                     geometry={'centre': record['centre'], 'control': record.get('control', []),
                               'pressure': record['pressure'], 'brush': record['brush'],
-                              'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14)},
-                    appearance={'colour': record.get('colour', '#1A1620')},
+                              'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
+                              'role': record.get('role', '')},
+                    # The colour is the record's, and the record's default is the role's ink -- so naming a role gives
+                    # the line the ink that role is drawn in unless the caller said otherwise. The whitelist above is
+                    # why `role` needed a line here at all: fields not named are dropped on the way into the document.
+                    appearance={'colour': record.get('colour') or _role_ink(record.get('role', ''))},
                     provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)
         self.marks.append(mark)
