@@ -25,11 +25,40 @@ import re
 from dataclasses import dataclass, field
 
 # The common staging, as a starting point a project may replace. Order is meaningful: it is the order the passes run.
+#
+# **The invariants below are advisory and come from ONE recording.** They are kept because a worked example of the
+# mechanism is worth more than an empty one, and because a project that agrees with them gets a real check for free.
+# They are explicitly not a definition of a correct drawing: the second video analysed contradicted three of the four
+# while plainly showing a competent artist at work -- its lines were neutral black rather than warm brown, it had no
+# separate value pass at all, and its saturation FELL through the colour stage. Each spec carries the measurement it
+# came from, so a reader can judge it rather than trust it. See the demotion note in `DESIGN-PROJECT.md`.
 DEFAULT_STAGES = (
-    {'role': 'line', 'note': 'the drawing itself, before anything is painted'},
-    {'role': 'value', 'note': 'light and dark, before any hue exists'},
-    {'role': 'colour', 'note': 'hue and saturation applied over an established value structure'},
-    {'role': 'refine', 'note': 'local correction; the longest pass in every recording examined'},
+    {'role': 'line', 'note': 'the drawing itself, before anything is painted',
+     'invariants': [
+         {'name': 'the linework is warm, not neutral', 'measure': 'warmth', 'op': '>', 'value': 0.0,
+          'note': 'video 1 measured R-B +10. Video 2 measured +0.3 (neutral black) and is equally legitimate -- '
+                  'KEER2014 places both black and brown on the natural side of its scale.'},
+         {'name': 'something was actually drawn', 'measure': 'coverage', 'op': '>', 'value': 0.01,
+          'note': 'a line pass that covered nothing is the one failure worth catching mechanically.'},
+     ]},
+    {'role': 'value', 'note': 'light and dark, before any hue exists',
+     'invariants': [
+         {'name': 'the value pass is near-neutral', 'measure': 'saturation', 'op': '<', 'value': 24.0,
+          'note': 'video 1 dipped to 11.5 here, its lowest of the whole recording. Video 2 had no such pass.'},
+     ]},
+    {'role': 'colour', 'note': 'hue and saturation applied over an established value structure',
+     'invariants': [
+         {'name': 'the value structure held', 'measure': 'luminance_drift', 'op': '<', 'value': 0.05,
+          'note': 'the gate that separates colouring from repainting the values. Video 1: -4.85% over every frame. '
+                  'Video 2: -6.12%, which is why the bound is loose rather than tight.'},
+         {'name': 'colour actually arrived', 'measure': 'saturation_ratio', 'op': '>', 'value': 1.0,
+          'note': 'video 1 rose x2.26. Video 2 FELL to x0.91 -- the counterexample that makes this advisory.'},
+     ]},
+    {'role': 'refine', 'note': 'local correction; the longest pass in every recording examined',
+     'invariants': [
+         {'name': 'refining does not move the values', 'measure': 'luminance_drift', 'op': '<', 'value': 0.08,
+          'note': 'looser than the colour bound on purpose: refinement is where a drawing is allowed to settle.'},
+     ]},
 )
 
 LIVE = 'live'

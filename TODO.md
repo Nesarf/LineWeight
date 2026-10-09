@@ -21,9 +21,12 @@
   - `in_stage(stage)` / `upto(stage)` / `by_id(id)`：**验收按阶段做，阶段就必须能单独取出来。**
   - `tests/test_project.py` 10 个测试，重点不是「存得下读得回」（那在把一切合并的格式上也会过），而是**身份与隔离**：
     按 id 找得到；**删掉一个 mark 之后其余每一个的序列化字节完全相同**；顺序往返不变；阶段互不重叠；未知阶段被拒绝而不是静默新建；**载入后 id 不复用**；v1 文件被拒绝而不是误读。
-- [ ] **P0-2 ｜ `stage` 字段 + 不变量检查框架。** 让流程约束**可执行**，而不是文档里的一句话。
-  - ⚠️ **判据本身已降级**（视频2 证伪了四条中的三条）。所以这一项要建的是**机制**，不是写死四条：
-    每个 stage 携带一组**可选的** invariants，检查器跑它们并报告，**不硬性拒绝**；四段那套只是内置预设之一，不是唯一真相。
+- [x] **P0-2 ｜ `stage` 字段 + 不变量检查框架。** 完成。**建的是机制，不是写死四条。**
+  - 新模块 `lineweight/invariants.py`：`measure_layer()` 量出 coverage / luminance / saturation / warmth / band_ref / band_dark；`MEASURES` 是可选量的注册表（含派生的 `luminance_drift` 与 `saturation_ratio`）；`check()` 跑一个阶段的判据，**返回 findings，从不抛异常、从不拒绝**。
+  - **三条诚实性规则，各配一个测试**：① 没声明判据的阶段报「**claims nothing**」，**不是通过**（空 findings 读起来和通过一样，默认通过一周内就没人看了）；② 测不出来的判据报 `?`，**不是通过**（没有上一阶段就没有漂移可言，默认通过等于第一次检查必然过）；③ 判据失败是 finding，**不是异常**（能杀掉运行的检查会被拿掉）。
+  - `DEFAULT_STAGES` 带上了四条**已降级**的判据，每条**都附上它来自哪个测量值**，且全部标 `advisory`。默认值存在的理由只是「有实例比空着强」，不是「这是正确画法」。
+  - CLI：`lineweight --check p.json`。**按 `upto` 累积状态测量**，因为那些数字本来就是从整帧量出来的；单独测上色段等于测一张没有线稿也没有明暗的图，那不是这幅画存在过的任何状态。
+  - **顺带修了一个命名撞车**：`__init__` 早已从 `.ref` 导出 `check`，而 invariants 里也叫 `check` —— 会互相覆盖且不报错。后者改为别名 `check_invariants` 导出。**两者回答的问题不同**：`ref.check` 是拿测量值对参考库，`check_invariants` 是判一个阶段对它自己声明的界。
 - [x] **P0-3 ｜ 按阶段渲染。** 完成。
   - `raster.fill_polygon()`（纯 Python 扫描线、even-odd、端像素带覆盖率抗锯齿）、`fill_layer()`、**`render_marks()`（严格按给定顺序合成）**。
   - CLI：`lineweight --render p.json --stage line --out line.png`，以及 `--upto colour`（画到那一阶段为止的状态）。两个同时给会报错。

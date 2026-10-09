@@ -1107,6 +1107,39 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
     return 0
 
 
+def check_report(project_path: str, scale: float = 1.0) -> int:
+    """Renders each pass and runs that pass's invariants against the result, then reports.
+
+    **Measured on the cumulative state, not on the pass alone.** The numbers these invariants were derived from were
+    taken from whole frames of a recording -- the canvas as it stood -- so `upto` is the matching reading. Measuring
+    the colour pass in isolation would mean measuring an image with no linework and no value structure in it, which is
+    not a state the drawing was ever in.
+
+    **Reports; it does not refuse.** A drawing that fails an invariant is still a drawing, and the invariants are
+    advisory because the evidence behind them is one artist's process. What it must not do is stay silent: a pass with
+    no invariants is reported as claiming nothing, and an invariant that could not be measured is reported as
+    unmeasurable rather than as a pass.
+    """
+    from .invariants import check_project, format_findings, measure_layer
+    from .project import load_project
+    from .raster import render_marks
+
+    project = load_project(project_path)
+    width, height = int(project.width * scale), int(project.height * scale)
+    images = {}
+    for stage in project.stages:
+        role = stage['role']
+        marks = project.upto(role)
+        if not marks:
+            continue
+        layer = render_marks([m.to_dict() for m in marks], width, height, scale)
+        images[role] = measure_layer(layer)
+
+    print('  %s: %d stage(s) rendered, %d mark(s)' % (project_path, len(images), len(project.marks)))
+    print(format_findings(check_project(project, images)))
+    return 0
+
+
 def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False, ai_out: str = '') -> int:
     """The demo sheet, carried into Illustrator as a real document instead of as SVG.
 
@@ -1162,6 +1195,8 @@ def main() -> int:
     parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
     parser.add_argument('--render', default='', metavar='PROJECT',
                         help='render a project file to an image; combine with --stage or --upto')
+    parser.add_argument('--check', default='', metavar='PROJECT',
+                        help='render each pass of a project and report its invariants')
     parser.add_argument('--stage', default='', metavar='ROLE',
                         help='with --render: only this pass, e.g. line, value, colour, refine')
     parser.add_argument('--upto', default='', metavar='ROLE',
@@ -1179,6 +1214,8 @@ def main() -> int:
         return to_xfl(args.xfl, launch=args.run)
     if args.render:
         return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale)
+    if args.check:
+        return check_report(args.check, scale=args.scale)
     return demo(args.out)
 
 
