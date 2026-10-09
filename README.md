@@ -214,7 +214,7 @@ can be re-derived rather than taken on trust:
 |---|---|---|---|
 | `p90/median` -- a few heavy lines among many light ones | 2.75 | 2.67 | close: the model does produce a drawing's spread |
 | `max/median` -- how far the heavy end reaches | 5.33 | 5.33 | equal |
-| `taper_ratio` | 0.42 | 0.50 | unresolved -- the whole-stroke statistic cannot see an end; see below |
+| `taper_ratio` | 0.42 | 0.44 | closer after recalibration, but the instrument is confounded -- see below |
 
 **Three independent collections agree, and that is the whole argument.** The 26-image library used first gave
 `p90/median` 2.750 and `taper_ratio` 0.410; the 262-image pool gave 2.750 and 0.423; adding seventeen character-art
@@ -235,14 +235,21 @@ list.
   contains -- the spread the library shows appears, and the "model cannot produce a drawing's hierarchy" finding
   dissolved.
 
-`taper_ratio` is reported as unresolved rather than as a discrepancy, and the reason is worth stating because it
-changed twice while being investigated. Lowering the taper **floor** (how thin the very tip gets) from 0.25 to 0.06
-moved the measured ratio by nothing at any render scale, which first looked like a broken metric. It is not: the floor
-touches only the first sample, and a run of pixels cannot resolve that. What does move the profile is the taper
-**length** -- a longer taper keeps more of the stroke below full width -- and that does move the statistic. So the
-instrument works, and the honest position on the 0.41-versus-0.50 gap is that the tapers need to be measured over the
-end regions specifically before anyone tunes against it; a whole-stroke statistic is dominated by the difference
-between strokes, not by the shape of an end.
+`taper_ratio` was reported as unresolved, and the investigation of it changed the model rather than the metric. Lowering
+the taper **floor** (how thin the very tip gets) from 0.25 to 0.06 moved the measured ratio by nothing at any render
+scale, which first looked like a broken metric. It is not: the floor touches only the first sample, and a run of pixels
+cannot resolve that. What moves the profile is the taper **length**, and the length turned out to be wrong in its unit --
+it was a fraction of the stroke's arc length, so one unchanged brush spent 6 px building pressure on a 40 px stroke and
+640 px on a 4000 px one. Tapers are distances now, calibrated against a measured 丸ペン setting (see
+`RESEARCH-LINE-QUALITY.md`), and the ratio moved from **0.4595 to 0.4372** over a rendered sheet of 60 strokes.
+
+**The paragraph that used to sit here predicted this correctly**, and the prediction is worth keeping because the
+measurement then confirmed it: *a whole-stroke statistic is dominated by the difference between strokes, not by the
+shape of an end.* Measured on **one stroke in isolation** the same model reports **0.72-0.76** -- far above the corpus,
+readable as "the tapers are far too shallow", and the exact opposite of the truth, because on a single long stroke the
+thinnest fifth of the runs is mostly **full-width** runs. `taper_ratio` is only meaningful over a drawing. The remaining
+0.437-against-0.421 gap is recorded rather than closed: lengthening the taper would close it, but the taper length is a
+*measured* value and tuning a measurement to fit a confounded statistic is fitting the wrong way round.
 
 1. Draw a sheet of strokes with **one** brush: a long line pressed from light through heavy and back, the same line
    drawn fast and then slow, a right-angle turn, a hairpin, and a tapered flick.

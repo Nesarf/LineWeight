@@ -263,3 +263,70 @@ deep cast shadows" is what that channel does when density saturates.
 Dürer's print uses *"contour, crease, hatching, cross-hatching"*; Flaxman's uses *"contours and creases, and perhaps
 other lines such as suggestive contours, ridges and valleys"* -- the same vocabulary as the formal taxonomy in
 `RESEARCH-VECTORIZATION.md`, named from a 1505 woodcut and an 1805 etching.
+
+## The pressure model's tapers were measured in the wrong unit
+
+**This is the first change to `lineweight`'s model that came from an outside measurement rather than from this
+repository's own judgement**, so the reasoning is worth keeping in full.
+
+### What was wrong
+
+`taper_in` and `taper_out` were **fractions of the stroke's arc length**. That is the one thing a taper cannot be. A
+nib's entry is a **distance it travels while pressure builds**, and it is the same distance whether the stroke is long
+or short. Measured on `ink` before the change:
+
+| stroke length | entry + exit, in px | as a multiple of the 6.5 px width |
+|---|---|---|
+| 40 px | 6.4 | 1.0x |
+| 400 px | 64.0 | 9.8x |
+| 4000 px | 640.0 | 98.5x |
+
+**One unchanged brush, a hundredfold spread in taper length.** Nothing caught it because every stroke in every test
+was a similar length -- the defect only exists *between* lengths, and a single-length test cannot see it.
+
+### The calibration
+
+One measured anchor, from 漫画の教科書シリーズ No.02, 萌えキャラの上手な描き方: a **丸ペン of 0.35 mm with 入り and 抜き
+set to 5.0 mm**, i.e. a taper **14.3x the nib width**. The unit became the brush's own width, because the anchor is a
+**ratio** and a ratio is scale-free -- `lineweight` does not know a document's px-per-mm and should not pretend to.
+
+**All four brushes take that single measured total and differ only in how it splits between entry and exit.** An
+earlier attempt scaled each brush's old *fraction* by a common factor instead; that gave the 22 px `wash` a **590 px**
+entry, longer than most strokes, so every wash became nothing but taper. Blindly rescaling numbers whose unit had just
+changed is the same error as hand-computing an offset, and the existing tests caught it rather than a reading of the
+code.
+
+### What the verification actually showed, including where it misled
+
+Measured with `ref.measure` on a rendered sheet of **60 strokes of lengths 40-1400 px** -- a stand-in for a page:
+
+| model | `taper_ratio` |
+|---|---|
+| fraction-based (before) | **0.4595** |
+| length-based (after) | **0.4372** |
+| corpus target, moe / BA artbook | **0.3923** |
+| corpus target, line-drawing library | **0.4213** |
+
+**The change moves the metric toward the corpus**, which is the outcome wanted. But two things must be recorded against
+that, because the first measurement taken said something different:
+
+* **A single stroke measured in isolation gave 0.72-0.76** -- far *above* the corpus, which reads as "the tapers are far
+  too shallow" and is the opposite of the truth. `taper_ratio` is the mean of the thinnest fifth of all runs against
+  the mean of all runs, so on one long stroke the taper is a small absolute number of runs and the thinnest fifth is
+  mostly **full-width** runs. **The metric is confounded by the distribution of stroke lengths, which is the same
+  variable the defect concerns.** It is only meaningful over a drawing, not over a line.
+* **The remaining gap (0.437 against 0.421) is not closable by this metric alone.** Lengthening the taper would lower
+  the ratio further, but 14.3x is a *measured* value and tuning it to fit a confounded statistic would be fitting the
+  measurement to the metric rather than the other way round. The gap is recorded, not closed.
+
+The earlier test comment claimed that lowering the taper's floor from 0.25 to 0.06 *"changed the measured ratio by
+nothing at all, at any render scale"*, and that stands: the floor sets the value at the first sample only. **A taper is
+calibrated by its length, and the floor is not a calibration knob** -- which is what made the length the thing to fix.
+
+### What this cost, and what it says about the tests
+
+Three tests failed on the change and all three for the right reason: one used the old unit and had to be rewritten,
+one had to have its sampling window moved off the tapers it was accidentally measuring, and one was a real threshold
+that the longer taper pushed against. A fourth test was added that the old code cannot pass -- it draws a 200 px and a
+2000 px stroke with the same brush and requires the same absolute taper -- because **the defect was invisible to a test
+suite that only ever drew one stroke length**.

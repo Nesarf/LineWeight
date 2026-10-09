@@ -211,9 +211,32 @@ Full write-up in `RESEARCH-VECTORIZATION.md`.
         hit only **8 files / 17 passages** on line-weight terminology. These are picture books;
         the instruction is in the figures. What the text *does* give is worth having — see the
         concrete findings below.
-- [ ] **Calibrate the pressure model against a real parameter set.** 漫画の教科書 No.02 gives
-      「髪の毛…丸ペン **0.3–0.4mm**」 with **入り・抜き ON at 5.0mm** — taper-in and taper-out
-      with an **explicit length in millimetres**. `lineweight` has no taper-length parameter.
+- [x] **Calibrate the pressure model against a real parameter set. DONE.** 漫画の教科書 No.02 gives
+      「髪の毛…丸ペン **0.3–0.4mm**」 with **入り・抜き ON at 5.0mm** → a taper **14.3× the nib width**.
+      - **The unit was wrong, not the numbers.** `taper_in`/`taper_out` were fractions of the stroke's
+        arc length: one unchanged `ink` brush spent **6.4px** building pressure on a 40px stroke and
+        **640px** on a 4000px one. They are distances now, in multiples of the brush's own width,
+        because the anchor is a ratio and a ratio is scale-free.
+      - All four brushes take the single measured total and differ only in the entry/exit split.
+      - **Verification moved the right way**: `taper_ratio` 0.4595 → **0.4372** over a 60-stroke sheet,
+        against a corpus target of 0.392–0.421.
+      - **And the metric is confounded** — one stroke measured alone reports 0.72–0.76, i.e. the
+        opposite of the truth, because the thinnest fifth of runs on a single long stroke is mostly
+        *full-width* runs. `taper_ratio` is only meaningful over a drawing. **Never validate a taper
+        with one stroke.** The remaining gap is recorded, not closed, because tuning a measured
+        constant to fit a confounded statistic is fitting the wrong way round.
+      - Four tests moved: three failed for the right reason, and the fourth is new and the old code
+        cannot pass it — it draws a 200px and a 2000px stroke with one brush and requires the same
+        absolute taper. **The defect was invisible to a suite that only ever drew one stroke length.**
+- [ ] **Read the rest of the moe textbook.** `RESEARCH-MOE.md` maps it; local copy at
+      `E:\DaShaoHuo\downloads\ia-books\moe_face_body.pdf` (178pp, folio = PDF page − 2). Highest value
+      next: **pp.39-41 (前髪と横髪のバランス / バリエーション)** and **pp.111-116 (衣服のシワ)** —
+      hair because it is the 輪郭線 case, folds because they are the 陰影線 case, and neither has a
+      rule yet.
+- [ ] **Check the corpus against the head-body ratio bound.** The textbook states moe is **2–6
+      heads**, with 6 as 「ギリギリのライン」 and 7+ adult. That is a hard, measurable bound and the
+      Blue Archive character sheets can be measured against it — a sanity check on the corpus that
+      does not depend on any width statistic.
 - [ ] **The two-pass architecture is what professionals do.** Anmi (CGイラストテクニック vol.9):
       線の強弱は深く気にせず、まずは形を取ることに集中し、**線画ではなく着彩の段階で強弱を加えることもあります**
       — geometry first, weight applied as a later pass. That is exactly `stroke_record`'s split, and

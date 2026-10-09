@@ -36,21 +36,44 @@ import random
 import re
 
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
+#
+# **`taper_in` and `taper_out` are LENGTHS, in multiples of the brush's own width.** They used to be fractions of the
+# stroke's total arc length, which was wrong in a way that only shows up when stroke lengths differ: a fraction makes
+# the taper scale with the stroke, so the same brush produced a 6 px entry on a 40 px stroke and a 640 px entry on a
+# 4000 px one, a hundredfold spread. A nib does not work that way -- its taper is a fixed distance it travels while
+# pressure builds, and it is the same distance whether the stroke is long or short.
+#
+# The unit is the width multiple rather than pixels because that is the only calibration available, and the anchor is
+# a **ratio**, which is scale-free. The measured one is a 丸ペン: **0.35 mm nib with 入り and 抜き set to 5.0 mm**
+# (漫画の教科書シリーズ No.02, 萌えキャラの上手な描き方), i.e. a taper **14.3x the nib width**.
+#
+# **All four brushes use that single measured total, and differ only in how it splits between entry and exit**, which
+# is carried over from their previous proportions. An earlier attempt at this scaled each brush's old *fraction* by the
+# same factor instead, which gave the 22 px `wash` a 590 px entry -- longer than most strokes, so every wash was
+# nothing but taper. Blindly rescaling numbers whose unit had just changed is the same mistake as hand-computing an
+# offset, and it was caught by the existing tests rather than by reading it back.
+#
+# **Only the 14.3x ratio is measured. The split between 入り and 抜き is not.**
 BRUSHES: dict[str, dict[str, float]] = {
     # name:            width  opacity taper_in taper_out spacing  speed   corner  noise  wobble
-    'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 0.10, 'taper_out': 0.14, 'spacing': 0.56,
+    'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 6.0, 'taper_out': 8.3, 'spacing': 0.56,
              'speed': 0.35, 'corner': 0.40, 'noise': 0.06, 'wobble': 0.30, 'curve': 1.15},
-    'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 0.06, 'taper_out': 0.10, 'spacing': 0.56,
+    'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 5.4, 'taper_out': 8.9, 'spacing': 0.56,
             'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26, 'curve': 0.85},
-    'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 0.15, 'taper_out': 0.20, 'spacing': 0.56,
+    'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
                'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
     # **Spacing is measured, not chosen.** Sweeping it per brush and counting how many separate runs of ink a
     # single straight stroke leaves shows all four staying continuous to 0.8 of a diameter and breaking at
     # 1.0, so every brush sits at 0.56 -- a measured value with the margin left in, rather than a number
     # that merely looked reasonable and had no effect until the raster compositor arrived.
-    'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 0.30, 'taper_out': 0.40, 'spacing': 0.56,
+    'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
              'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
 }
+
+# How thin a taper is allowed to get at its very tip, as a fraction of full width. A 丸ペン's 抜き runs out to a point,
+# but a rasterised stroke that reaches zero width has no pixels at its ends and reads as a broken line, so it stops
+# short of the limit. This constant is **not calibrated** -- it is a floor that exists for a rendering reason.
+TAPER_TIP = 0.25
 
 
 def catmull(points: list[tuple[float, float]], samples: int) -> list[tuple[float, float]]:
@@ -81,17 +104,19 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
         return [1.0] * n
     lengths = [math.dist(path[i], path[i + 1]) for i in range(n - 1)]
     total = sum(lengths) or 1.0
+    # Taper lengths, in pixels, resolved once: they are properties of the nib and the document's scale, not of where
+    # along the stroke the hand happens to be.
+    tin = brush['taper_in'] * brush['width']
+    tout = brush['taper_out'] * brush['width']
     walked = 0.0
     out: list[float] = []
     noise_state = 0.0
     for i in range(n):
-        # 1. how far along the stroke we are, for the tapers at both ends
-        t = walked / total
-        # 2. speed: a fast stroke presses less. A long straight run reads as fast.
+        # 1. speed: a fast stroke presses less. A long straight run reads as fast.
         speed = 0.0
         if 0 < i < n - 1:
             speed = min(1.0, (lengths[i - 1] + lengths[i]) / (2 * total / n) / 4.0)
-        # 3. corner: a sharp turn slows the hand and lifts it, so the line thins
+        # 2. corner: a sharp turn slows the hand and lifts it, so the line thins
         corner = 0.0
         if 1 < i < n - 1:
             a = math.atan2(path[i][1] - path[i - 1][1], path[i][0] - path[i - 1][0])
@@ -102,13 +127,21 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
         noise_state = noise_state * 0.86 + rng.uniform(-1, 1) * 0.14
         grain_state = rng.uniform(-1, 1)
         taper = 1.0
-        # **The taper tests are guarded, because a zero taper is a real brush setting.** `t` accumulates from
-        # floating-point lengths and can land a hair above 1.0, so `t > 1.0 - 0` was true often enough to divide by
-        # zero. A brush with no taper asked for no taper; the test has to agree.
-        if brush['taper_in'] > 0 and t < brush['taper_in']:
-            taper = 0.25 + 0.75 * (t / brush['taper_in'])
-        elif brush['taper_out'] > 0 and t > 1.0 - brush['taper_out']:
-            taper = 0.25 + 0.75 * ((1.0 - t) / brush['taper_out'])
+        # **Tapers are measured in distance travelled, not in fraction of the stroke.** A nib's entry is a fixed
+        # length it spends building pressure, so one brush has to give the same taper on a short stroke and a long
+        # one. As a fraction of arc length it did the opposite: 6 px of entry on a 40 px stroke, 640 px on a 4000 px
+        # one. The two ends combine with `min` rather than if/elif, so a stroke shorter than its own tapers gets
+        # both -- which is what a pen does when it never reaches full pressure.
+        #
+        # The `> 0` guards are not decoration: **a zero taper is a real brush setting**, and dividing by it is how
+        # this function first broke. A brush that asks for no taper gets none.
+        if tin > 0 and walked < tin:
+            taper = min(taper, TAPER_TIP + (1.0 - TAPER_TIP) * (walked / tin))
+        remaining = total - walked
+        if tout > 0 and remaining < tout:
+            # `walked` accumulates from floating-point lengths and can land a hair past `total` on the last sample,
+            # which would put the tip of the taper below its own floor. Clamping here keeps the profile monotone.
+            taper = min(taper, TAPER_TIP + (1.0 - TAPER_TIP) * (max(0.0, remaining) / tout))
         p = taper * (1.0 - brush['speed'] * speed) * (1.0 - brush['corner'] * corner)
         p *= 1.0 + brush['noise'] * noise_state + brush['noise'] * 0.55 * grain_state
         out.append(max(0.18, min(1.0, p)))

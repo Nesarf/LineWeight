@@ -375,10 +375,19 @@ def test_grain_belongs_to_the_paper_and_not_to_the_stroke():
     record = stroke_record([(20.0, 80.0), (400.0, 80.0)], 'ink', seed=7)
     record['colour_int'] = (40, 34, 48)
 
+    # **Sample the untapered core of the stroke, not its whole length.** This used to read across x = 40..380, which
+    # spans both taper regions; the tapers are lengths now, and lengthening them put the width variation they
+    # contribute into the same standard deviation this test reads as grain, so the grain's own effect stopped being
+    # separable. The paper's tooth has nothing to do with where the nib was building pressure, and the measurement
+    # should not span both. Derived from the brush so it follows a future recalibration instead of going stale.
+    _ink = BRUSHES['ink']
+    _taper = (_ink['taper_in'] + _ink['taper_out']) * _ink['width']
+    core = (int(20.0 + _taper), int(400.0 - _taper))
+
     def sigma(grain):
         BRUSHES['ink']['grain'] = grain
         layer = stroke_layer(record, 420, 160, 1.0)
-        return statistics.pstdev([layer.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)])
+        return statistics.pstdev([layer.data[(80 * 420 + x) * 4 + 3] for x in range(*core)])
 
     smooth, rough = sigma(0.0), sigma(0.7)
     BRUSHES['ink']['grain'] = 0.0
@@ -391,8 +400,8 @@ def test_grain_belongs_to_the_paper_and_not_to_the_stroke():
     grained = stroke_layer(record, 420, 160, 1.0)
     BRUSHES['ink']['grain'] = 0.0
     plain = stroke_layer(record, 420, 160, 1.0)
-    with_grain = [grained.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)]
-    without = [plain.data[(80 * 420 + x) * 4 + 3] for x in range(40, 380)]
+    with_grain = [grained.data[(80 * 420 + x) * 4 + 3] for x in range(*core)]
+    without = [plain.data[(80 * 420 + x) * 4 + 3] for x in range(*core)]
     assert statistics.mean(with_grain) < statistics.mean(without) * 0.98, \
         'grain did not thin the line: %.1f vs %.1f' % (statistics.mean(with_grain), statistics.mean(without))
     # every grained pixel sits below the ungrained one at the same place, because the paper only ever takes away
@@ -722,7 +731,10 @@ def test_the_taper_knobs_are_not_interchangeable():
         return (sum(thin) / len(thin)) / (sum(ordered) / len(ordered))
 
     normal = pressures(path, brush, seed=5)
-    long_taper = pressures(path, {**brush, 'taper_in': 0.20, 'taper_out': 0.25}, seed=5)
+    # **The taper knobs are width multiples, so a longer taper is a LARGER number.** They were fractions of the
+    # stroke's arc length, where a longer taper was a larger *fraction*; the unit changed when tapers became lengths.
+    # 30 x the 6.5 px width is a 195 px entry on a 600 px path, which is unambiguously long.
+    long_taper = pressures(path, {**brush, 'taper_in': 30.0, 'taper_out': 30.0}, seed=5)
 
     # the profile itself is different, and visible directly: the opening reaches full width much later
     assert long_taper[3] < normal[3] - 0.3, (long_taper[3], normal[3])
@@ -733,6 +745,45 @@ def test_the_taper_knobs_are_not_interchangeable():
     assert abs(normal[1] - pressures(path, brush, seed=5)[1]) < 1e-9
     tip_only = [normal[0]]                       # the floor's whole contribution is this one value
     assert tip_only[0] == min(normal) or tip_only[0] >= 0.18
+
+
+def test_a_taper_is_a_length_and_not_a_share_of_the_stroke():
+    """**A nib's entry is a distance, so the same brush tapers the same amount on a short stroke and a long one.**
+
+    The tapers were fractions of the stroke's arc length, which is the one thing a taper cannot be: it made the brush
+    spend 6 px building pressure on a 40 px stroke and 640 px on a 4000 px one, a hundredfold spread from one
+    unchanged brush. Nothing caught it, because every test drew strokes of similar length -- the defect only exists
+    *between* lengths, and a single-length test cannot see it.
+
+    The unit is now the brush's own width, so the taper is a property of the nib. A zero taper is still a legal
+    setting and still has to not divide by zero, which the previous version of this function got wrong.
+    """
+    from lineweight import BRUSHES, pressures
+
+    # isolate the taper: with the hand's other three effects off, pressure is the taper and nothing else
+    brush = {**BRUSHES['ink'], 'noise': 0.0, 'speed': 0.0, 'corner': 0.0}
+    taper_in_px = brush['taper_in'] * brush['width']
+
+    def entry_px(n: int) -> int:
+        """How far into a straight n-pixel stroke the pressure passes 0.95."""
+        path = [(float(i), 0.0) for i in range(n)]
+        ps = pressures(path, brush, seed=3)
+        return next(i for i, p in enumerate(ps) if p > 0.95)
+
+    short, long_ = entry_px(200), entry_px(2000)
+    assert abs(short - long_) <= 2, (
+        'the taper scaled with the stroke: %d px of entry on a 200 px stroke, %d px on a 2000 px one'
+        % (short, long_))
+
+    # and it lands where the brush says it should -- taper reaches 0.95 at 0.933 of its length
+    assert abs(short - 0.9333 * taper_in_px) <= 1.5, (short, taper_in_px)
+
+    # a stroke shorter than its own tapers never reaches full width, which is what a pen does
+    assert max(pressures([(float(i), 0.0) for i in range(12)], brush, seed=3)) < 0.9
+
+    # a zero taper is a real setting, and must stay one
+    assert pressures([(float(i), 0.0) for i in range(50)], {**brush, 'taper_in': 0.0, 'taper_out': 0.0},
+                     seed=3) == [1.0] * 50
 
 
 def test_the_taper_metric_measures_a_taper_it_can_see():
