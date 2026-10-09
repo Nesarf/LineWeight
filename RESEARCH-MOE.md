@@ -324,3 +324,48 @@ feature. And pp. 57–65 are where it gets validated: **four figures whose ratio
 units are drawn as dotted rules.** Build it, check it recovers 6.00 / 5.00 / 4.00 / 3.00 on those, and only then point
 it at the 292 sheets. That is an afternoon's work with a stated pass condition, which is a different thing from the
 "one-afternoon item" this was dismissed as being.
+
+### The face detector: what is measured, and what is still blocking
+
+The pass condition was *"recover 6.00 / 5.00 / 4.00 / 3.00 on pp. 57–65"*. It is **not met**, and the reason is now
+specific rather than vague. Recording it here so the next attempt starts from the measurements instead of from the
+plan.
+
+**Measured: the eye line is ≈0.58 head units below the crown.** Taking the two densest dark blobs of comparable height
+and symmetric about the face, on the pages where one figure's eyes are found unambiguously:
+
+| page | ratio | crown y | head unit | eyes found at | eye line |
+|---|---|---|---|---|---|
+| printed 58 | 6頭身 | 336 | 220.3 px | (560,464) and (668,466), centre x 614 | **0.588** |
+| printed 64 | 3頭身 | 483 | 341.0 px | (449,677) and (581,678), centre x 515 | **0.570** |
+
+Two independent figures, drawn at different ratios and different sizes, put the eye line at **0.57–0.59** of the head
+below the crown. That is the calibration a face-based head measure needs, and it is now a measurement rather than an
+assumption about anime proportion.
+
+**The blocker is isolating one figure, and it is the whole difficulty.** Every page in this chapter has **two figures**
+(front and back) plus a small chibi, plus the body text, plus the dotted rules. Three attempts failed on exactly this
+and each failure is instructive:
+
+- **Masking the rules severs the figure.** Blanking the dotted rows to measure the silhouette cut the outline into one
+  piece per head unit — the components came back with height 221 px and the head unit is 220.3. A morphological close
+  only partly repaired it, because the mask also eats the textured rows above the forehead, so the largest components
+  came back as strips 100 px wide.
+- **Large components are text, not figures.** The heaviest component on page 58 is the **chapter heading**
+  (x 140–671): a block of solid glyphs beats a thin outline on pixel count. Ranking by *height* instead picked up
+  rule fragments.
+- **Centring against the wrong thing pairs blobs from different figures.** Requiring an eye pair to straddle the
+  centre-line used the ink extent of the *whole row*, which spans both figures; the result paired (592,554) on the
+  front figure with (1243,564) on the back one.
+
+**So the order is: segment the page into figures first, then find eyes within one.** That is a segmentation step with
+its own test — and it has one, because the guide lines say how tall each figure is and where its crown is, so a
+segmentation that finds the wrong number of figures or the wrong extents is immediately visible. What it must not do is
+what these three attempts did, which is run before the segmentation and treat a page as a figure.
+
+**And the honest note about whether to keep going.** The end product here is a *sanity check on the corpus* — whether
+292 Blue Archive sheets sit inside the book's 2–6 range. That is worth having and it is not on any critical path: the
+drawing work does not consume it, the role model does not consume it, and it changes no output. The book's construction
+rules (hair 39–41, folds 112–121) were the part of this chapter the drawing actually needs, and those are extracted.
+So this is recorded as **open with its measurements intact**, rather than closed with a number that three failed
+attempts say would not have been trustworthy.
