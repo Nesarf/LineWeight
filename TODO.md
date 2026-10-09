@@ -1,302 +1,176 @@
 # TODO
 
-Ordered by what unblocks what. `P0` means *without this the rest is guesswork*.
+排序依据：**什么不做就无法验证下一件事**。
+
+产品定义已定（`DESIGN-PROJECT.md`）：**lineweight 的第一手产物是绘图原工程文件，不是图像；每一笔、每一次上色都必须是可单独寻址的条目。** 所以验收标准不再是「图好不好看」，而是**「工程文件里多了什么、能不能单独改回去」**。
 
 ---
 
-## P0 — 独立裁判（everything else is unverifiable until this exists）
+## P0 — 工程文件（现在唯一的根阻塞项）
 
-- [ ] **Deterministic self-render.** Take an SVG path string emitted by `inked_svg()`,
-      rasterise it myself with `pycairo` (1.29.1, already on this machine), write a PNG,
-      and read it back with `read_image`. No app, no bridge, no human.
-      - This is the missing half of every verification so far: the bridges prove
-        *the app accepted the file*, never *the geometry is right*.
-      - Must be reproducible: fixed size, fixed background, no anti-alias surprises.
-- [ ] **Use cairo `stroke()` as an independent geometry referee.** cairo can stroke a
-      centreline natively. Rasterise cairo's own stroke and my expanded outline, then
-      compare coverage. Two implementations, one input, no shared assumption — which is
-      exactly the discipline this project has violated five times (four on PSD).
-      - Known limitation to record, not to hide: cairo's stroke is *also* an offsetter,
-        so agreement is evidence, not proof.
-- [ ] **Render every stroke in its own colour at high zoom.** Stolen from Metzger 2024
-      (CESCG), Figure 5: he compares five vectorizers by giving *"each curve … a mutually
-      exclusive color and a high zoom level"*, because visual similarity hides the
-      structure and structure is what is being judged. Strokes that merge, self-cross or
-      loop are then visible without an app, a bridge or a judgement call.
-      - Cheapest independent check available for `stroke_record`, and it needs the same
-        rasteriser as the item above.
+不做完这一层，其余一切都没有验收对象。
 
-## P1 — Geometry
+- [ ] **v2 工程文件 + `fill` 记录类型。** 地基。
+  - `region_fill()` 现在返回 `list[str]`（裸 `d` 字符串）→ **必须返回记录对象**，否则「删掉这一块颜色」无法表达。
+  - `save_project` / `load_project`，取代只存笔画的 `save_strokes`。
+  - **已有的正确的一半**：`stroke_record()` 本身就是一条笔画一个记录，不合并 —— 这正是「每一笔独立」要求的原子，不要重造。
+- [ ] **`stage` 字段 + 四条不变量检查。** 让流程约束**可执行**，而不是文档里的一句话。
+  - 1 线稿：覆盖率 5–9%；线色**暖**（R−B > 0）非纯黑；每条线有入笔/收笔锥度
+  - 2 单色：画布饱和度处于**全流程最低**；明度分布已成型
+  - **3 上色：明度中位相对第 2 段结束漂移 < 5%，同时饱和度显著上升** ← **守门条件**
+  - 4 细化：明度仍不动
+  - 阈值 5% 是全帧实测（−4.85%），不是估计；早期写的 3% 是 31 点采样低估的产物。
+- [ ] **`--stage` / `--upto` 渲染。** `lineweight render p.json --stage line -o line.png`。**验收是按阶段做的，每段就必须能单独看见。**
+- [ ] **mark 级增删改 API**：`add_marks` / `revise_mark(id)` / `supersede(id)`。
+  - 硬规则：**不允许「重新生成」已有 mark** —— 要改就改那条 id，其余原样保留。这是「不做批量生图」在代码层面的实际含义。
+- [ ] **`superseded` 语义 + 操作日志。** 视频实测**画了 145,184 px 的线、最终只剩 29,110 px** —— 画五倍留一倍是正常工序，**擦除是一等操作，不是失误**。
+- [ ] **mark 的来源追溯**（来自哪一轮指令）。「持续给出建议/要求」这个用法**要求**能回退到某一步。
 
-- [ ] **Direction-reversal detection in `outline()`.** Read out of the `perfect-freehand`
-      bundle (3.77 kB ESM): when `dot(v[i], v[i-1]) < 0` or `dot(v[i], v[i+1]) < 0` it
-      sweeps a half-circle arc instead of emitting offset points. It **avoids creating
-      invalid loops rather than repairing them** — the repair path is the expensive one
-      (raw offset is O(n); loop removal dominates).
-      - Current state: 11 holes on the test corpus with consistently-wound subpaths.
-      - The reverted `covered()` experiment is the negative control: it took 13 holes to
-        **175**, because the coverage test also fires on the *inside of ordinary curves*.
-        Do not retry it without a curvature gate.
+**明确不做的**：批量、队列、模板、一键出图。
 
-## P2 — Model
+## P0b — 独立裁判（阶段验收自身也要能被验）
 
-- [ ] **Line hierarchy.** 輪郭線 / 内部線 / 陰影線 as distinct roles instead of one width.
-      `stroke_record` should carry the role, not just the width.
-      - **Now has empirical grounding**, not just convention: KEER2014 measured that
-        outline colour and thickness control **naturalness** and **potency**, while the
-        character *design* controls **activity** -- the two are separable. Thicker raises
-        potency and lowers naturalness; brown raises naturalness and lowers potency.
-      - **Consequence for the model: there is a trade-off, not an optimum.** A hierarchy
-        that only thickens the contour is silently spending naturalness to buy potency.
-        The role model has to be able to say which it is buying.
-      - Open gap: the study used **constant** width (pressure deliberately removed), so
-        the tapered case that `lineweight` actually generates is unmeasured.
-- [ ] **An outline colour axis.** `lineweight` has one ink and no colour model. KEER2014
-      found colours near skin tone (and black) read as natural while green/blue/red read
-      as unnatural, and brown was adopted by the industry for exactly that reason.
-      - Same file, same evidence as the role model -- they are two axes of one finding.
-- [ ] **Moe construction knowledge** (see `RESEARCH-LINE-QUALITY.md`):
-      - widths are **relative within one drawing**, never a fixed constant
-      - thicken: outer contour, shadow side, base of hair and folds
-      - thin: lit side, inside of skin and cloth, fine tips
-      - eyelashes are **overlapping strokes**, not filled black
-      - 2D construction is **inside-out** (draw the body under the clothes);
-        2.5D is outside-in — the same target built two different ways.
+- [ ] **确定性自渲染。** 把 `inked_svg()` 吐出的路径用 `pycairo`（1.29.1 已在本机）自己栅格化，写 PNG，再用 `read_image` 读回来。**无 app、无桥、无人。**
+  - 这是此前所有验证缺的那一半：桥只证明*应用接受了文件*，从不证明*几何是对的*。
+  - 已知限制照实记录：**cairo 的 `stroke()` 本身也是 offsetter**，所以它只能当等宽描边的裁判；锥形线要比的是 `cairo_fill` 一份独立产出的轮廓。
+- [ ] **每条笔画涂互斥颜色 + 高倍放大。** 偷自 Metzger 2024（CESCG）图 5 —— 视觉相似度会藏住结构，结构只能这样看。合并、自交、成环一目了然。**`stroke_record` 能有的最便宜的独立检查。**
 
-## P2.5 — The stylization record
+## P1 — 几何
 
-The SIGGRAPH 2005 course gives a **per-stroke style specification** that `stroke_record` is a subset of
-(`RESEARCH-VECTORIZATION.md`). Filling the gaps is the concrete work list for this axis:
+- [ ] **`outline()` 的方向反转检测。** 读自 `perfect-freehand` 的 3.77 kB bundle：`dot(v[i],v[i-1]) < 0` 时扫半圆弧而不发偏移点 —— **它避免制造 invalid loop，而不是修复它**（修复路径才是贵的：原始偏移 O(n)，去环占主导）。
+  - 现状：一致绕向的子路径下 11 个洞。
+  - 已回退的 `covered()` 实验是负对照：13 → **175** 个洞，因为覆盖测试在**普通曲线的内侧**也会触发。没有曲率门控不要重试。
 
-- [ ] **`colour` per stroke.** Absent today — one ink for the whole document. KEER2014 says
-      outline colour is a measured perceptual axis (brown/skin-tone read natural; green, blue,
-      red do not), so this is not a cosmetic field.
-- [ ] **`width_profile` as a profile, not as `pressure`.** Today the width curve is implicit in
-      the pressure model. The course stores the profile. Making it explicit is what lets a role
-      override the pressure model without inventing a second mechanism.
-- [ ] **`alpha_profile`.** Absent.
-- [ ] **`paper`.** Absent — no texture or media simulation at all.
-- [ ] Known-but-unread from the same course: *Visibility of lines in 3D*, and *Temporal coherence
-      for stylized lines* (the problem `seed` addresses, solved by propagating parameterisations
-      between frames — Kalnins 2003).
-- [ ] **Context worth having**: `Hsu 94, Skeletal Strokes` is the origin of this whole model, and
-      *"many of these features are now standard fare in commercial programs such as Adobe
-      Illustrator"*. `lineweight` bridges to Illustrator, so **the downstream application already
-      implements more of the stylization model than the library that feeds it does.**
+## P2 — 线条角色与颜色
 
-## P3 — Rendering
+- [ ] **线角色模型**（輪郭線 / 内部線 / 陰影線）。`stroke_record` 该带 role，不只是宽度。
+  - **有实验依据，不只是惯例**：KEER2014 实测轮廓线的**颜色与粗细**控制 *naturalness* 与 *potency*，而**角色设计**控制 *activity* —— **两者可分离**。所以「读起来不自然/没力气」是线条故障，不是设计故障。
+  - **是取舍不是最优**：加粗买 potency 花 naturalness；棕/红棕买 naturalness 花 potency。只加粗轮廓的层级模型在**静默地做这笔交易却不说**。
+  - **未测的缺口**：该研究用的是**等宽**（刻意去掉压感），而 lineweight 产出的是锥形。
+  - 形式化对照（Princeton 2005 课程）：silhouette / contour / **suggestive contour** / ridge / valley —— 让角色模型**可计算、可对图检查**。
+- [ ] **轮廓颜色轴。** lineweight 现在只有一种墨、没有颜色模型。
+  - **独立佐证**：视频里的线稿实测是**暖红棕**（中位 RGB (162,140,144)，R−B ≈ +10），不是黑 —— 一幅真实高质量萌系插画在实践这条轴。
+- [ ] **专业流程是两趟**：アンミ（CGイラストテクニック vol.9）—— 先把形拿准，**线宽变化在上色阶段加**。所以**角色模型该跑在已完成的几何之上，而不是约束画线那一步**。
+- [ ] **均匀线宽是被点名反复出现的失败，而且就在头发上**。DSマイル（vol.10）：「**私は髪を描くたび線画に強弱を付けることを忘れがち**」。**这是这个库为什么存在的最好陈述。**
 
-- [ ] **Cel shading.** Only after the linework is trustworthy; shading hides line faults.
+## P2.5 — 逐笔画样式记录的缺口
+
+SIGGRAPH 2005 课程给出的 per-stroke 规范，`stroke_record` 是它的子集。逐字段对照后缺的：
+
+- [ ] **`colour` per stroke** —— 现在整篇一种墨。
+- [ ] **`width_profile` 存成 profile** —— 现在宽度曲线隐含在 `pressure` 里；显式化之后 role 才能覆盖压感模型而不必发明第二套机制。
+- [ ] **`alpha_profile`** —— 无。
+- [ ] **`paper`** —— 无纹理/媒介模拟。
+- [ ] 同课程未读：*Visibility of lines in 3D*、*Temporal coherence for stylized lines*（`seed` 解决的是同一个问题，Kalnins 2003 用帧间参数化传播解决）。
+- [ ] **背景**：`Hsu 94, Skeletal Strokes` 是这套模型的源头，而它 *"is now standard fare in commercial programs such as Adobe Illustrator"*。**lineweight 桥接到 Illustrator —— 下游应用比喂给它的库实现了更多这套模型。**
+
+## P3 — 内容知识
+
+- [ ] **读完那本萌系教科书。** `RESEARCH-MOE.md` 有地图；本地 `E:\DaShaoHuo\downloads\ia-books\moe_face_body.pdf`（178 页，**印刷页 = PDF 页 − 2**）。
+  - **已读并已转为规则**：头身 **2–6**（6 是「ギリギリのライン」，7+ 成人）；**头发是「太い丸」体块而非线**；**头发体积在「前」不在后** → **所以头发是 輪郭線 问题不是 内部線 问题**。
+  - 下一步最高价值：**pp.39–41（前髪と横髪のバランス／バリエーション）** 与 **pp.111–116（衣服のシワ）** —— 头发是轮廓线那一类，褶皱是陰影線那一类，**两类现在都还没有规则**。
+- [ ] **用头身比边界检查语料。** 2–6 是硬边界且可量，BA 设定集能直接对着量 —— **这个检查不依赖任何宽度统计量**，所以它是个真正独立的检查。
+- [ ] **用真参数集反向校准**（已做一半）：漫画の教科書 No.02 的「丸ペン 0.3–0.4mm，入り・抜き on **5.0mm**」→ 已转成 taper = **14.3 × 笔宽**。
+- [ ] **SAI 是 taper 的参考实现**：同书「**SAI は Photoshop に比べ"入り"と"抜き"がきれいに描け**」—— SAI 正是本项目已桥接的应用。
+
+## P4 — 渲染
+
+- [ ] **赛璐璐上色。** 只在线条可信之后做；上色会掩盖线条故障。
 
 ---
 
-## Corpus
+## 下一个视频的逐帧分析
 
-- [ ] **Fix the classifier.** `tests/tools/add_corpus.py:94-95` currently selects
-      `line_runs >= 200 and ink_ratio < 0.30`. That threshold **admits full-colour
-      illustrations** — a 15-page stride sample from volume 1 measured ink_ratio
-      **0.1901**. "276 line drawings" really means "276 ink-light pages".
-      - Replace with a **monochrome-ness / saturation** test, then recompute
-        `tests/data/corpus_summary.json`.
-      - This separates the sets but does **not** produce more line art. See below.
-- [ ] **Extract line art instead of classifying pages.** Commit `69d33e8` recorded the
-      decision: run every one of the 929 pages through a line-art extractor rather than
-      guessing which pages are line art.
-      - `control_net_lineart_anime`, `lineartization`, `bloc97/SYNLA-Dataset`, `SYNLA-Plus`
-      - **Build-time only. Never inside `lineweight`.** The library is deliberately
-        stdlib-only and must stay that way — the corpus is data, and a library that
-        consumes it must not inherit a deep-learning stack.
-- [ ] **Verify the extractor before trusting any number derived from it.** A thinner or
-      fatter extractor moves every width statistic. Extraction is an opinion, so it has
-      to be checked against something that is not extraction.
+**先解决两件事再开始，否则第二个视频做不完。**
 
-### Reference corpora — they are NOT comparable
+### 阻塞项 1：全抽帧不可扩展
 
-| corpus | ink | width med | p90 | taper |
+实测换算率：**22.2 MB 的源 → 14 GB 的 PNG**（≈ 0.63 GB/MB）。
+
+| 视频 | 源 | 全抽帧需要 |
+|---|---|---|
+| `绘画过程 P1 人类的绘画过程 …webcore风格插画…` | 13.5 MB | **8.5 GB** |
+| `paint P1 【Arcaea_绘画】Fracture…` | 58.4 MB | **36.8 GB** |
+| `【稿件展示】"我心中的狂焰……"` | 86.0 MB | **54.2 GB** |
+| `paint P1 【绘画过程_Arcaea】高塔…` | 96.5 MB | **60.9 GB** |
+| `【Arcaea_绘画过程】夕焼けと花…` | **206.9 MB** | **130.5 GB** ← **任何单盘都放不下** |
+
+D 盘现有 **45 GB** 可用。**第一个视频就已经把方法用到了尽头。**
+
+- [ ] **改成流式解码，不落帧。** `ffmpeg -f rawvideo -pix_fmt gray -` 直接喂给 Python，逐帧算 ink / diff / bbox / 色彩，**只把关键帧写盘**。
+  - 分析真正需要的逐帧统计**不需要帧文件存在** —— 现在写 14 GB 只是为了再读回来算四个数。
+  - 关键帧只取「状态真的变了」的那些：阈值 0.05 下是 **609 帧**，阈值 0.15 下 **257 帧**。按 1.5 MB/帧算，**14 GB → 约 0.9 GB**。
+  - 这是**唯一**能让 130 GB 那个视频跑起来的做法。
+- [ ] **合并三趟扫描。** 现在 `analyze.py` / `classify.py` / `colourpass.py` 各解码一遍 12197 帧，慢且重复。流式化时一并合并成一趟。
+- [ ] **关键帧之外的产物不入帧目录。** 报告、接触表、JSON 都在 KB–MB 量级，**只有 PNG 序列是 GB 量级** —— 而现在被删掉的那个视频的 14 GB 里，能被复用的只有那 609 帧。
+
+### 阻塞项 2：单个视频不足以支撑四段不变量
+
+`DESIGN-PROJECT.md` 的四段结构必须能在**别的画师、别的风格**上复现，才算规律而不是个例。
+
+- [ ] **每个视频先跑现成流水线**（脚本在 `D:\DaShaoHuo\cache\framecache\`），**重点验两件事**：
+  1. **四段结构是否复现** —— 线稿 → 单色明暗 → 上色 → 细化；
+  2. **第 3 段的明度守门条件是否成立** —— 明度漂移 < 5% 且饱和度显著上升。
+- [ ] **记录反例。** 若有视频**没有**单色明暗段（直接上色），那是重要发现，必须写下来 —— 那说明四段是这位画师的工序，不是通例，`DESIGN-PROJECT.md` 的不变量要降级成「可选约束」。
+- [ ] **先做 `人类的绘画过程`（13.5 MB，最小）与 `夕焼けと花`（206.9 MB，最大）各一个** —— 一最小一最大，先把方法的适用边界摸出来，再铺其余三个。
+
+---
+
+## 语料
+
+- [ ] **修分类器。** `tests/tools/add_corpus.py:94-95` 用 `line_runs >= 200 and ink_ratio < 0.30`，**这个阈值放全彩插画进来**（vol 1 的 15 页 stride 样本实测 ink_ratio **0.1901**）。"276 张线稿" 实际是 "276 张墨少的页"。
+  - 换成**单色性/饱和度**判据，重算 `tests/data/corpus_summary.json`。分开集合，但**不产生更多线稿**。
+- [ ] **不分类，改为抽线稿。** 929 页全部过一遍线稿抽取器（`control_net_lineart_anime` / `lineartization` / SYNLA）。
+  - **只在建语料时用，永不进 `lineweight` 本身。** 库是刻意零依赖的，**语料是数据，消费它的库不该继承深度学习栈**。
+- [ ] **先验证抽取器再信任任何数字。** 抽取细一点粗一点，上面所有宽度统计都会跟着动。**抽取是一种意见，必须拿不是抽取的东西去校。**
+
+### 参考语料之间不可比
+
+| 语料 | ink | 宽度中位 | p90 | taper |
 |---|---|---|---|---|
-| line-drawing library (276) | 0.1485 | 4.0 | 11.0 | 0.4213 |
-| BA official art (15, stride, vol 1) | 0.1901 | 4.0 | 12.0 | 0.3923 |
-| `16+` illustrations (14) | 0.3429 | 5.0 | 13.0 | 0.3811 |
+| 线稿库 (276) | 0.1485 | 4.0 | 11.0 | 0.4213 |
+| BA 官方画集 (15, stride, vol 1) | 0.1901 | 4.0 | 12.0 | 0.3923 |
+| `16+` 插画 (14) | 0.3429 | 5.0 | 13.0 | 0.3811 |
 | `ACG建筑` (20) | 0.6290 | 5.0 | 13.0 | 0.3564 |
 
-- Target for moe work: **median 4 px, p90 12 px, taper 0.392, ink 0.190**.
-- **The trap:** the width metric is valid (Pillow lines 2/4/8/16 → 2.0/3.0/8.0/16.0),
-  but `ref.py` excludes runs > 16 px as area. On painted art the surviving "line-like
-  runs" are shadow and texture edges. So agreement across the four sets above does
-  **not** mean the linework agrees.
-- `--fit-dir` currently treats every corpus identically. It must not.
-- `F:\素材\图\16+` is **mixed** — Pixiv illustrations + phone photos + screenshots.
-  25 files ≠ 25 drawings.
-- `F:\素材\图\固态景色\ACG建筑` is **painted (厚塗り)**, essentially no line art, so
-  lineweight's role there is underdrawing only — a different job with different numbers.
-- Corpus source, confirmed: `F:\素材\图\碧蓝档案官方设定资料` → `1/` 292 + `2/` 321 +
-  `3/` 316 = **929**, exactly the `corpus_summary.json` record count.
+- 萌系工作目标：**中位 4 px、p90 12 px、taper 0.392、ink 0.190**。
+- **陷阱**：宽度指标本身有效（Pillow 画 2/4/8/16 → 量到 2.0/3.0/8.0/16.0），但 `ref.py` 把 >16 px 的游程当面积排除。**在上色画面上，剩下的"线状游程"是阴影和纹理边缘** —— 所以四组数字一致**不代表线稿一致**。
+- `--fit-dir` 现在把所有语料同等对待。**不该。**
+- `F:\素材\图\16+` 是**混合**的（Pixiv 插画 + 手机照片 + 截图）。25 个文件 ≠ 25 张画。
+- `F:\素材\图\固态景色\ACG建筑` 是**厚塗り**，几乎没有线稿 → lineweight 在那里只做底稿，**是另一个工种、另一套数字**。
+- 语料源已确认：`F:\素材\图\碧蓝档案官方设定资料` → `1/`292 + `2/`321 + `3/`316 = **929**，与 `corpus_summary.json` 记录数一致。
 
 ---
-
-## Prior art — read, and what it settles
-
-Full write-up in `RESEARCH-VECTORIZATION.md`.
-
-- [x] **Metzger, *Semantically Meaningful Vectorization of Line Art in Drawn Animation***,
-      CESCG 2024, TU Wien, supervised by Michael Wimmer. Read.
-      - States this project's criterion: vector structure must be *"close to how artists
-        would draw"*, not merely visually similar.
-      - **Settles the pinhole question**: his survey finds *no* method — heuristic or
-        learned — vectorizes clean animation frames usably, failing specifically on
-        **high curvature**, with *"a bias towards lower curvature"* and *"small holes"*.
-        Same failure as `outline()` produces. It is the domain's open problem, not a bug
-        here. Stop treating it as a local defect.
-      - **Refines where the differentiator is, and corrects an overclaim**: every surveyed
-        *vectorizer* emits a **fixed stroke width**, but width modulation is well
-        established in **NPR** (Elber 1995b depth, Winkenbach 1996 line spacing, Hamel 1998
-        occlusion, Kindlmann 2003 and Sousa 2003a curvature, Sousa 2003b a full pipeline).
-        All of it is driven by a **geometric quantity**. None of it is driven by
-        **perceptual role** -- the 輪郭線/内部線/陰影線 hierarchy or the measured
-        potency/naturalness trade-off. So: NPR has width but takes **meshes**;
-        vectorization takes **rasters** but has no width. Raster input *and* width is the
-        actual gap. The pipeline shape itself (extract → chain → fit → render with varying
-        width) is `Sousa 2003b`, published in 2003 -- not a contribution.
-- [x] **Izumi, Sakurai, Yoneda & Yamada, *Changes of Impression in the Animation
-      Characters with the Different Color and Thickness in Outlines***, KEER2014,
-      pp. 921-926. Read. See the role-model item under P2 — this is its evidence.
-- [x] **TuringSketchLine** — real manga production drafts paired with final line art,
-      DOI `10.21227/kcvr-qf66`, 3.44 GB, panel JSON/JSONL, character boxes and identity
-      labels, non-commercial, **download needs an IEEE DataPort login**. Read.
-      - It is **not** a clean corpus: *"many final contours are missing or differ from the
-        draft strokes"*. It is evidence that **the draft stroke is not the contour** — a
-        boundary condition on `outline()`, not a dataset to calibrate against.
-      - Its one genuinely useful number, not yet extracted: **how far a draft stroke sits
-        from its final contour**. That would set a tolerance for the whole pipeline.
-- [x] **Li, Mao, Qiu & Matsui, *Region-Wise Correspondence Prediction between Manga Line
-      Art Images***, CVPR 2026, pp. 15334-15342, [arXiv 2509.09501](https://arxiv.org/abs/2509.09501).
-      Read.
-      - The line-art-to-line-art comparison machinery this repo lacks — the reason the four
-        width tables cannot be compared to each other. Learned, so corpus-side only.
-- [x] **SVG variable-width stroke: the standards answer.** There is a W3C proposal, last
-      action **2013**, issue [#953](https://github.com/w3c/svgwg/issues/953) closed in
-      **September 2024**. Its author Brian Birtles gives the reason it died: *"adding
-      primitives not natively supported by underlying graphics libraries would be a
-      significant hurdle"* — cairo, Skia, CoreGraphics and Direct2D all stroke at a
-      **constant width**. So the stack is closed at the bottom and **filling an expanded
-      outline is the only expressible form**. Not a workaround; the only option. The
-      developer who asked was doing the same thing — *"trying to 'fake' variable width
-      lines using fill"*.
-- [x] **Princeton SIGGRAPH 2005 Course 7, *Line Drawings from 3D Models*** — Rusinkiewicz,
-      DeCarlo, Finkelstein. All nine course notes are free and downloaded to
-      `E:\DaShaoHuo\downloads\papers\sg05\`.
-      - Gives the **formal** line taxonomy that the drawing convention in
-        `RESEARCH-LINE-QUALITY.md` is an informal version of: **silhouette / contour /
-        suggestive contour / ridge / valley**, each mathematically defined and computable.
-        Cross-referenced into `RESEARCH-VECTORIZATION.md`.
-      - The annotated bibliography is a map of the whole field, 1967-2005, and is what
-        **corrected this repo's overclaim about width**.
-
-### Not yet read
-
-- [x] **RESOLVED — the moe-construction library is reachable, and it is large.** The earlier
-      entry here said `archive.org` was unreachable and needed an egress path. **The name layer
-      is poisoned and the direct route is closed — and both statements are irrelevant**, because
-      this workspace already routes everything through `127.0.0.1:10090` and **git-bash's `curl`
-      must be told explicitly**: `curl -x http://127.0.0.1:10090 ...`. It returns HTTP 200.
-      See `RESEARCH-SOURCES.md`.
-      - **1306 files**: a complete professional drawing-textbook collection covering *both*
-        directions. **115 OCR text files, 13.5 MB, downloaded** to
-        `E:\DaShaoHuo\downloads\ia-ocr\` (not committed — copyrighted).
-      - Highest-value titles: 萌えキャラクターの描き方（顔・からだ編／コスチューム編）,
-        漫画の教科書 No.02 萌えキャラの上手な描き方, 萌え絵の教科書, アンミ and DSマイル
-        CGイラストテクニック, 漫画达人！漫画的背景与透视, How to draw background for characters
-        1 & 2, おんなのこの髪型カタログ, How to draw a men's moe character.
-      - **Text layer is thinner than the inventory suggests**: a keyword pass over all 115 files
-        hit only **8 files / 17 passages** on line-weight terminology. These are picture books;
-        the instruction is in the figures. What the text *does* give is worth having — see the
-        concrete findings below.
-- [x] **Calibrate the pressure model against a real parameter set. DONE.** 漫画の教科書 No.02 gives
-      「髪の毛…丸ペン **0.3–0.4mm**」 with **入り・抜き ON at 5.0mm** → a taper **14.3× the nib width**.
-      - **The unit was wrong, not the numbers.** `taper_in`/`taper_out` were fractions of the stroke's
-        arc length: one unchanged `ink` brush spent **6.4px** building pressure on a 40px stroke and
-        **640px** on a 4000px one. They are distances now, in multiples of the brush's own width,
-        because the anchor is a ratio and a ratio is scale-free.
-      - All four brushes take the single measured total and differ only in the entry/exit split.
-      - **Verification moved the right way**: `taper_ratio` 0.4595 → **0.4372** over a 60-stroke sheet,
-        against a corpus target of 0.392–0.421.
-      - **And the metric is confounded** — one stroke measured alone reports 0.72–0.76, i.e. the
-        opposite of the truth, because the thinnest fifth of runs on a single long stroke is mostly
-        *full-width* runs. `taper_ratio` is only meaningful over a drawing. **Never validate a taper
-        with one stroke.** The remaining gap is recorded, not closed, because tuning a measured
-        constant to fit a confounded statistic is fitting the wrong way round.
-      - Four tests moved: three failed for the right reason, and the fourth is new and the old code
-        cannot pass it — it draws a 200px and a 2000px stroke with one brush and requires the same
-        absolute taper. **The defect was invisible to a suite that only ever drew one stroke length.**
-- [ ] **Read the rest of the moe textbook.** `RESEARCH-MOE.md` maps it; local copy at
-      `E:\DaShaoHuo\downloads\ia-books\moe_face_body.pdf` (178pp, folio = PDF page − 2). Highest value
-      next: **pp.39-41 (前髪と横髪のバランス / バリエーション)** and **pp.111-116 (衣服のシワ)** —
-      hair because it is the 輪郭線 case, folds because they are the 陰影線 case, and neither has a
-      rule yet.
-- [ ] **Check the corpus against the head-body ratio bound.** The textbook states moe is **2–6
-      heads**, with 6 as 「ギリギリのライン」 and 7+ adult. That is a hard, measurable bound and the
-      Blue Archive character sheets can be measured against it — a sanity check on the corpus that
-      does not depend on any width statistic.
-- [ ] **The two-pass architecture is what professionals do.** Anmi (CGイラストテクニック vol.9):
-      線の強弱は深く気にせず、まずは形を取ることに集中し、**線画ではなく着彩の段階で強弱を加えることもあります**
-      — geometry first, weight applied as a later pass. That is exactly `stroke_record`'s split, and
-      it says the **role model should run over finished geometry, not constrain the drawing step**.
-- [ ] **Uniform width is the named failure mode, and hair is where it happens.** DSmile (vol.10):
-      「**私は髪を描くたび線画に強弱を付けることを忘れがち**」／「**線が一定にならないよう**
-      気をつけて」. A working professional's own recurring mistake — which is the clearest
-      statement yet of what this library is for.
-- [ ] **SAI is the taper reference.** 同書: 「**SAI は Photoshop に比べ"入り"と"抜き"がきれいに
-      描け**、直に描いているような滑らかな線が描ける」. SAI is the app this project already
-      bridges to, and its taper is the one its users cite.
-- [ ] **Still out of reach: the diagrams.** Page images are 10–100 MB per book and **nothing on
-      this machine can rasterise a PDF** (`pdftoppm` absent, PyMuPDF absent). `_text.pdf` variants
-      exist for some titles and are smaller; JP2 page images are an alternative path needing a JP2
-      decoder.
-- [ ] **The tutorial numbers disagree with each other, twice now.** CSP says eye width ≈ 1/2 the
-      face width *and* the inter-eye gap ≈ one eye width, which cannot both hold; a Chinese source
-      gives the anime 三庭 as **1 : 0.7 : 1.3** (vs realistic 1:1:1) with the eye gap widened to
-      **1.2–1.5×** pupil width. Different numbers, same feature, and the second source is
-      **AI-generated content-farm text with no provenance**.
-      - Recorded as evidence for the corpus position, not as fact: prose rules about proportion
-        cannot be trusted, and a large share of what is searchable on this topic is now
-        machine-written. **Measuring the corpus is the only way to settle any of it.**
-- [ ] **JAniCA (日本アニメーター・演出協会) perspective course handouts.**
-      Downloading to `E:\DaShaoHuo\downloads\janica\`. 5-6 MB each; `basic04` returned 404.
-      - Why: `basic03` says *「結構自然に見えますが、このカットも『消失点を曖昧にして』描かれています」*
-        — the natural-looking cut is the one with the **vanishing point deliberately left
-        ambiguous**. Second independent source for "the geometric ideal is not the drawn
-        thing". Consequence: fitting every scene to a detected vanishing point would be
-        measurably correct and visually wrong.
-- [ ] **Quantitative Evaluation of Line Thickness in AI-Generated Anime Line Art Using
-      Image Processing** (Zenodo 18251029) — a published thickness metric to check this
-      repo's width measurement against instead of trusting it. Direct
-      [PDF](https://zenodo.org/records/18251029/files/%5Ben%5DQuantitative%20Evaluation%20of%20Line%20Thickness%20in%20AI-Generated%20Anime%20Line%20Art%20Using%20Image%20Processing.pdf?download=1).
-- [ ] **Kawatani et al. (2010)**, *Feature Evaluation by **Moe-Factor** of ANIME Characters
-      Images and its Application*, IEICE TR 109(415) 113-118 — a **numeric moe score**
-      computed from character images. Earliest attempt found at turning the target into
-      a number; also **Kawatani et al. (2008)**, IPSJ SIG 2008-CG-132, 35-38.
-- [ ] **LineGAN: A Line Drawing Rendering Model with a Focus on Line Density
-      Distribution**, J-STAGE *mta* 12(1) — **line density distribution** as a metric,
-      which this repo could compute directly.
-- [ ] **2次元アバターの輪郭線の太さがプロテウス効果に及ぼす影響**, 感性工学 24(4), `TJSKE-D-25-00036`
-      — outline thickness of a 2D avatar affects the **Proteus effect**, i.e. line width
-      changes user behaviour, not just appearance. Recent (submitted 2025).
 
 ## Tooling
 
-- [ ] **CLI: take control points from a file.** Today `lineweight` can only draw its
-      built-in demo, so nothing outside the test suite can be fed through it.
-- [ ] Push any local commits when the network allows (last known pushed: `69d33e8`).
+- [ ] **CLI 从文件读控制点。** 现在 `lineweight` 只能画内置 demo，测试套件之外没有东西能喂进去。
+- [ ] **推送要走代理**：`git -c http.proxy=http://127.0.0.1:10090 push origin master`。直连必失败（21,054 ms 超时）。**推送慢，跑后台，不要加 timeout。**
+- [ ] 当前已推送：`1b84cdc`。
 
 ---
 
-## Standing discipline
+## 已 settle 的研究（归档，不再待办）
 
-1. **Verify with an independent artifact.** Two things that share an assumption cannot
-   check each other. This has bitten the project five times, four of them in the PSD
-   writer.
-2. **A helper that is right plus a serialiser that ignores its argument is a contract
-   nothing checks.** It happened: `channel_bytes(-1)` was hardcoded for every channel,
-   so every colour read back as white.
-3. **Hand-computed offsets are a repeated error source.** Compute them, then verify them
-   against a rasteriser.
+详细在 `RESEARCH-VECTORIZATION.md` / `RESEARCH-LINE-QUALITY.md` / `RESEARCH-SOURCES.md` / `RESEARCH-MOE.md` / `RESEARCH-SCENERY.md`。
+
+- **针孔不是本项目的 bug，是领域的公开难题。** Metzger 2024（CESCG）调查所有方法 —— 启发式与学习式 —— **没有一个能可用地矢量化干净动画线稿**，特定失败在 **high curvature**，限制里写着 *"small holes"* 和 *"a bias towards lower curvature"*。与 `outline()` 在 tight curvature 的失败同源。**别再当局部缺陷修。**
+- **流程形状不是贡献**：抽取 → 串联 → 拟合 → 变宽渲染，是 **Sousa 2003b**，2003 年发表。
+- **宽度建模不是无人做过**（此处曾经过度断言，已修正）：NPR 里 Elber 1995b 深度、Winkenbach 1996 线距、Hamel 1998 遮挡、Kindlmann/Sousa 2003 曲率都有。**全部由几何量驱动，没有一条由感知角色驱动。**
+- **SVG 不能表达变宽描边，且短期不会。** W3C 提案最后动作 2013，issue #953 于 2024-09 关闭；作者给的理由是 **cairo/Skia/CoreGraphics/Direct2D 全都只支持等宽描边**。**所以"展开成填充轮廓"是唯一可表达的形式，不是 workaround。**
+- **画师没有自己流程的说明。** DeCarlo（Princeton 2005）：artists *"don't have access to the nature of the processes behind what they're doing"*，靠训练和**自己的眼睛**判断。**这是本项目存在的理由。**
+- **线模式是双通道**：**靠局部密度传达明暗，靠方向传达形体**。
+- **知觉一致性是局部的，不是全局的**（Penrose 三角）。**所以不存在可运行的全局一致性检查** —— 人眼自己也不跑。
+- **参照系不可信**：CSP 说眼宽 ≈ 脸宽 1/2 且眼距 ≈ 一个眼宽，两者不能同真；另一来源给 三庭 **1:0.7:1.3**，而它是**AI 生成的内容农场文本、无出处**。**散文式比例规则不可信，量语料才能定案。**
+- **透视的理想解不是画出来的东西**：JAniCA 讲义 —— 看起来自然的那一卡是**故意把消失点画含糊**的；宽幅画面是**两种透视平滑接起来**。**对检测到的消失点做拟合会是测量上正确、视觉上错误。**
+- **archive.org 可达，但必须走代理**：`curl -x http://127.0.0.1:10090`。名字层被投毒 + 直连路由关闭**都是常态**，不说明可达性。**在宣布任何源不可达之前先查已记录的出网姿态。** 1306 文件 / 115 份 OCR 已下到 `E:\DaShaoHuo\downloads\ia-ocr\`（有版权，不入库）。
+
+---
+
+## 一贯纪律
+
+1. **用独立产物验证。** 共享假设的两个东西互相验不了。本项目栽过五次，四次在 PSD。
+2. **helper 对了 + 序列化器忽略参数 = 没有任何东西检查的契约。** 已发生：`channel_bytes(-1)` 对所有通道写死，于是颜色全读成白色。
+3. **手算偏移是反复出错源。** 算完要拿栅格化器验。
+4. **度量本身可能被污染。** `taper_ratio` 被笔画长度分布污染（单笔画测出 0.72，整张画 0.437，**方向相反**）；INK 阈值在压缩视频上测不准线宽（横截面最低灰度只有 152）。**先问"这个数字在什么条件下才成立"，再问它等于多少。**
+5. **采样不等于全量。** 31 点采样给出的「漂移 1.7%」，全帧实测是 **4.85%** —— 阈值从 3% 改到 5%。**结论可能对，但要是运气对的，那就是错的。**
