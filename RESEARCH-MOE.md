@@ -554,3 +554,56 @@ above were.
 
 Recorded open. The measurements that survived are the useful part: **the eye line at 0.58 of the head**, the **page
 segmenter that finds exactly two figures per page** and correctly rejects back views, and the **five failure modes**.
+
+### The head-anchored figure: exact on the book, and it does not survive the corpus
+
+**The method that works.** Anchor on a detected head, then take the **connected component of dilated ink under it** —
+the component *is* the figure, so its height over the head box is the ratio directly, with no calibration step at all.
+
+Validated on the three per-ratio pages whose figures are separate, against ratios printed on the page:
+
+| page | printed | measured |
+|---|---|---|
+| printed 60 | 5頭身 | **5.00** |
+| printed 62 | 4頭身 | **4.01** |
+| printed 64 | 3頭身 | **2.86** |
+
+**Exact to a fifteenth of a head on held-out figures.** No fitted constant, no calibration curve — the one honest
+thing the circularity finding said was missing.
+
+**And on the corpus it does not work.** Sampling 120 sheets from the 292 and running precisely that method, **83 are
+rejected** — 69%. The rejection does not respond to tuning: varying the ink threshold over 80–150 leaves it at 68–72%,
+and scaling the dilation with the head (w/22 down to w/6) or loosening the detector leaves it at 71–80%.
+
+**So the diagnosis is worth more than the number, and it decomposes cleanly:**
+
+| count | what failed |
+|---|---|
+| **32** | **no head detected at all** — the single largest cause |
+| 17 | the component's top is not at the head, so it is not this figure |
+| 22 | components merged, 4.6 to 22.6 head-widths across |
+| 10 | components too small, giving ratios under 1.5 |
+
+**The detector is the binding constraint, and it is old.** `lbpcascade_animeface` is an LBP cascade from 2011,
+trained on the anime art of its time. Blue Archive sheets are large, detailed, toned, and full of things a 2011
+cascade has never seen — halos, weapons, half-tone shading, four figures to a page. It finds the head on 73% of them
+and misses on 27%, and no amount of preprocessing on my side fixes a detector that cannot see.
+
+**The dependency this names, from the same search that found this one.** There is a modern alternative —
+[hysts/anime-face-detector-yolov3](https://huggingface.co/hysts/anime-face-detector-yolov3), a YOLOv3 trained for
+exactly this — and the Japanese literature has a paper on
+[体型推定 from a single character illustration](https://www.jstage.jst.go.jp/article/sanjigen/27/0/27_49/_pdf/-char/ja),
+which is this problem stated as a research topic rather than as something to be improvised. A 2011 cascade and a
+hand-rolled span rule were never going to be the last word.
+
+**And the number is not reported.** The 37 sheets that survive are the ones the detector happens to see, which is a
+biased subset of the corpus rather than a sample of it — the same substitution this repository has recorded before.
+The corpus question — *are the 292 sheets inside the book's 2–6 range?* — is **still unanswered**, and it is now
+unanswered for a stated reason with a named dependency, rather than unanswered for want of a method.
+
+**What ② established, kept:** the head-box **is** the head including hair (measured: a 132 px box on a figure 852 px
+tall, ratio 6.45 against a printed 7). The proxy `span ÷ head box` is **monotone** across printed 57's six labelled
+figures (6.45, 5.10, 4.38, 3.55, 3.21, 2.09 for 7, 6, 5, 4, 3, 2). The head-anchored component reproduces printed
+ratios exactly on held-out figures. And the whole thing is buildable: `lbpcascade_animeface` is MIT, the cascade
+needs OpenCV 4.x because **5.0 has no `objdetect` module at all**, and `cv2.imread` returns `None` on this corpus's
+CJK paths, so images must come in through `cv2.imdecode(np.fromfile(...))`.
