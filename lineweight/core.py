@@ -1140,6 +1140,43 @@ def check_report(project_path: str, scale: float = 1.0) -> int:
     return 0
 
 
+def log_report(project_path: str, rewind_to: int = -1) -> int:
+    """Prints what has been done to a project, and optionally rewinds to an earlier step.
+
+    **The log is the part of the file a person reads.** The marks say what the drawing is; the log says how it got
+    there, which is what "that change was wrong" needs in order to point at something. Supersede reasons ride along
+    with it, because a mark that was taken out and a mark that was never drawn are different things and the file
+    should not make them look the same.
+    """
+    from .project import save_project, load_project
+
+    project = load_project(project_path)
+    if rewind_to >= 0:
+        undone = project.rewind(rewind_to)
+        save_project(project, project_path)
+        print('  rewound %d step(s), back to %d' % (len(undone), rewind_to))
+
+    if not project.log:
+        print('  (nothing has been changed since the project was built)')
+        return 0
+
+    live = sum(1 for m in project.marks if m.state == 'live')
+    print('  %s: %d mark(s), %d live, %d log entr(ies)'
+          % (project_path, len(project.marks), live, len(project.log)))
+    for entry in project.log:
+        ids = ', '.join(entry.get('ids', [])) or '-'
+        extra = ''
+        if entry['op'] == 'revise':
+            extra = ' [%s]' % ', '.join(entry.get('changed', []))
+        elif entry['op'] == 'supersede' and entry.get('reason'):
+            extra = ' -- %s' % entry['reason']
+        elif entry['op'] == 'remove':
+            mark = entry.get('mark', {})
+            extra = ' (%s, %s)' % (mark.get('kind', '?'), mark.get('stage', '?'))
+        print('  %4d  %-10s %-14s%s' % (entry.get('at', -1), entry['op'], ids, extra))
+    return 0
+
+
 def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False, ai_out: str = '') -> int:
     """The demo sheet, carried into Illustrator as a real document instead of as SVG.
 
@@ -1197,6 +1234,10 @@ def main() -> int:
                         help='render a project file to an image; combine with --stage or --upto')
     parser.add_argument('--check', default='', metavar='PROJECT',
                         help='render each pass of a project and report its invariants')
+    parser.add_argument('--log', default='', metavar='PROJECT',
+                        help='print what has been done to a project, with reasons')
+    parser.add_argument('--rewind', type=int, default=-1, metavar='N',
+                        help='with --log: undo logged steps until N remain, and save')
     parser.add_argument('--stage', default='', metavar='ROLE',
                         help='with --render: only this pass, e.g. line, value, colour, refine')
     parser.add_argument('--upto', default='', metavar='ROLE',
@@ -1216,6 +1257,8 @@ def main() -> int:
         return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale)
     if args.check:
         return check_report(args.check, scale=args.scale)
+    if args.log:
+        return log_report(args.log, rewind_to=args.rewind)
     return demo(args.out)
 
 

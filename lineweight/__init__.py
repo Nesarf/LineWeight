@@ -28,7 +28,7 @@ from .doc import (Appearance, Document, Layer, Path, from_strokes, parse_colour,
 from .app import jsx_document  # noqa: E402,F401
 from .xfl import write_xfl  # noqa: E402,F401
 from .ref import Greyscale, measure, scan, summarise, compare, check  # noqa: E402,F401
-from .project import (DEFAULT_STAGES, LIVE, SUPERSEDED, Mark, Project,  # noqa: E402,F401
+from .project import (DEFAULT_STAGES, DRAFT, LIVE, SUPERSEDED, Mark, Project,  # noqa: E402,F401
                       load_project, save_project)
 # `ref.check` and `invariants.check` would collide under one name, and they answer different questions: `ref.check`
 # compares a measurement against the reference library, `invariants.check` judges one pass against its own declared
@@ -41,5 +41,6 @@ from . import run  # noqa: E402,F401
 __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',
             'write_xfl', 'run', 'resize_to_fit',
             'Greyscale', 'measure', 'scan', 'summarise', 'compare', 'check',
-            'Project', 'Mark', 'save_project', 'load_project', 'DEFAULT_STAGES', 'LIVE', 'SUPERSEDED',
+            'Project', 'Mark', 'save_project', 'load_project', 'DEFAULT_STAGES',
+            'LIVE', 'SUPERSEDED', 'DRAFT',
             'Finding', 'MEASURES', 'check_invariants', 'check_project', 'format_findings', 'measure_layer']
