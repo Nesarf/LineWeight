@@ -96,3 +96,65 @@ From the table of contents, the sections most likely to carry line-weight instru
 
 The pages that most need reading for this project are **39-41 (hair balance)** and **111-116 (cloth folds)** -- hair
 because it is the 輪郭線 case, folds because they are the 陰影線 case and neither has a rule yet.
+
+---
+
+## The material, inventoried — and why the head-body check is not the easy measurement it looked like
+
+### What is actually on disk
+
+`F:\素材\图\碧蓝档案官方设定资料` holds **929 files** (608 jpg, 321 png) in three folders, and these are the 929 images
+the pooled corpus was measured from. The folder split matters, and it is not what the plan assumed:
+
+| folder | files | what it is |
+|---|---|---|
+| `1/` | 292 | **character sheets** — one standing full-body figure per page, with name, 身長, Q-version, back view, weapon |
+| `2/` | 321 | high-resolution scans, `cover.png` / `i-000.png` … `i-okuduke.png`; several exceed 64 megapixels |
+| `3/` | 316 | the art book itself — covers, spreads, full illustrations |
+
+**So "the BA setting material can be measured directly" is true only of `1/`, and only 292 of 929.** Roughly a third.
+
+### The textbook read is blocked on one tool
+
+`pdftotext` (from the git-bash mingw64 packages) runs, but the PDF's fonts carry **no ToUnicode map**, so the output is
+mojibake — `Syntax Error: Unknown font tag 'C2_1'` followed by `k O ﬂ › † ' « ß z O ' ¢ ‰`. Only the digits and a few
+kana survive, which is enough to confirm the folio mapping (**printed page N = PDF page N + 2**: extracting PDF pages
+41–44 returned printed numbers 39, 40, 41, 42) and not enough to read a sentence.
+
+There is **no rasteriser on this machine** — no `pdftoppm`, `gs`, `mutool`, `qpdf` or PyMuPDF/PyPDF2. So the pages cannot
+be rendered and read as images either, which for a *drawing* textbook is the method that would actually work: the rules
+for 前髪 and for シワ live in the figures.
+
+**One tool unblocks this**, and either would do: `pip install pymupdf` (renders pages to PNG in-process) or poppler's
+`pdftoppm`. Neither is installed, and both are ordinary dev tools rather than library dependencies.
+
+### The head-body ratio cannot be read off the silhouette
+
+The book's 2–6 boundary is real and measurable **in principle**, and printed 身長 is on every sheet, so this looked like
+the one check that needs no width statistic at all. It does not survive the material.
+
+**Measured on `1/00100.jpg`.** Taking the background as the most common colour and the figure as the largest
+non-background component gives a component spanning the page with these row extents near the head:
+
+```
+y= 38  width  12      <- the halo, or a ribbon, at the very top
+y= 74  width 106      <- the head and hair
+y=110  width 157
+y=170  width 222      <- growing
+y=218  width 283      <- shoulders and the outstretched arm
+```
+
+**Monotone, with no neck minimum anywhere.** The head-body ratio needs the chin, and on these designs the chin is not a
+silhouette feature: the **halo** sits above and outside the head, the **hair** is wider than the face down to the
+shoulders, and the **collar** meets the jaw. This is the same fact `RESEARCH-LINE-QUALITY.md` records as a drawing rule
+— hair is a 太い丸 mass, and its volume is at the front — showing up as a measurement obstacle.
+
+**And colour does not rescue it.** An anime-skin test (`r > g > b`, light and warm) on the same page finds skin from
+`y=32` to `y=637`: the top hits are the **pink halo**, which is skin-coloured, and the bottom ones are the character's
+**bare thighs**. Three different regions, one predicate.
+
+**What this costs and what it would take.** The check needs a *face* detector — a head is a specific arrangement of
+eyes, nose and mouth, not a hue — and that is a new instrument with its own validation, not a measurement that can be
+bolted on. It is worth having; it is not a one-afternoon item, and calling it one would have produced a number nobody
+could trust. The alternative is reading the ratio off a stated sample by eye, which tests the *boundary* and cannot
+test the *corpus* — and a sample is what this project has already been burned by once.
