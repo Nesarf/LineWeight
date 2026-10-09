@@ -34,6 +34,7 @@ import math
 import os
 import random
 import re
+from typing import NamedTuple
 
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
 #
@@ -826,17 +827,29 @@ def weld_endpoints(polys: list[list[tuple[float, float]]], tolerance: float = 4.
     return loops
 
 
-def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) -> list[str]:
-    """Path data for every region the strokes enclose once their gaps have been closed.
+class Region(NamedTuple):
+    """An enclosed area: the polygon it came from, and the path data that draws it.
 
-    Returned as `d` strings rather than as drawn elements, because what a caller does with a region -- fill it, clip
-    to it, paint it black -- is the caller's decision. What this answers is the question a bucket answers: *is
-    anything enclosed here*, given a drawing made by somebody whose lines do not always meet.
+    **Both, not just the `d` string.** A bare `d` string can be painted and nothing else -- it cannot be moved,
+    re-styled, re-ordered or deleted by anything that only has a string. The polygon is what a `fill` mark stores so
+    that the patch of colour stays a thing with an identity, which is the whole requirement; the `d` is kept alongside
+    it because that is what a renderer wants and re-serialising it on every frame would be silly.
     """
-    out: list[str] = []
+    points: list[tuple[float, float]]
+    d: str
+
+
+def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) -> list[Region]:
+    """Every region the strokes enclose once their gaps have been closed.
+
+    This answers the question a bucket answers: *is anything enclosed here*, given a drawing made by somebody whose
+    lines do not always meet. It returns geometry and says nothing about how the region should be painted -- that is
+    the caller's decision, and in a project it becomes a `fill` mark's appearance.
+    """
+    out: list[Region] = []
     for loop in weld_endpoints(polys, tolerance):
         points = ['%.2f %.2f' % (x, y) for x, y in loop]
-        out.append('M ' + ' L '.join(points) + ' Z')
+        out.append(Region(points=list(loop), d='M ' + ' L '.join(points) + ' Z'))
     return out
 
 

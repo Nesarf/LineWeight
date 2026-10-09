@@ -227,8 +227,11 @@ def test_a_gap_stops_an_exact_fill_and_closing_it_does_not():
 
     regions = region_fill(square, 3.0)
     assert len(regions) == 1
-    nums = [float(v) for v in regions[0].replace('M', '').replace('L', '').replace('Z', '').split()]
-    points = list(zip(nums[0::2], nums[1::2]))
+    # the polygon is available directly, and the path data has to agree with it
+    points = regions[0].points
+    from_d = [float(v) for v in regions[0].d.replace('M', '').replace('L', '').replace('Z', '').split()]
+    as_pairs = [(from_d[i], from_d[i + 1]) for i in range(0, len(from_d), 2)]
+    assert as_pairs == [tuple(p) for p in points], 'the path data and the polygon disagree'
     area = abs(sum(points[i][0] * points[(i + 1) % len(points)][1]
                    - points[(i + 1) % len(points)][0] * points[i][1]
                    for i in range(len(points)))) / 2
