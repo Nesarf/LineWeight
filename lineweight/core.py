@@ -36,6 +36,9 @@ import random
 import re
 from typing import NamedTuple
 
+from . import curve
+from .curve import Cubic
+
 # A brush is the same set of numbers a tablet tool exposes, and nothing more.
 #
 # **`taper_in` and `taper_out` are LENGTHS, in multiples of the brush's own width.** They used to be fractions of the
@@ -70,6 +73,21 @@ BRUSHES: dict[str, dict[str, float]] = {
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
              'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
 }
+
+# **How far a fitted outline curve may sit from the exact offset, as a multiple of the brush width.**
+#
+# The obvious way to choose this is "small enough to be invisible", and that is the wrong criterion here, because it
+# would be satisfied by a tolerance far larger than it needs to be. The binding constraint is the hand tremor: the
+# sideways nudge the wobble model applies is about **0.045 of the width** (measured, and the smallest brush's is
+# 0.024), and a tolerance at that scale would let the fit **smooth the hand out of the drawing** -- removing the exact
+# thing this library exists to produce. So the tolerance is set below the smallest tremor rather than below the eye:
+# 0.01 of the width, which is 17% of the ink brush's tremor.
+#
+# It is not free. At this tolerance a real spine fits to ~0.56 cubics per point, and a cubic costs six numbers against
+# a line's two, so the path data grows to roughly 1.7x what the polyline cost. **An earlier note in TODO claimed curve
+# fitting would shrink the file at the same time; that was wrong**, and the measurement is in the commit. The tremor is
+# genuine high-frequency content and any faithful representation has to carry it.
+OUTLINE_ERROR = 0.01
 
 # How thin a taper is allowed to get at its very tip, as a fraction of full width. A 丸ペン's 抜き runs out to a point,
 # but a rasterised stroke that reaches zero width has no pixels at its ends and reads as a broken line, so it stops
@@ -187,12 +205,82 @@ def outline_points(path: list[tuple[float, float]], width: list[float]
     return left + list(reversed(right))
 
 
-def outline(path: list[tuple[float, float]], width: list[float]) -> str:
-    """The filled shape a weighted stroke has, as path data."""
-    return polygon_to_path(outline_points(path, width))
+def outline(path: list[tuple[float, float]], width: list[float], error: float = 0.0) -> str:
+    """The filled shape a weighted stroke has, as path data -- **as curves, not as a polyline**.
+
+    The expansion offsets a *sampled* centreline, so its boundary used to come out as one straight segment per sample:
+    facets of `span_length / resolution`, which is 6.14 drawing units at the default and 65 pixels at 10x zoom, and
+    visible as corners in an audit render. The deliverable of this project is a file an artist opens in Illustrator,
+    and an artist's file is curves here -- see `curve.py` for why a polyline is the wrong representation rather than
+    merely a rough one.
+    """
+    return outline_path(path, width, error)
 
 
-def tremble(path: list[tuple[float, float]], amount: float, seed: int) -> list[tuple[float, float]]:
+def outline_error(width: list[float]) -> float:
+    """The fit tolerance for a stroke with this width profile.
+
+    **`max`, not `mean`, and not the extent of the geometry.** The tolerance is a fraction of the *full* stroke width,
+    so taking the maximum is the conservative reading of a profile that tapers towards its tips; deriving it from the
+    extent of the points instead would make the same stroke fit differently at different sizes and differently again
+    depending on how the caller happened to scale it. One function, called from everywhere, so that `outline()` and
+    `from_record()` cannot disagree about what shape a stroke is -- they did for one revision, which is how this came
+    to be a function.
+    """
+    return OUTLINE_ERROR * (max(width) if width else 1.0)
+
+
+def outline_chain(path: list[tuple[float, float]], width: list[float],
+                  error: float = 0.0) -> list['Cubic']:
+    """The closed boundary of a weighted stroke as a chain of cubics -- **the shape that actually ships**.
+
+    Both spines are fitted, and the two end caps stay straight lines because that is what they are. The chain closes
+    at the end (its last point is its first), so it is written with a trailing `Z`.
+
+    `error` of zero or less means `outline_error(width)`. The tolerance has to stay **below the hand tremor** rather
+    than below the eye, or the fit smooths the hand out of the drawing -- see `OUTLINE_ERROR`.
+    """
+    points = outline_points(path, width)
+    if not points:
+        return []
+    if error <= 0:
+        error = outline_error(width)
+    count = len(path)
+    left = points[:count]
+    rightwards = points[count:]                 # the right spine, running back along the path
+    chain = curve.fit_chain(left, error)
+    chain.append(curve.line_segment(left[-1], rightwards[0]))
+    chain.extend(curve.fit_chain(rightwards, error))
+    return chain
+
+
+def outline_path(path: list[tuple[float, float]], width: list[float], error: float = 0.0) -> str:
+    """`outline_chain` as SVG path data, closed."""
+    chain = outline_chain(path, width, error)
+    if not chain:
+        return ''
+    return curve.chain_to_path(chain) + ' Z'
+
+
+# **How far the hand travels between two draws of the wobble noise**, in brush widths.
+#
+# The tremor used to advance one step per *sample*, which made its wavelength a property of `resolution` and of how long
+# each control-point span happened to be. Measured on one stroke, the reversal spacing along the spine halved every time
+# `resolution` doubled -- 17.6 units at resolution 7 down to 1.1 at 112 -- which is 1.5 samples at every setting and
+# therefore per-sample noise and nothing else; the amplitude stayed at 0.045 of the width throughout, so the hand got
+# faster without getting shakier. Worse, `catmull` takes a fixed *count* of samples per span rather than a fixed
+# spacing, so a stroke with one long span and one short one had sample spacing varying by **64x inside itself** and got
+# two different hands.
+#
+# Driving the noise by arc length makes the tremor a function of the drawing instead of of the sampling. One brush
+# width is the value that reproduces the old behaviour at the nominal case -- resolution 14 with the ~80-unit spans a
+# face at working size produces, where the old spacing was 5.8 units and the fast wavelength measured 8.8. It is in
+# width multiples because that is the unit the rest of the brush is already in.
+TREMBLE_STEP = 1.0
+
+
+def tremble(path: list[tuple[float, float]], amount: float, seed: int = 0,
+            step: float = 0.0) -> list[tuple[float, float]]:
     """Nudges a path sideways the way a hand does, because a line that is exactly where it was aimed is a plot.
 
     **Two frequencies, and the difference between them is the whole effect.** A slow wander is the arm moving and a
@@ -204,21 +292,42 @@ def tremble(path: list[tuple[float, float]], amount: float, seed: int) -> list[t
     rather than a preference: half a pixel is invisible on a six-pixel ink line and enormous on a two-pixel pen, so
     an absolute number means something different on every brush. As a fraction, the same number means the same thing
     everywhere -- measured across the four brushes, a wobble of about a quarter of the width.
+
+    **`step` is the distance the hand travels between two draws of the noise, and it is why this function has a
+    length in it at all.** Both frequencies are in the coefficients below and the coefficients are per *step*, so the
+    step is what fixes their wavelengths in the drawing; without one they were fixed in samples and the hand changed
+    speed whenever `resolution` did. See `TREMBLE_STEP`.
     """
     if amount <= 0 or len(path) < 3:
         return list(path)
+    step = float(step) if step > 0 else 1.0
+
+    # Arc length along the path. This is the parameter the noise is a function of; the samples' own spacing is not
+    # consulted, which is the point -- `catmull` spaces them unevenly and by span length.
+    travelled = [0.0]
+    for i in range(1, len(path)):
+        travelled.append(travelled[-1] + math.dist(path[i - 1], path[i]))
+
+    # Draw the two processes on a uniform grid in arc length first, then read them back wherever the samples landed.
     rng = random.Random(seed * 7919 + 13)
-    slow, fast = 0.0, 0.0
+    slow, fast = [0.0], [0.0]
+    for _ in range(int(travelled[-1] / step) + 2):
+        slow.append(slow[-1] * 0.90 + rng.uniform(-1, 1) * 0.10)
+        fast.append(fast[-1] * 0.45 + rng.uniform(-1, 1) * 0.55)
+
     out: list[tuple[float, float]] = []
     for i, (x, y) in enumerate(path):
-        slow = slow * 0.90 + rng.uniform(-1, 1) * 0.10
-        fast = fast * 0.45 + rng.uniform(-1, 1) * 0.55
+        u = travelled[i] / step
+        k = min(int(u), len(slow) - 2)
+        frac = u - k
+        drift = slow[k] + (slow[k + 1] - slow[k]) * frac
+        jitter = fast[k] + (fast[k + 1] - fast[k]) * frac
         prev = path[max(0, i - 1)]
         nxt = path[min(len(path) - 1, i + 1)]
         dx, dy = nxt[0] - prev[0], nxt[1] - prev[1]
         length = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / length, dx / length
-        offset = amount * (slow * 1.7 + fast * 0.6)
+        offset = amount * (drift * 1.7 + jitter * 0.6)
         out.append((x + nx * offset, y + ny * offset))
     return out
 
@@ -765,7 +874,8 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     """
     brush = BRUSHES[brush_name]
     path = catmull(points, resolution)
-    path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed)
+    path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed,
+                   TREMBLE_STEP * brush['width'])
     ps = pressures(path, brush, seed)
     return {
         'brush': brush_name,
@@ -793,17 +903,26 @@ def stroke_widths(record: dict) -> list[float]:
 
 
 def outline_polygon(record: dict) -> list[tuple[float, float]]:
-    """The shape a record expands to, as points. **Every consumer of a stroke's geometry comes through here** --
-    `from_record` to serialise it, `audit` to hand it to cairo -- so that the referee cannot hold a private opinion
-    about the geometry and thereby make the code it judges look correct."""
+    """The shape a record expands to, as **points** -- the exact offset, before any fitting.
+
+    Kept alongside the fitted chain because the two answer different questions. This is the ground truth the fit is
+    measured against, and it is what `audit.compare_fillers` gives both rasterisers, since a comparison of *fillers*
+    has to be on identical geometry. **It is not the shape that ships** -- `outline_chain_of` is.
+    """
     return outline_points([(float(x), float(y)) for x, y in record['centre']], stroke_widths(record))
+
+
+def outline_chain_of(record: dict) -> list[Cubic]:
+    """**The shape that ships.** The fitted, closed boundary of a record's stroke."""
+    return outline_chain([(float(x), float(y)) for x, y in record['centre']], stroke_widths(record))
 
 
 def from_record(record: dict) -> tuple[str, float]:
     """Rebuilds a stroke's outline from its record, which is what makes the record worth keeping."""
     brush = BRUSHES[record['brush']]
     ps = [float(p) for p in record['pressure']]
-    d = polygon_to_path(outline_polygon(record))
+    chain = outline_chain_of(record)
+    d = (curve.chain_to_path(chain) + ' Z') if chain else ''
     mean_p = sum(ps) / len(ps) if ps else 1.0
     opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
     return d, opacity

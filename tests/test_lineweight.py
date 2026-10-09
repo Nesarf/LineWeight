@@ -77,8 +77,11 @@ def test_an_outline_lands_where_a_transform_puts_it():
     out = inked_svg(body, min_extent=10)
     generated = re.findall(r'<path d="([^"]+)" fill="[^"]*" opacity=', out)
     assert generated, 'no weighted outline was produced'
-    coords = [float(v) for d in generated for v in re.findall(r'-?\d+\.?\d*', d)]
-    xs, ys = coords[0::2], coords[1::2]
+    # Sampled through the parser rather than by pulling numbers out of the string: the outline carries `C` commands
+    # now, and their control points are not on the shape, so pairing every number as x, y would measure the hull of
+    # the handles instead of the position of the line.
+    points = [p for d in generated for p in shipped(d)]
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
     assert min(xs) > 295 and max(xs) < 385, (min(xs), max(xs))
     assert min(ys) > 95 and max(ys) < 185, (min(ys), max(ys))
     # the seam stroke follows the shape instead of sitting at the origin
@@ -114,12 +117,24 @@ def test_pressure_is_lighter_through_a_sharp_turn():
     assert min(b[8:13]) < max(a[8:13])
 
 
+def shipped(d: str):
+    """The outline a `d` string describes, as a polyline -- **through the library's own path parser**.
+
+    The outline is curves now (`curve.py`), so the older habit of pulling every number out of the string and pairing
+    them as x, y is no longer merely crude: `C` carries two control points that are *not on the shape*, so a bounding
+    box taken that way is loose by however far the handles swing, and anything about the actual thickness is wrong.
+    """
+    subpaths = parse_path(d, samples=16)
+    assert len(subpaths) == 1, 'a stroke outline should be one closed subpath, got %d' % len(subpaths)
+    return subpaths[0]
+
+
 def test_the_outline_is_a_closed_shape_with_area():
     path = [(float(x), math.sin(x / 5.0) * 20.0) for x in range(40)]
     d = outline(path, [6.0] * len(path))
     assert d.startswith('M') and d.endswith('Z')
-    xs = [float(v) for v in d.replace('M', '').replace('L', '').replace('Z', '').split()[0::2]]
-    ys = [float(v) for v in d.replace('M', '').replace('L', '').replace('Z', '').split()[1::2]]
+    xs = [p[0] for p in shipped(d)]
+    ys = [p[1] for p in shipped(d)]
     assert max(xs) - min(xs) > 30
     assert max(ys) - min(ys) > 30
 
@@ -129,7 +144,7 @@ def test_a_wider_brush_produces_a_wider_outline():
     thin = stroke(path, 'fine')[0]
     thick = stroke(path, 'ink')[0]
     def spread(d: str) -> float:
-        ys = [float(v) for v in d.replace('M', '').replace('L', '').replace('Z', '').split()[1::2]]
+        ys = [p[1] for p in shipped(d)]
         return max(ys) - min(ys)
     assert spread(thick) > spread(thin)
 
@@ -1205,3 +1220,83 @@ def test_the_outline_keeps_the_centreline_inside_at_tight_curvature():
     tighter = _holes([(i * 2, 60 * math.sin(i / 1.5)) for i in range(100)])
     assert tight <= 8, 'tight wave regressed to %d holes' % tight
     assert tighter <= 8, 'tighter wave regressed to %d holes' % tighter
+
+
+# ------------------------------------------------------------------------------------------------ the hand's tremor
+
+def _travelled(path):
+    return [0.0] + [sum(math.dist(path[i], path[i + 1]) for i in range(k)) for k in range(len(path) - 1)]
+
+
+def test_the_tremor_is_a_function_of_arc_length_not_of_the_sampling():
+    """**The same line, sampled two ways, must get the same hand.**
+
+    The tremor used to advance one step per *sample*, so its wavelength was set by the sampling: on one stroke the
+    reversal spacing along the spine halved every time `resolution` doubled -- 17.6 units at resolution 7 down to 1.1
+    at 112 -- which is 1.5 samples at every setting and therefore per-sample noise and nothing else. Since `catmull`
+    takes a fixed *count* of samples per span, a stroke with one long span and one short one had its spacing vary by
+    **64x inside itself** and got two different hands in the same line.
+
+    Sampled on a straight line on purpose: the perpendicular is exactly (0, 1) at every sample whatever the spacing,
+    so this cannot pass by two errors cancelling and it isolates the noise from the normal estimate.
+    """
+    from lineweight.core import TREMBLE_STEP, tremble
+
+    step, amount = TREMBLE_STEP * BRUSHES['ink']['width'], 1.69
+    fine = [(float(x), 0.0) for x in range(0, 601)]
+    coarse = [(float(x), 0.0) for x in range(0, 601, 2)]
+    fine_t, coarse_t = tremble(fine, amount, 5, step), tremble(coarse, amount, 5, step)
+    # even samples of `fine` and every sample of `coarse` are at the same arc length
+    for j in range(len(coarse)):
+        assert fine_t[2 * j][1] == pytest.approx(coarse_t[j][1], abs=1e-12), \
+            'the tremor differs at arc length %d depending on how the line was sampled' % (2 * j)
+
+
+def test_the_tremor_does_not_get_faster_when_the_resolution_rises():
+    """The frequency half of the same fix, stated as the measurement that found it.
+
+    Counting reversals along the spine and dividing into the path length gives the tremor's wavelength in drawing
+    units. It used to halve with every doubling of `resolution` (8.8 units at 14, 2.2 at 56, 1.1 at 112); it should
+    now be a property of the brush. The comparison starts at resolution 14 because below that the samples are further
+    apart than the tremor's own wavelength and the measurement is reading Nyquist, not the hand.
+    """
+    from lineweight.core import TREMBLE_STEP, catmull, tremble
+
+    amount, step = BRUSHES['ink']['wobble'] * BRUSHES['ink']['width'], TREMBLE_STEP * BRUSHES['ink']['width']
+    ctrl = [(0, 0)] + [(80 * i, 20 * math.sin(i)) for i in range(1, 9)]
+    wavelengths = []
+    for resolution in (14, 28, 56, 112):
+        path = catmull(ctrl, resolution)
+        shaken = tremble(path, amount, 5, step)
+        offsets = [math.dist(a, b) for a, b in zip(path, shaken)]
+        reversals = [i for i in range(1, len(offsets) - 1)
+                     if (offsets[i] - offsets[i - 1]) * (offsets[i + 1] - offsets[i]) < 0]
+        total = sum(math.dist(path[i], path[i + 1]) for i in range(len(path) - 1))
+        assert reversals, 'no tremor at all at resolution %d' % resolution
+        wavelengths.append(total / len(reversals))
+    spread = max(wavelengths) / min(wavelengths)
+    assert spread < 2.0, 'the tremor wavelength still tracks the sampling: %r' % (wavelengths,)
+
+
+def test_the_tremor_amplitude_is_a_fraction_of_the_brush_width():
+    """The amplitude half, which was already right and must stay right.
+
+    A nudge that is a distance means something different on every brush. Measured as a fraction of the width it is the
+    same number everywhere, and it has to stay independent of `resolution` too -- the old implementation did keep the
+    amplitude stable while the frequency moved, which is exactly why the frequency bug survived: the drawing never got
+    visibly shakier, only faster.
+    """
+    from lineweight.core import TREMBLE_STEP, catmull, tremble
+
+    ctrl = [(0, 0)] + [(80 * i, 20 * math.sin(i)) for i in range(1, 9)]
+    fractions = []
+    for resolution in (14, 42, 112):
+        path = catmull(ctrl, resolution)
+        width = BRUSHES['ink']['width']
+        shaken = tremble(path, BRUSHES['ink']['wobble'] * width, 5, TREMBLE_STEP * width)
+        offsets = [math.dist(a, b) for a, b in zip(path, shaken)]
+        mean = sum(offsets) / len(offsets)
+        fractions.append(mean / width)
+    assert max(fractions) - min(fractions) < 0.005, \
+        'the tremor amplitude moved with the sampling: %r of the width' % (fractions,)
+    assert 0.02 < fractions[0] < 0.12, 'the tremor is no longer a small fraction of the width: %.3f' % fractions[0]

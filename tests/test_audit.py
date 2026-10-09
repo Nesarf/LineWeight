@@ -476,17 +476,34 @@ def test_a_stroke_outline_survives_being_written_as_path_data():
         assert abs(ax - bx) <= 0.005 and abs(ay - by) <= 0.005
 
 
-def test_the_outline_points_are_the_ones_the_path_data_describes():
-    """`outline()` and `outline_points()` cannot drift apart, because one is the other written down.
+def test_the_shipped_outline_stays_within_its_tolerance_of_the_exact_offset():
+    """The outline is curves now, so what has to be checked is that they stay on the exact offset.
 
-    Split so that the referee could be given points instead of a string. That split is exactly the kind of change that
-    silently leaves a second implementation behind -- `outline()` could have kept its own copy of the offset loop.
+    **Two-sided, and that is the whole test.** The fitter's first version was checked only one way -- is every input
+    point near the curve -- and it produced a segment bulging **50 units out of a closed square** while that check
+    reported 0.0000. The hull lies between samples, where no input point can see it. A promise about a curve has to
+    constrain the curve, not just its relationship to the points it was fitted through.
+
+    `outline_points` is the ground truth here: the exact offset, before fitting. `outline()` used to be that same
+    polyline written down, which is why an earlier version of this test compared them for equality; the equality is
+    gone by design and the *bound* replaces it.
     """
+    from lineweight import curve
+    from lineweight.core import outline, outline_chain, outline_error, outline_points
+
     path = [(0.0, 0.0), (40.0, 10.0), (80.0, 0.0)]
     widths = [4.0, 8.0, 4.0]
-    from lineweight.core import outline
-    written = parse_path(outline(path, widths))[0][:-1]
-    points = outline_points(path, widths)
-    assert len(written) == len(points)
-    for (ax, ay), (bx, by) in zip(written, points):
-        assert abs(ax - bx) <= 0.005 and abs(ay - by) <= 0.005
+    written = outline(path, widths)
+    assert written.startswith('M') and written.endswith('Z')
+    assert 'C' in written, 'the outline is a polyline again -- see curve.py for why that is wrong'
+
+    exact = outline_points(path, widths)
+    chain = outline_chain(path, widths)
+    tolerance = outline_error(widths)
+    assert curve.deviation(exact, chain) <= tolerance, \
+        'the fitted outline strays %.4f from the exact offset (tolerance %.4f)' % (
+            curve.deviation(exact, chain), tolerance)
+
+    # And the `d` string is that chain, not a second opinion about it: sampled through the library's own parser.
+    sampled = parse_path(written, samples=4)[0]
+    assert curve.deviation(sampled, chain) <= tolerance

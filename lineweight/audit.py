@@ -31,8 +31,8 @@ import colorsys
 import math
 from typing import NamedTuple, Sequence
 
-from . import raster
-from .core import outline_polygon, outline_points, stroke_widths
+from . import curve, raster
+from .core import outline_chain_of, outline_polygon, outline_points, stroke_widths
 
 # The same paper `raster.save_png` uses. Not a style choice: two pictures with different paper cannot be compared, and
 # the comparison is the only reason either exists.
@@ -135,6 +135,27 @@ def _path(context, points: Sequence[tuple[float, float]]) -> None:
     context.close_path()
 
 
+def _shape(context, chain) -> None:
+    """A closed shape given as a chain of cubics. Every closed shape goes through here, including polygons.
+
+    Polygons are converted rather than special-cased: a cubic whose control points sit at the thirds *is* a straight
+    line, so one code path draws both the fitted outline and a flat fill, and there is no second way for a shape to
+    reach cairo and be drawn slightly differently.
+    """
+    context.move_to(chain[0][0][0], chain[0][0][1])
+    for segment in chain:
+        context.curve_to(segment[1][0], segment[1][1], segment[2][0], segment[2][1], segment[3][0], segment[3][1])
+    context.close_path()
+
+
+def as_chain(points) -> list:
+    """A polygon as a closed chain of line-segments."""
+    points = list(points)
+    if len(points) < 3:
+        return []
+    return [curve.line_segment(points[i], points[(i + 1) % len(points)]) for i in range(len(points))]
+
+
 def _polyline(context, points: Sequence[tuple[float, float]]) -> None:
     context.move_to(points[0][0], points[0][1])
     for x, y in points[1:]:
@@ -163,6 +184,28 @@ def draw_polygons(surface, view: View, polygons: Sequence[Sequence[tuple[float, 
             continue
         context.set_source_rgba(colour[0], colour[1], colour[2], alpha)
         _path(context, points)
+        context.fill()
+    return surface
+
+
+def draw_shapes(surface, view: View, shapes, colours: Sequence[tuple[float, float, float]],
+                alpha: float = 1.0, fill_rule: str = 'nonzero'):
+    """Fills shapes given as chains of cubics -- **what actually ships**, and therefore what the pictures show.
+
+    `raster.render_marks` draws a stroke with dabs along the centreline, so its picture is a *sampling* of the stroke
+    rather than its outline. The vector exports are the outline, and `--audit` exists to show those. Drawing the
+    polyline here after the outline became curves would have meant the audit showed a shape nothing ships -- which is
+    bug ② of this module all over again, one representation further along.
+    """
+    cairo = _cairo()
+    context = _context(surface, view)
+    context.set_fill_rule(cairo.FILL_RULE_EVEN_ODD if fill_rule == 'even-odd' else cairo.FILL_RULE_WINDING)
+    context.set_antialias(cairo.ANTIALIAS_DEFAULT)
+    for chain, colour in zip(shapes, colours):
+        if len(chain) < 2:
+            continue
+        context.set_source_rgba(colour[0], colour[1], colour[2], alpha)
+        _shape(context, chain)
         context.fill()
     return surface
 
@@ -225,6 +268,21 @@ def mark_polygon(mark: dict) -> list[tuple[float, float]]:
         return [(float(x), float(y)) for x, y in points]
     if kind == 'stroke':
         return outline_polygon(stroke_record_of(mark))
+    raise ValueError('cannot audit a mark of kind %r' % (kind,))
+
+
+def mark_shape(mark: dict):
+    """**The shape that ships**, as a closed chain of cubics.
+
+    A `fill` mark stores a polygon, which becomes a chain of lines; a `stroke` mark stores a record and expands
+    through `core.outline_chain_of` -- the fitted curves. Both go through the code the product uses, so the picture is
+    of the drawing rather than of a re-derivation that could be right while the drawing is wrong.
+    """
+    kind = mark.get('kind')
+    if kind == 'fill':
+        return as_chain(mark['geometry'].get('points') or [])
+    if kind == 'stroke':
+        return outline_chain_of(stroke_record_of(mark))
     raise ValueError('cannot audit a mark of kind %r' % (kind,))
 
 
@@ -310,11 +368,11 @@ def render(marks: Sequence[dict], view: View, background: tuple[int, int, int] =
     for mark, colour in zip(marks, colours):
         kind = mark.get('kind')
         if style == 'outline' or kind == 'fill':
-            points = mark_polygon(mark)
-            if len(points) < 3:
+            chain = mark_shape(mark)
+            if len(chain) < 2:
                 continue
             context.set_source_rgba(colour[0], colour[1], colour[2], alpha)
-            _path(context, points)
+            _shape(context, chain)
             context.fill()
             continue
         centre = mark_centre(mark)
@@ -414,10 +472,30 @@ def _a8_bytes(surface) -> bytes:
 def coverage_cairo(polygons: Sequence[Sequence[tuple[float, float]]], size: tuple[int, int],
                    view: View | None = None, fill_rule: str = 'nonzero') -> bytes:
     """What cairo thinks the polygons cover."""
+    return coverage_cairo_shapes([as_chain(p) for p in polygons], size, view=view, fill_rule=fill_rule)
+
+
+def coverage_cairo_shapes(shapes, size: tuple[int, int], view: View | None = None,
+                          fill_rule: str = 'nonzero') -> bytes:
+    """What cairo thinks a set of cubic chains covers. The same machinery the filler referee uses, so the *fit* can
+    be refereed by it too rather than by a second, differently-shaped comparison."""
     view = view or View.whole(*size)
     surface = surface_for(view, alpha=True)
-    draw_polygons(surface, view, list(polygons), [(1.0, 1.0, 1.0)] * len(polygons), fill_rule=fill_rule)
+    draw_shapes(surface, view, list(shapes), [(1.0, 1.0, 1.0)] * len(shapes), fill_rule=fill_rule)
     return _a8_bytes(surface)
+
+
+def compare_fit(polygon: Sequence[tuple[float, float]], chain, size: tuple[int, int]) -> Agreement:
+    """**Does the fitted curve cover the same region as the exact offset?**
+
+    The fit has a stated tolerance and `curve.deviation` measures it as a distance, but a distance bound and a
+    *coverage* bound are different statements -- a curve can stay within a hair of the polyline everywhere and still
+    fill differently where the two cross it at an angle. This asks cairo the same question twice about the same
+    region, exactly as `compare_fillers` does, so the answer is in the same units as every other geometry finding in
+    this project.
+    """
+    return compare(coverage_cairo_shapes([as_chain(polygon)], size),
+                   coverage_cairo_shapes([chain], size))
 
 
 def coverage_cairo_strokes(polylines: Sequence[Sequence[tuple[float, float]]], widths: Sequence[float],
