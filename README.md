@@ -338,6 +338,37 @@ difference between outer and inner line width?* — with the library's own measu
 refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
 sticker look, deliberate rather than accidental. What must not happen is that it is silent.
 
+## The surface
+
+`grain` on a brush says how much a medium **shows** the tooth. A `Paper` says what the tooth **is** — without it,
+"pencil on smooth cartridge" and "pencil on rough watercolour paper" are the same drawing, which is the gap the
+per-stroke specification names as media simulation.
+
+    python -m lineweight --render draw.json --out draw.png --paper rough
+
+| surface | tooth | scale | direction | bite |
+|---|---|---|---|---|
+| `default` | 1.0 | 1.0 | 0.0 | 0.0 |
+| `smooth` | 0.35 | 1.0 | — | 0.0 |
+| `drawing` | 1.0 | 1.6 | — | 0.08 |
+| `rough` | 1.7 | 3.2 | — | 0.26 |
+| `canvas` | 1.5 | 2.6 | 0.9 | 0.20 |
+
+**The surface belongs to the `Layer`, because a buffer is a surface.** Every caller that makes one can name the sheet
+it paints on, and `dab` reads it with no signature changing — which matters because that is the hot loop and the only
+place a paper has to reach.
+
+**Two amplitude fields, because they answer two questions.** `tooth` scales what the medium reveals; `bite` is what
+the surface removes regardless of the medium. That second one exists because of a defect: the paper was applied only
+when the brush declared `grain > 0`, and the `ink` brush declares exactly 0 — so **four different surfaces rendered to
+byte-identical files** and the feature was inert for the medium this library mostly draws in. It was found by running
+the command line four times and getting the same byte count back. A rough sheet makes even a loaded pen stutter.
+
+**The default is the identity, and exactly so** — `tooth` 1, `scale` 1, `direction` 0, `bite` 0 reproduces the old
+sampling bit for bit, which is why `Paper.at` special-cases it rather than dividing by a scale of one. The four other
+presets are round numbers that produce visibly different surfaces; they are **not** measurements, and the module says
+so.
+
 ## The four knobs a hand has
 
 Pen pressure moves **width** (the dominant effect), **opacity**, **dab spacing** and a little **colour jitter**. Those

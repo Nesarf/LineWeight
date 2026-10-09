@@ -1394,7 +1394,7 @@ def to_xfl(out_path: str, launch: bool = False) -> int:
 
 
 def render_report(project_path: str, stage: str = '', upto: str = '', out: str = 'render.png',
-                  scale: float = 1.0) -> int:
+                  scale: float = 1.0, paper: str = '') -> int:
     """Renders a project file to an image, optionally one pass at a time.
 
     **This is an export, not the product.** What lineweight makes is the project file; an image is one reading of it,
@@ -1420,7 +1420,14 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
 
     width = int(project.width * scale)
     height = int(project.height * scale)
-    layer = render_marks([m.to_dict() for m in marks], width, height, scale)
+    # **The surface is chosen here and only here.** `check_report` renders the same marks and deliberately does not
+    # take a paper: the invariants judge the drawing's stages, and which sheet it is previewed on must not move a
+    # measurement.
+    from .raster import PAPERS
+    if paper and paper not in PAPERS:
+        raise SystemExit('--paper: unknown surface %r; known are %s' % (paper, ', '.join(sorted(PAPERS))))
+    layer = render_marks([m.to_dict() for m in marks], width, height, scale,
+                         paper=PAPERS[paper] if paper else None)
     parent = os.path.dirname(out)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -1794,6 +1801,8 @@ def main() -> int:
                         help='with --bridge: launch Illustrator; with --xfl: launch Animate')
     parser.add_argument('--psd', default='', metavar='PSD', help='write the demo sheet as a layered PSD for SAI')
     parser.add_argument('--scale', type=float, default=1.0, help='with --psd: pixels per drawing unit')
+    parser.add_argument('--paper', default='', metavar='NAME',
+                        help='with --render: the surface to draw on, e.g. smooth, drawing, rough, canvas')
     parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
     parser.add_argument('--render', default='', metavar='PROJECT',
                         help='render a project file to an image; combine with --stage or --upto')
@@ -1833,7 +1842,8 @@ def main() -> int:
     if args.xfl:
         return to_xfl(args.xfl, launch=args.run)
     if args.render:
-        return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale)
+        return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale,
+                             paper=args.paper)
     if args.check:
         return check_report(args.check, scale=args.scale)
     if args.log:

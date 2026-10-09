@@ -19,6 +19,7 @@ floats is where this kind of code goes wrong.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from .core import BRUSHES, mark_ink
 from .roles import DEFAULT_INK
@@ -40,13 +41,69 @@ def grain_at(x: float, y: float, seed: int = 0) -> float:
     return (a - math.floor(a)) * 0.6 + (b - math.floor(b)) * 0.4
 
 
+@dataclass
+class Paper:
+    """The surface. **A property of the sheet, not of the brush.**
+
+    `grain` on a brush says how much a *medium* shows the tooth; this says what the tooth *is*. Without it, "pencil on
+    smooth cartridge" and "pencil on rough watercolour paper" are the same drawing -- which is the gap the per-stroke
+    specification names as media simulation, and the reason a texture amplitude living only on the brush is not the
+    same thing as a surface.
+
+    **The default is the identity, deliberately.** `tooth` 1, `scale` 1, `direction` 0 reproduces the existing sampling
+    exactly, so every layer that does not name a paper -- which is every layer written before this existed -- renders
+    byte for byte as it did.
+
+    **The four presets are not measurements.** They are round numbers that produce visibly different surfaces, and
+    which one is right for a given medium has not been measured here. They are labelled that way in `PAPERS` rather
+    than presented as calibrated, because a number that merely looked reasonable is the failure this repository has
+    recorded more than once.
+    """
+    name: str = 'default'
+    tooth: float = 1.0          # amplitude multiplier on whatever grain the brush declares
+    scale: float = 1.0          # the size of the surface's bumps in pixels; larger is a coarser sheet
+    direction: float = 0.0      # 0 isotropic; above 0 stretches the tooth sideways, as a woven or laid sheet does
+    bite: float = 0.0           # how much this surface marks even a medium that declares no grain of its own
+
+    def at(self, x: float, y: float, seed: int) -> float:
+        """The tooth at a point on the sheet, in 0..1.
+
+        **The identity is special-cased rather than expressed as scale 1**, because dividing by a scale of 1.0 and
+        multiplying by a direction of 0.0 would go through the same arithmetic and could differ in the last bit. A
+        default that is *nearly* the old behaviour is worse than one that is exactly it.
+        """
+        if self.scale == 1.0 and self.direction == 0.0:
+            return grain_at(x, y, seed)
+        return grain_at(x / self.scale, y / (self.scale * (1.0 + self.direction * 4.0)), seed)
+
+
+# Unmeasured starting points -- see `Paper`. `default` is the identity and every other one is a surface that is
+# visibly not it.
+PAPERS: dict[str, Paper] = {
+    'default': Paper('default'),
+    'smooth': Paper('smooth', tooth=0.35, scale=1.0, direction=0.0, bite=0.0),
+    'drawing': Paper('drawing', tooth=1.0, scale=1.6, direction=0.0, bite=0.08),
+    'rough': Paper('rough', tooth=1.7, scale=3.2, direction=0.0, bite=0.26),
+    'canvas': Paper('canvas', tooth=1.5, scale=2.6, direction=0.9, bite=0.20),
+    # `bite` is why this field exists at all. The first version had only `tooth`, as a multiplier on the brush's own
+    # grain -- and the `ink` brush declares `grain: 0`, so **four different surfaces rendered byte-identically** and
+    # the feature was inert for the medium this library mostly draws in. `dab` now takes `max(brush * tooth, bite)`:
+    # a rough sheet makes even a loaded pen stutter, which is what the field was supposed to be able to say.
+    # These values are round numbers that produce visibly different surfaces, not measurements.
+}
+
+
 class Layer:
     """One RGBA buffer. Straight alpha: the colour of a pixel is the colour it actually is."""
 
-    def __init__(self, width: int, height: int, seed: int = 0) -> None:
+    def __init__(self, width: int, height: int, seed: int = 0, paper: 'Paper | None' = None) -> None:
         self.width = width
         self.height = height
         self.seed = seed
+        # **The surface belongs to the buffer because a buffer is a surface.** Every caller that makes a layer can
+        # name the sheet it is painting on, and `dab` reads it without any signature changing -- which matters
+        # because `dab` is the hot loop and the one place a paper has to reach.
+        self.paper = paper or PAPERS['default']
         # premultiplied would be faster to blend and harder to reason about; this keeps the colour meaningful when
         # alpha is low, which matters as soon as anybody looks at an intermediate buffer
         self.data = bytearray(width * height * 4)
@@ -70,14 +127,22 @@ class Layer:
                 # a soft edge: full strength in the core, falling to nothing at the rim
                 falloff = 1.0 - (distance / radius) ** 2
                 a = alpha * falloff
-                if grain > 0:
+                # **The guard is on the surface, not on the brush.** It used to be `if grain > 0`, which meant a
+                # medium declaring no grain of its own was immune to the paper -- and since `ink` declares exactly
+                # that, four different surfaces rendered byte-identically. A rough sheet makes even a loaded pen
+                # stutter, so the amplitude is `max(brush * tooth, bite)` and an ink line on rough paper is no longer
+                # the same picture as the same line on smooth.
+                bite = grain * self.paper.tooth
+                if self.paper.bite > bite:
+                    bite = self.paper.bite
+                if bite > 0:
                     # the tooth of the paper, sampled where the dab lands rather than by dab count
                     # **The absolute pixel, not an offset within this dab's own bounding box.** The first version
                     # sampled relative to x0/y0, which are the corners of the dab being stamped -- so the tooth was
                     # local to each dab and travelled with the brush, which is precisely what sampling by position
                     # was supposed to prevent. The property test caught it: the same line drawn in the opposite
                     # direction had its speckle in different places.
-                    a *= 1.0 - grain * (1.0 - grain_at(px, py, self.seed))
+                    a *= 1.0 - bite * (1.0 - self.paper.at(px, py, self.seed))
                 index = row + px * 4
                 old_a = self.data[index + 3] / 255.0
                 new_a = a + old_a * (1 - a)
@@ -130,7 +195,7 @@ class Layer:
         self.dab(x, y, radius, mixed, alpha, grain)
 
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
-                 wet: float = 0.0, under: Layer | None = None) -> Layer:
+                 wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None) -> Layer:
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
     **This is the same data the vector expander uses**, which is the point of keeping a record rather than an
@@ -139,7 +204,7 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     """
     brush = BRUSHES[record['brush']]
     colour = record.get('colour_int') or (26, 22, 32)
-    layer = Layer(width, height)
+    layer = Layer(width, height, paper=paper)
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
     pressure = record['pressure']
@@ -429,14 +494,15 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     return layer
 
 
-def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0) -> 'Layer':
+def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
+                 paper: Paper | None = None) -> 'Layer':
     """Composites marks bottom to top **in the order given**, which is the drawing order.
 
     **Order is the picture.** A later mark covers an earlier one, so this must not sort, group or otherwise reorder
     what it is handed -- a renderer that rendered by kind, or by stage, would produce a perfectly plausible image of
     something that was never drawn. The caller decides the order; `Project.in_stage` and `Project.upto` are how.
     """
-    out = Layer(width, height)
+    out = Layer(width, height, paper=paper)
     for mark in marks:
         if mark.get('state', 'live') != 'live':
             continue
@@ -448,7 +514,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0)
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_int': parse_hex(mark_ink(mark))}
-            layer = stroke_layer(record, width, height, scale)
+            layer = stroke_layer(record, width, height, scale, paper=paper)
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)
         else:
