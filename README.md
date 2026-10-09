@@ -220,7 +220,10 @@ can be re-derived rather than taken on trust:
 `p90/median` 2.750 and `taper_ratio` 0.410; the 262-image pool gave 2.750 and 0.423; adding seventeen character-art
 sheets moved the pool to 276 and returned 2.750 and 0.421. A number that survives being computed from three separate
 sets of artwork is worth more than any one of them, and this is the only kind of check available here -- the model
-cannot be its own referee, which this file has had to learn twice.
+cannot be its own referee. That cost this project five separate faults on the way to a working PSD, four of which
+survived its own round-trip tests for the same reason: **a reader and a writer that share a mistake validate each other
+perfectly**, and a check that is only this library reading this library's output is not a check. `PSD-REPORT.md` has the
+list.
 
 **Two of these three numbers were wrong before they were right, and both times the fault was in the experiment.**
 
