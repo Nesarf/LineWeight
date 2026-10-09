@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 
 from .core import BRUSHES
+from .roles import DEFAULT_INK
 
 
 def grain_at(x: float, y: float, seed: int = 0) -> float:
@@ -430,7 +431,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0)
             geometry = mark['geometry']
             record = {'brush': geometry['brush'], 'centre': geometry['centre'], 'pressure': geometry['pressure'],
                       'seed': geometry.get('seed', 0),
-                      'colour_int': parse_hex(mark.get('appearance', {}).get('colour', '#1A1620'))}
+                      'colour_int': parse_hex(mark.get('appearance', {}).get('colour', DEFAULT_INK))}
             layer = stroke_layer(record, width, height, scale)
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)

@@ -48,6 +48,23 @@ class ImageError(Exception):
 
 
 @dataclass
+class Rgb:
+    """A decoded image as three bytes per pixel, rows top-down.
+
+    **Kept as a second model rather than replacing `Greyscale`, because every measurement in this file is about
+    geometry** -- run widths, taper, coverage -- and geometry is a property of luminance. The colour model exists for
+    one question the rest of the file cannot ask, which is what ink a drawing is actually made of.
+    """
+    width: int
+    height: int
+    pixels: bytearray
+
+    def pixel(self, x: int, y: int) -> tuple[int, int, int]:
+        i = (y * self.width + x) * 3
+        return self.pixels[i], self.pixels[i + 1], self.pixels[i + 2]
+
+
+@dataclass
 class Greyscale:
     """A decoded image as one byte of grey per pixel, rows top-down."""
     width: int
@@ -144,8 +161,12 @@ def _paeth(a: int, b: int, c: int) -> int:
     return c
 
 
-def decode_png(path: str) -> Greyscale:
+def decode_png(path: str, rgb: bool = False):
     """A PNG as greyscale, by undoing the filters and reducing to luminance.
+
+    `rgb=True` keeps the three colour channels instead. **One filter loop, two reductions**, rather than a second
+    decoder: the filters are the part that is fiddly and the part that is worth having exactly one of, and a copy of
+    them kept for colour would be a copy that could disagree with this one about what the file says.
 
     The filter step is the part that is easy to skip and wrong to skip: every scanline declares which of five
     predictors was applied to it, and reading the bytes without undoing that produces an image that is not merely
@@ -186,7 +207,8 @@ def decode_png(path: str) -> Greyscale:
 
     raw = zlib.decompress(bytes(idat))
     stride = width * channels
-    out = bytearray(width * height)
+    step = 3 if rgb else 1
+    out = bytearray(width * height * step)
     prior = bytearray(stride)
     offset = 0
     for y in range(height):
@@ -237,8 +259,10 @@ def decode_png(path: str) -> Greyscale:
         elif filter_type != 0:
             raise ImageError('unknown PNG filter %d in %s' % (filter_type, path))
         prior = line
-        base = y * width
-        if colour == 0:                                  # grey, one byte a pixel
+        base = y * width * step
+        if rgb:
+            _row_rgb(out, base, line, width, colour, palette)
+        elif colour == 0:                                # grey, one byte a pixel
             out[base:base + width] = line[:width]
         elif colour == 4:                                # grey plus alpha
             out[base:base + width] = line[0::2]
@@ -260,7 +284,35 @@ def decode_png(path: str) -> Greyscale:
                     table[index] = 255
             for x in range(width):
                 out[base + x] = table[line[x]]
+    if rgb:
+        return Rgb(width=width, height=height, pixels=out)
     return Greyscale(width=width, height=height, pixels=out)
+
+
+def _row_rgb(out: bytearray, base: int, line: bytearray, width: int, colour: int, palette) -> None:
+    """Writes one unfiltered scanline as RGB. The reduction the greyscale path does not do.
+
+    `colour == 2` is a straight copy because the row is already RGB, which is the case every camera and every
+    screenshot produces and therefore the case worth having fast.
+    """
+    if colour == 2:
+        out[base:base + width * 3] = line[:width * 3]
+        return
+    for x in range(width):
+        j = base + x * 3
+        if colour == 6:
+            i = x * 4
+            out[j], out[j + 1], out[j + 2] = line[i], line[i + 1], line[i + 2]
+        elif colour == 0:
+            value = line[x]
+            out[j], out[j + 1], out[j + 2] = value, value, value
+        elif colour == 4:
+            value = line[x * 2]
+            out[j], out[j + 1], out[j + 2] = value, value, value
+        else:
+            index = line[x]
+            r, g, b = palette[index] if index < len(palette) else (255, 255, 255)
+            out[j], out[j + 1], out[j + 2] = r, g, b
 
 
 def load_greyscale(path: str) -> Greyscale:
@@ -275,6 +327,143 @@ def load_greyscale(path: str) -> Greyscale:
     with Image.open(path) as image:
         grey = image.convert('L')
         return Greyscale(width=grey.width, height=grey.height, pixels=bytearray(grey.tobytes()))
+
+
+def load_rgb(path: str) -> Rgb:
+    """Whatever the file is, in colour: PNG by hand, anything else through Pillow when it is available.
+
+    The counterpart of `load_greyscale`, and it exists because **the rest of this file throws colour away**. Every
+    measurement in it is about geometry, and geometry is a property of luminance, so reducing to grey was right for
+    all of them -- and it left the library unable to answer the one question about ink that the drawing convention
+    turns out to have a measured answer for.
+    """
+    extension = os.path.splitext(path)[1].lower()
+    if extension == '.png':
+        return decode_png(path, rgb=True)
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise ImageError('no decoder for %s without Pillow' % extension) from exc
+    with Image.open(path) as image:
+        rgb = image.convert('RGB')
+        return Rgb(width=rgb.width, height=rgb.height, pixels=bytearray(rgb.tobytes()))
+
+
+# How far below its own paper a pixel has to sit to count as ink. **Relative to the paper, not absolute.** The first
+# version of this used the module's `INK_THRESHOLD` of 128 and reported a 20-second frame of clean line art as
+# `median 119,108,113` -- a mixture of the line art, a grey watermark and the frame border, because that line art is a
+# *light* dusty rose whose core sits well above 128. A threshold calibrated for dark ink is the wrong instrument for
+# light ink, and the drawing convention has plenty of both.
+PAPER_MARGIN = 12
+# Above this, a pixel has a hue that can be measured. Below it, the pixel is grey and its colour is an artefact of
+# whatever it was mixed with.
+CHROMA_FLOOR = 0.10
+# Each edge ignored, as a fraction of that dimension: screen recordings carry frame borders and watermarks, and a
+# border is not ink.
+BORDER_CROP = 0.02
+
+
+@dataclass
+class InkColour:
+    """The colour of a drawing's ink, **and how much of the ink had a colour at all.**
+
+    **The second number is not a detail.** A drawing whose lines are black has no ink colour to report, and the honest
+    answer is to say so rather than to return the median of a pile of grey pixels -- which is what the first version
+    did, and it is how "the ink is warm, R-B +10" came to be recorded for a frame whose lines are a red-brown at
+    R-B +39 alongside a grey watermark and a grey border that shared its median.
+    """
+    paper: int
+    ink: int
+    coloured: int
+    median: tuple[int, int, int]          # over the pixels that have a hue
+
+    @property
+    def hue_fraction(self) -> float:
+        return self.coloured / float(self.ink) if self.ink else 0.0
+
+    @property
+    def warmth(self) -> int:
+        return self.median[0] - self.median[2]
+
+    @property
+    def chroma(self) -> float:
+        return (max(self.median) - min(self.median)) / 255.0
+
+    def verdict(self) -> str:
+        """**What the measurement is entitled to say.** Stated as a sentence so it cannot be quoted as a number
+        without its condition."""
+        if self.coloured < 200 or self.hue_fraction < 0.05:
+            return ('the ink is hueless: only %d of %d ink pixels have a measurable hue, so there is no ink colour '
+                    'here to report' % (self.coloured, self.ink))
+        return ('ink has a hue: %d of %d ink pixels (%.0f%%) are coloured, median %d,%d,%d, R-B %+d, chroma %.3f'
+                % (self.coloured, self.ink, 100.0 * self.hue_fraction, self.median[0], self.median[1],
+                   self.median[2], self.warmth, self.chroma))
+
+    def line(self) -> str:
+        return ('paper %3d | ink %7d px | coloured %7d (%4.1f%%) | median %3d,%3d,%3d | R-B %+3d | chroma %.3f'
+                % (self.paper, self.ink, self.coloured, 100.0 * self.hue_fraction, self.median[0], self.median[1],
+                   self.median[2], self.warmth, self.chroma))
+
+
+def measure_ink_colour(image: Rgb, margin: int = PAPER_MARGIN, border: float = BORDER_CROP) -> InkColour:
+    """The colour of a drawing's ink, relative to that drawing's own paper and over **every** pixel rather than a
+    sample of them.
+
+    No subsampling: ink is a small fraction of a drawing's pixels, the interesting case is a colour only slightly off
+    neutral, and a sample is the wrong instrument for a small effect on a small subset. One pass in Python, about a
+    second on a 1.6-megapixel frame.
+    """
+    pixels = image.pixels
+    width, height = image.width, image.height
+    x0, x1 = int(width * border), width - int(width * border)
+    y0, y1 = int(height * border), height - int(height * border)
+
+    # The paper is the bright end of the image, taken as a high percentile rather than the maximum so that a white
+    # watermark or a blown highlight does not drag it up.
+    histogram = [0] * 256
+    for y in range(y0, y1):
+        base = y * width * 3
+        for x in range(x0, x1):
+            i = base + x * 3
+            histogram[(pixels[i] * 299 + pixels[i + 1] * 587 + pixels[i + 2] * 114) // 1000] += 1
+    seen = total = 0
+    for level in range(255, -1, -1):
+        seen += histogram[level]
+        total += histogram[level]
+    target = sum(histogram) * 0.75
+    seen = 0
+    paper = 255
+    for level in range(255, -1, -1):
+        seen += histogram[level]
+        if seen >= target:
+            paper = level
+            break
+
+    below = paper - margin
+    reds: list[int] = []
+    greens: list[int] = []
+    blues: list[int] = []
+    ink = 0
+    for y in range(y0, y1):
+        base = y * width * 3
+        for x in range(x0, x1):
+            i = base + x * 3
+            r, g, b = pixels[i], pixels[i + 1], pixels[i + 2]
+            if (r * 299 + g * 587 + b * 114) // 1000 >= below:
+                continue
+            ink += 1
+            if (max(r, g, b) - min(r, g, b)) / 255.0 >= CHROMA_FLOOR:
+                reds.append(r)
+                greens.append(g)
+                blues.append(b)
+    if not ink:
+        raise ImageError('no ink at all below paper %d: this is a blank image' % paper)
+    if reds:
+        middle = lambda values: sorted(values)[len(values) // 2]
+        median = (middle(reds), middle(greens), middle(blues))
+    else:
+        median = (0, 0, 0)
+    return InkColour(paper=paper, ink=ink, coloured=len(reds), median=median)
 
 
 # ---------------------------------------------------------------- measuring

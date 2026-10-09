@@ -266,7 +266,7 @@ convention that assigns the meanings is explicit:
 |---|---|---|---|---|
 | `silhouette` | 輪郭線, the outer contour | silhouette | 2.75 | `#2A1C18` |
 | `shadow` | 陰影線, the shadow or form line | suggestive contour | 1.66 | `#241A18` |
-| `contour` | 内部線, an interior line | contour | 1.00 | `#1A1620` |
+| `contour` | 内部線, an interior line | contour | 1.00 | `#1A1A1A` |
 | `detail` | 補助線, fine hair tips, auxiliary lines | -- | 0.60 | `#3A2A26` |
 
     project.add_stroke(stroke_record(jaw, 'ink', role='silhouette'))   # thicker, warmer, and it says so
@@ -300,7 +300,7 @@ against that axis by a test.
     python -m lineweight --roles face.json
 
     role             n   median     p90     max   ink
-    contour         87     2.62    3.50    4.35   #1A1620  measured positive (black, or a desaturated brown)
+    contour         87     2.62    3.50    4.35   #1A1A1A  measured positive (black, or a desaturated brown)
     detail          58     1.64    2.07    2.26   #3A2A26  measured positive (black, or a desaturated brown)
     shadow          29     7.65   10.32   10.49   #241A18  measured positive (black, or a desaturated brown)
     silhouette     114    16.62   17.12   17.35   #2A1C18  measured positive (black, or a desaturated brown)

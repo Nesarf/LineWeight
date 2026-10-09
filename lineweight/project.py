@@ -120,8 +120,8 @@ def _role_ink(name: str) -> str:
     this keeps the dependency one-way and visible. The `or` matters -- `Mark.appearance['colour']` is read by the
     renderer with a default of its own, so an empty string here would silently mean "whatever the renderer thinks".
     """
-    from .roles import ink
-    return ink(name) or '#1A1620'
+    from .roles import DEFAULT_INK, ink
+    return ink(name) or DEFAULT_INK
 
 
 @dataclass

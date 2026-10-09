@@ -173,6 +173,36 @@ and natural impression for them, the impression to potency increases with the th
 is not an improvement, it is a **trade**, and a line-hierarchy model that only ever thickens the contour is spending
 naturalness to buy potency without saying so.
 
+### The ink axis, re-measured -- two recorded numbers were wrong
+
+**Both figures this project had written down for "what colour is the line art" were artefacts of the instrument**, and
+both were corrected by measuring again with one that works. The frames are still on disk, and `ref.py` now decodes PNG
+in colour (`load_rgb`, `measure_ink_colour`); until it did, the library reduced every image to luminance and *could
+not measure ink colour at all*, so the numbers had no instrument behind them and `analysis.json` kept no colour
+channels to re-derive them from.
+
+| | recorded | re-measured | why the first was wrong |
+|---|---|---|---|
+| video 1, line stage | warm brown, median (162,140,144), **R−B +10** | warm brown, median (201,157,161), **R−B +40**, chroma 0.173 | the instrument used the absolute `INK_THRESHOLD` of 128, and this line art is *light* -- its median pixel has luminance **170**, so the threshold skipped the lines and returned the median of a grey watermark and a frame border |
+| video 2, line stage | neutral black, **R−B +0.3** | **hueless**: 0 of 146k-317k ink pixels have any measurable hue, across five frames | there is no hue to measure; reporting +0.3 turned "not on the axis" into "on the axis, at the neutral end" |
+
+**The direction of the first claim survives and the magnitude did not**, which is the useful part: video 1's line art
+really is warm red-brown, and it is warmer than anyone had recorded. The second claim was right for a reason that
+mattered -- and the number attached to it was not a measurement of anything.
+
+What the two measurements now support, with one instrument:
+
+* **The axis is real and it has at least two settings.** Video 1's line stage is a warm red-brown at R−B +40 with a
+  measurable hue on 46% of its ink pixels; video 2's is hueless. KEER2014 measured black and the browns as positive on
+  naturalness, so both settings are on the positive side and the axis is a **choice between two measured-valid inks**,
+  not a single correct answer.
+* **`INK_THRESHOLD` is not a colour threshold.** A threshold calibrated for dark ink is the wrong instrument for light
+  ink, and light line art is common in this idiom. The colour measurement is now relative to each image's own paper
+  (`PAPER_MARGIN`), ignores a border (`BORDER_CROP`), and **reports when there is no hue rather than returning a
+  median of grey pixels** (`InkColour.verdict`).
+* **`lineweight`'s own default ink was a cool violet-black, R−B −6**, which is on neither measured setting. It is now
+  `#1A1A1A`, neutral, which is the one value both drawings agree with; the warm end belongs to the `silhouette` role.
+
 **Colour near skin tone reads as natural, and so does black.** The colours that scored positive on naturalness are black
 and the two browns; the ones that scored negative are green, blue and red. The paper's reading: *"the use of color close
 to human skin color in the outline gives animation characters natural impression, as well as the use of black."*

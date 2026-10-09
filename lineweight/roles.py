@@ -61,6 +61,18 @@ WIDTH_P90_OVER_MEDIAN = 2.75
 WIDTH_MAX_OVER_MEDIAN = 5.33
 
 
+# **The ink a drawing is made of when nobody says otherwise.**
+#
+# This was `#1A1620` -- a cool violet-black, R-B minus six -- and *neither measured drawing is cool*. Video 1's line
+# stage measures a warm red-brown at R-B **+40** (46% of its ink pixels have a measurable hue); video 2's measures
+# **hueless**, with no measurable hue at all across five frames and 146k-317k ink pixels each. Both sit where KEER2014
+# found a positive naturalness impression -- black and the browns -- and a cool cast sits on neither. Neutral is the
+# one value both drawings agree with, and a warm ink is the `silhouette` role's, which is where the convention puts it.
+#
+# The two recorded figures this replaces were +10 and +0.3, and both were wrong in a way that mattered: see
+# `RESEARCH-LINE-QUALITY.md`, "the ink axis, re-measured".
+DEFAULT_INK = '#1A1A1A'
+
 # The placement rule, as code rather than as a comment: the two middle roles sit one geometric step either side of the
 # anchor, so the ratio between adjacent roles is the same going up as going down. Derived rather than typed, because
 # two hand-rounded numbers cannot be reciprocal and a test that says they are would be asserting the rounding.
@@ -90,7 +102,7 @@ ROLES: dict[str, Role] = {
         'placed geometrically between the anchor and the silhouette, inside the corpus max/median envelope',
         'convention only: the shadow side, and the base of hair strands and cloth folds, are drawn thicker'),
     'contour': Role(
-        'contour', '内部線', 'contour (occlusion edge)', 1.0, '#1A1620',
+        'contour', '内部線', 'contour (occlusion edge)', 1.0, DEFAULT_INK,
         'the anchor -- the brush width is calibrated to the corpus median line width and interior lines are the most '
         'numerous',
         'convention only: interior lines go thin, except where parts overlap'),
@@ -129,7 +141,7 @@ def width_scale(name: str) -> float:
 
 def ink(name: str) -> str:
     """The colour a role is drawn in by default, or the historical default ink when there is no role."""
-    return ROLES[name].ink if name else '#1A1620'
+    return ROLES[name].ink if name else DEFAULT_INK
 
 
 def chroma(colour: str) -> float:

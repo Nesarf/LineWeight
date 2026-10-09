@@ -403,7 +403,7 @@ def tremble(path: list[tuple[float, float]], amount: float, seed: int = 0,
 
 
 def stroke(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
-           colour: str = '#1A1620', resolution: int = 14) -> tuple[str, float]:
+           colour: str = '', resolution: int = 14) -> tuple[str, float]:
     """One stroke: path in, filled outline plus its mean opacity out."""
     return from_record(stroke_record(points, brush_name, seed, colour, resolution))
 
@@ -953,7 +953,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # **Resolved here, once.** The default used to be a literal, which meant a role could never supply its ink:
         # `colour or role_ink(...)` never reached the second half. An explicit colour still wins, and a record with
         # neither a colour nor a role gets the historical default.
-        'colour': colour or roles.ink(role) or '#1A1620',
+        'colour': colour or roles.ink(role),
         'resolution': resolution,
         # **What this line is *for*, not how wide it is.** Stored on the record rather than passed to the expander so
         # that the role survives into the project file and can be changed later without redrawing anything -- which is
@@ -1561,7 +1561,7 @@ def roles_report(project_path: str) -> int:
         widths = stroke_widths(mark['geometry'])
         by_role.setdefault(name, []).extend(widths)
         everything.extend(widths)
-        inks.setdefault(name, set()).add(mark.get('appearance', {}).get('colour', '#1A1620'))
+        inks.setdefault(name, set()).add(mark.get('appearance', {}).get('colour', roles.DEFAULT_INK))
 
     def ratio(values, fraction):
         ordered = sorted(values)

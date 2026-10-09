@@ -40,7 +40,7 @@ def test_no_role_changes_nothing():
     nothing had happened while the record claimed something it never said.
     """
     assert roles.width_scale('') == 1.0
-    assert roles.ink('') == '#1A1620'
+    assert roles.ink('') == roles.DEFAULT_INK
     assert roles.trade('') == 'no role: the brush width exactly as given, no trade declared'
     control = [(0, 0), (50, 10), (100, 0)]
     plain = stroke_record(control, 'ink', seed=1)
@@ -212,7 +212,7 @@ def test_the_role_supplies_the_ink_and_an_explicit_colour_wins():
     """
     control = [(0, 0), (50, 10), (100, 0)]
     assert stroke_record(control, 'ink', seed=1, role='silhouette')['colour'] == roles.ROLES['silhouette'].ink
-    assert stroke_record(control, 'ink', seed=1, role='')['colour'] == '#1A1620'
+    assert stroke_record(control, 'ink', seed=1, role='')['colour'] == roles.DEFAULT_INK
     chosen = stroke_record(control, 'ink', seed=1, role='silhouette', colour='#123456')
     assert chosen['colour'] == '#123456', 'an explicit colour has to beat the role'
     project = Project(width=200, height=200)
