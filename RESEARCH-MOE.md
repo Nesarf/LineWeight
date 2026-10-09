@@ -369,3 +369,48 @@ drawing work does not consume it, the role model does not consume it, and it cha
 rules (hair 39–41, folds 112–121) were the part of this chapter the drawing actually needs, and those are extracted.
 So this is recorded as **open with its measurements intact**, rather than closed with a number that three failed
 attempts say would not have been trustworthy.
+
+### The face detector, second attempt: the segmenter works, the pass condition still does not
+
+Progress on the three failures recorded above, and a new one that replaces them.
+
+**What now works.** The page splits into figures in two steps, and both are checked against something already known:
+
+1. **The dotted rules give the crown and the head unit.** They are detectable by their signature (many short runs per
+   row), and they land on whole head units — confirmed earlier at 6.00 / 5.00 / 4.00 / 3.00.
+2. **The figure's columns give its horizontal extent.** A column that carries ink across **many rows** is a figure; a
+   text column carries ink only inside its own band. So: drop the rule rows, drop rows carrying more than ~320 ink
+   pixels (caption text), and count remaining ink rows per column. That yields narrow bands — 56 to 80 px — because a
+   line drawing's interior is white and only its near-vertical stretches light up a column. **Clustering those bands
+   at a 250 px gap threshold recovers the figures**: the gap *inside* one figure is 40–150 px, the gap *between* two
+   is about 400. On page 58 that gives x 256–750 and x 1150–1405, which is the front and back figure and nothing else.
+
+**What that buys.** Every page now yields **exactly two figures**, and the back views are rejected correctly rather
+than by hand: a back view has no face, its densest blob pair is spurious, and it lands at **1.04** and **1.00** head
+units — outside any plausible eye line. The pages with a face give
+
+| page | ratio | eye line below the crown |
+|---|---|---|
+| printed 58 | 6頭身 | **0.588** |
+| printed 64 | 3頭身 | **0.570** |
+
+which is the same constant the manual measurement found, now reached by the pipeline instead of by hand.
+
+**What still fails, and exactly where.** Reading the crown and feet from the **silhouette** rather than from the rules
+— which is what makes the test non-circular, since recovering the printed ratio from the rules would only be
+recovering the rules again — gives **3.93, 2.23, 3.15 and 2.97** against printed 6, 5, 4 and 3. The cause is visible
+in the numbers: the front band on page 58 spans y **187..2070** while the figure's own guide lines run 336..1657. So
+`crown` landed on the **chapter heading** (y 187–212) and `feet` on the **chibi figure** at the bottom of the page
+(y ≈ 2070), because neither is dense enough to be caught by the 320-pixel text filter and both sit inside the
+figure's column band.
+
+**So the leak is text and the chibi, not the eye detection.** Two things follow and neither is a threshold to nudge.
+The text filter is a *density* test on rows, and a heading is dense while a caption line is not — so it catches some
+text and misses the rest. And the chibi shares the front figure's columns, so no column-based method can separate
+them; that needs either a vertical cut (the chibi sits below the feet line, which the rules know) or a connected
+component that survives the rules being masked.
+
+**Not done, and not guessed at.** The pass condition is unmet, so the corpus check stays open. The temptation at this
+point is to use the rules for the crown and feet, report a perfect 6.00/5.00/4.00/3.00, and call it validated — which
+would be true and would prove nothing, because it would be checking that the rules agree with themselves. What is
+recorded instead is one working mechanism, one measured constant, and a failure whose cause is named.
