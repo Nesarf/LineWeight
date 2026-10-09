@@ -176,6 +176,53 @@ def polygon_to_path(points: list[tuple[float, float]]) -> str:
     return 'M %.2f %.2f ' % points[0] + ' '.join('L %.2f %.2f' % p for p in points[1:]) + ' Z'
 
 
+# **Above this ratio, a vertex gets a round join instead of a displaced point.**
+#
+# The offset point at a vertex belongs at `half / cos(turn/2)` along the bisector of the two segment normals. As the
+# turn approaches a reversal that goes to infinity, and the *direction* stops meaning anything before the length does:
+# at 165 degrees the central difference between the neighbouring samples lies nearly **along the path** rather than
+# across it, so the "offset" is displaced forward. That is what the chisel tip on a double-back stroke was -- measured
+# on a hairpin, the right spine's apex point sat at x=252.44 with the path's own maximum at 250, and the stroke ended
+# in a 4.88-unit straight segment coming to a **point** instead of a cap.
+#
+# A miter limit is the standard answer. It is stated as the ratio rather than as an angle because the ratio is what the
+# geometry actually produces, and 4.0 puts the switch at a turn of 151 degrees -- so gentle corners and the right
+# angles a drawing is full of keep exactly the outline they had, and only a genuine doubling-back changes.
+MITER_LIMIT = 4.0
+
+# How finely a round join is sampled. Over-fine on purpose: the arc is fitted to cubics afterwards with a tolerance of
+# a hundredth of the brush width, and a semicircle of radius 3.25 needs about nine points to be within that, so this
+# leaves margin rather than being tuned.
+JOIN_STEPS = 12
+
+
+def _unit(dx: float, dy: float) -> tuple[float, float] | None:
+    length = math.hypot(dx, dy)
+    return None if length == 0 else (dx / length, dy / length)
+
+
+def _needs_round_join(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    """Whether the turn from direction `a` to direction `b` is sharp enough that a displaced point is meaningless."""
+    cosine = max(-1.0, min(1.0, a[0] * b[0] + a[1] * b[1]))
+    return math.sqrt(max(0.0, (1.0 + cosine) / 2.0)) < 1.0 / MITER_LIMIT
+
+
+def _arc(cx: float, cy: float, radius: float, start: tuple[float, float],
+         through: tuple[float, float], end: tuple[float, float]) -> list[tuple[float, float]]:
+    """Points along a round join from `start` to `end`, sweeping the way that passes through `through`.
+
+    All three are unit directions. The sweep is measured as two signed angles rather than as a shortest arc, because
+    at a reversal the two ends are 180 degrees apart and "the short way round" is ambiguous exactly where this matters.
+    """
+    def signed(u, v):
+        return math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1])
+    total = signed(start, through) + signed(through, end)
+    base = math.atan2(start[1], start[0])
+    return [(cx + math.cos(base + total * (k / float(JOIN_STEPS))) * radius,
+             cy + math.sin(base + total * (k / float(JOIN_STEPS))) * radius)
+            for k in range(JOIN_STEPS + 1)]
+
+
 def outline_points(path: list[tuple[float, float]], width: list[float]
                    ) -> list[tuple[float, float]]:
     """**A stroke with weight is a filled shape, not a stroke.** SVG cannot vary a stroke's width, so the width
@@ -188,9 +235,26 @@ def outline_points(path: list[tuple[float, float]], width: list[float]
     **handed to something else that will paint it** -- `audit.compare_fillers` gives these exact points to cairo. That
     is the reason for the split and it is load-bearing: if the referee had to recover the polygon by parsing the `d`
     string, it would be checking a rounded re-reading of the geometry rather than the geometry.
+
+    **The halves can differ in length**, because a round join contributes several points to each. Only the
+    concatenation is meaningful, and `outline_chain` splits it at `len(path)` -- which is the one place that has to
+    know the structure, and the reason it cannot simply take every other point.
+    """
+    left, right = outline_spines(path, width)
+    return left + list(reversed(right))
+
+
+def outline_spines(path: list[tuple[float, float]], width: list[float]
+                   ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """The two sides of a weighted stroke, each walked along the path.
+
+    Separate from `outline_points` because **the two are not the same length once there are round joins**, so a caller
+    that concatenates them and then splits at `len(path)` is splitting in the wrong place. `outline_chain` used to do
+    exactly that, and it is the sort of break that produces a shape which is plausible and subtly wrong rather than an
+    error.
     """
     if len(path) < 2:
-        return []
+        return [], []
     left: list[tuple[float, float]] = []
     right: list[tuple[float, float]] = []
     for i, (x, y) in enumerate(path):
@@ -200,9 +264,17 @@ def outline_points(path: list[tuple[float, float]], width: list[float]
         length = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / length, dx / length
         half = max(0.35, width[i] / 2.0)
+        incoming = _unit(x - prev[0], y - prev[1]) if i > 0 else None
+        outgoing = _unit(nxt[0] - x, nxt[1] - y) if i < len(path) - 1 else None
+        if incoming and outgoing and _needs_round_join(incoming, outgoing):
+            near = (-incoming[1], incoming[0])
+            far = (-outgoing[1], outgoing[0])
+            left.extend(_arc(x, y, half, near, incoming, far))
+            right.extend(_arc(x, y, half, (-near[0], -near[1]), incoming, (-far[0], -far[1])))
+            continue
         left.append((x + nx * half, y + ny * half))
         right.append((x - nx * half, y - ny * half))
-    return left + list(reversed(right))
+    return left, right
 
 
 def outline(path: list[tuple[float, float]], width: list[float], error: float = 0.0) -> str:
@@ -240,14 +312,12 @@ def outline_chain(path: list[tuple[float, float]], width: list[float],
     `error` of zero or less means `outline_error(width)`. The tolerance has to stay **below the hand tremor** rather
     than below the eye, or the fit smooths the hand out of the drawing -- see `OUTLINE_ERROR`.
     """
-    points = outline_points(path, width)
-    if not points:
+    left, right = outline_spines(path, width)
+    if not left:
         return []
     if error <= 0:
         error = outline_error(width)
-    count = len(path)
-    left = points[:count]
-    rightwards = points[count:]                 # the right spine, running back along the path
+    rightwards = list(reversed(right))          # the right spine, running back along the path
     chain = curve.fit_chain(left, error)
     chain.append(curve.line_segment(left[-1], rightwards[0]))
     chain.extend(curve.fit_chain(rightwards, error))

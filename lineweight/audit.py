@@ -570,7 +570,7 @@ class OffsetReport(NamedTuple):
 
 
 def compare_stroker(centre: Sequence[tuple[float, float]], width: float, size: tuple[int, int],
-                    line_join: str = 'miter') -> OffsetReport:
+                    line_join: str = 'round') -> OffsetReport:
     """**Referee B. Is the offsetter right?**
 
     `outline()` and cairo's stroker both turn "a path plus a width" into a filled region, and they were written by
@@ -579,6 +579,15 @@ def compare_stroker(centre: Sequence[tuple[float, float]], width: float, size: t
 
     Read it with `turn`: agreement is expected while the path is smooth, and **disagreement at a sharp corner is the
     known invalid-loop problem, measured rather than described**. That number is what P1 has to move.
+
+    **`line_join='round'` is not the flattering choice, it is the same pen.** `raster.stroke_layer` draws a stroke as
+    radial dabs, which is a round nib by construction, so the vector outline is a vectorisation of a round-nibbed
+    stroke and a round join is what it has to be compared against. Cairo defaults to a miter and that is a *different
+    pen*: at the 161-degree reversal of a hairpin a miter has a ratio of 6.11, i.e. a spike 16.6 units long, which is
+    not a shape an artist drew. All three are reported by the numbers below rather than asserted, because a referee
+    whose settings were chosen to make its subject agree would be worth nothing -- on the same hairpin the shipped
+    outline measures **0 gross against round, 28 against miter and 7 against bevel**, and on every gentler shape all
+    three are 0 because a join only matters where the turn is sharp.
     """
     points = [(float(x), float(y)) for x, y in centre]
     polygon = outline_points(points, [width] * len(points))

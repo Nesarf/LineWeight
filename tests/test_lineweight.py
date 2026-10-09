@@ -15,6 +15,7 @@ import os
 import re
 
 from lineweight import BRUSHES, inked_svg, outline, parse_path, pressures, stroke
+from lineweight.core import stroke_record
 
 
 def test_parse_handles_the_commands_a_generator_writes():
@@ -1300,3 +1301,90 @@ def test_the_tremor_amplitude_is_a_fraction_of_the_brush_width():
     assert max(fractions) - min(fractions) < 0.005, \
         'the tremor amplitude moved with the sampling: %r of the width' % (fractions,)
     assert 0.02 < fractions[0] < 0.12, 'the tremor is no longer a small fraction of the width: %.3f' % fractions[0]
+
+
+# ---------------------------------------------------------------------------------------- round joins at a reversal
+
+def _hairpin():
+    return [(float(x), float(y)) for x, y in
+            stroke_record([(30, 120), (250, 120), (30, 120)], 'ink', seed=3)['centre']]
+
+
+def test_a_reversal_gets_a_round_join_and_ordinary_corners_do_not():
+    """The join has to fire where the offset is meaningless and nowhere else.
+
+    The offset point at a vertex sits at `half / cos(turn/2)` along the bisector, which diverges as the turn approaches
+    a reversal, and the *direction* stops meaning anything before the length does. `MITER_LIMIT` switches to a round
+    arc above a 151-degree turn. Every shape here except the doubling-back one must be untouched by that -- a join that
+    also fired on an ordinary curve would silently change every stroke in every drawing.
+    """
+    from lineweight.core import MITER_LIMIT, _needs_round_join, _unit, outline_spines
+
+    assert abs(math.degrees(2 * math.acos(1.0 / MITER_LIMIT)) - 151.0) < 0.5
+
+    def joins(centre):
+        return sum(1 for i in range(1, len(centre) - 1)
+                   if _needs_round_join(_unit(centre[i][0] - centre[i - 1][0], centre[i][1] - centre[i - 1][1]),
+                                        _unit(centre[i + 1][0] - centre[i][0], centre[i + 1][1] - centre[i][1])))
+
+    assert joins(_hairpin()) == 1, 'a double-back is exactly one reversal'
+    for control in ([(20, 60), (90, 30), (160, 80), (230, 40)],      # ordinary curve
+                    [(10, 10), (180, 10), (180, 100)],               # a right angle
+                    [(10, 10), (100, 90), (190, 10)],                # a sharp V
+                    [(10, 50), (190, 50)]):                          # a straight line
+        centre = [(float(x), float(y)) for x, y in stroke_record(control, 'ink', seed=3)['centre']]
+        assert joins(centre) == 0, 'an ordinary corner was given a round join'
+    # and the spines are the same length when nothing was inserted, which is what lets `outline_chain` split them
+    left, right = outline_spines([(10.0, 10.0), (100.0, 10.0)], [4.0, 4.0])
+    assert len(left) == len(right) == 2
+
+
+def test_the_two_spines_are_not_the_same_length_once_a_join_is_inserted():
+    """**A regression for a break that would have been silent.**
+
+    `outline_points` returns the two spines concatenated, and `outline_chain` used to split that at `len(path)`. That
+    held while each vertex contributed exactly one point to each side. A round join contributes `JOIN_STEPS + 1`, so
+    after the join existed the split landed in the middle of a spine -- producing a shape that is plausible and
+    subtly wrong rather than an error, which is the failure mode this project keeps meeting.
+    """
+    from lineweight.core import JOIN_STEPS, outline_points, outline_spines, stroke_widths
+
+    centre = _hairpin()
+    width = stroke_widths(stroke_record([(30, 120), (250, 120), (30, 120)], 'ink', seed=3))
+    left, right = outline_spines(centre, width)
+    assert len(left) != len(centre), 'the join is not being inserted at all'
+    assert len(left) == len(right) == len(centre) - 1 + JOIN_STEPS + 1
+    # `outline_points` must still be exactly the concatenation the rest of the code assumes
+    assert outline_points(centre, width) == left + list(reversed(right))
+
+
+def test_a_double_back_ends_in_a_cap_not_in_a_point():
+    """The shape defect, stated as the property that distinguishes a cap from a chisel.
+
+    Before the fix the apex produced two spine points both at the centreline's **y**, displaced along the path instead
+    of across it -- the right spine's apex sat at x=252.44 with the path's own maximum at 250 -- and the stroke ended
+    in a 4.88-unit straight segment converging to a point.
+
+    **Asked as coverage of the forward half-disc, not as bookkeeping about which points came from where.** A round cap
+    means every direction in front of the apex is painted out to the nib radius; a chisel means only the two flanking
+    directions are, and everything oblique between them falls outside the two converging edges. The first version of
+    this test collected the points near the tip and checked their radii, which swept in the neighbouring vertices and
+    failed on correct code -- a filter is not a property.
+    """
+    from lineweight.core import outline_points, stroke_widths
+
+    centre = _hairpin()
+    width = stroke_widths(stroke_record([(30, 120), (250, 120), (30, 120)], 'ink', seed=3))
+    polygon = outline_points(centre, width)
+    apex = max(range(len(centre)), key=lambda i: centre[i][0])
+    cx, cy = centre[apex]
+    half = max(0.35, width[apex] / 2.0)
+
+    missed = []
+    for degrees in range(-90, 91, 5):
+        angle = math.radians(degrees)
+        px = cx + math.cos(angle) * half * 0.95
+        py = cy + math.sin(angle) * half * 0.95
+        if _winding(polygon, px, py) == 0:
+            missed.append(degrees)
+    assert not missed,         'the stroke is not capped round: nothing painted at %r degrees in front of the apex' % (missed,)

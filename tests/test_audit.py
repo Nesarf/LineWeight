@@ -355,18 +355,28 @@ def test_a_control_point_corner_is_not_a_sharp_turn():
     assert audit.compare_stroker(corner, INK, (200, 120)).agreement.ok
 
 
-def test_the_offsetter_and_cairo_part_company_where_the_path_doubles_back():
-    """The boundary of referee B's jurisdiction, stated as a number rather than as a caveat.
+def test_a_doubling_back_path_now_agrees_where_it_used_to_part_company():
+    """**This test used to assert the opposite**, and the reversal it was written about is fixed.
 
-    Where the path reverses, `outline()` offsets the inside of the turn past the centreline. cairo's stroker has a
-    join rule for that; `outline()` does not. **A disagreement here is the known invalid-loop problem measured, not a
-    regression** -- and it is what P1 has to move, which it can only do against a number.
+    It was `test_the_offsetter_and_cairo_part_company_where_the_path_doubles_back`, and it documented a known
+    limitation: where the path reverses, `outline()` displaced its offset points *along* the path instead of across it,
+    so the stroke ended in a chisel tip and the referee reported 50 gross pixels. `MITER_LIMIT` now gives a reversal a
+    round join, and against a round nib -- which is what `raster.stroke_layer` draws, its nib being a radial dab -- the
+    agreement is **exact**.
+
+    **The miter comparison is the negative control.** `line_join` is a parameter precisely so that this test can show
+    the agreement is not an artefact of a lenient referee: the same outline against a mitered pen still disagrees,
+    because a miter at this turn has a ratio of 6.1 and draws a spike 16 units long that nothing drew.
     """
     centre = [(float(x), float(y)) for x, y in
-              stroke_record([(10, 50), (190, 50), (10, 50)], 'ink', seed=3)['centre']]
-    report = audit.compare_stroker(centre, INK, (210, 110))
-    assert report.turn > 120.0, 'this path was meant to double back, sharpest turn is %.1f' % report.turn
-    assert report.agreement.gross > 0, 'either the geometry changed or this stopped testing anything'
+              stroke_record([(30, 120), (250, 120), (30, 120)], 'ink', seed=3)['centre']]
+    round_report = audit.compare_stroker(centre, INK, (320, 220), line_join='round')
+    miter_report = audit.compare_stroker(centre, INK, (320, 220), line_join='miter')
+    assert round_report.turn > 150.0, 'this path was meant to double back, sharpest turn is %.1f' % round_report.turn
+    assert round_report.agreement.ok, \
+        'the reversal disagrees with a round nib again: %s' % round_report.agreement
+    assert miter_report.agreement.gross > 0, \
+        'a mitered pen should disagree here -- if it does not, this test is no longer measuring anything'
 
 
 # ----------------------------------------------------------- the finding: even-odd erased 91% of a hairpin stroke
