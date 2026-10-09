@@ -171,3 +171,39 @@ something other than what the name implies.
 **What a real classifier would need to test**, now that the material is known: monochrome-ness (the Blue Archive artbook
 separates cleanly -- line pages are greyscale scans, illustrations are saturated), which is a different signal from ink
 ratio and would not admit a finished colour illustration into a linework corpus.
+
+## Instead of classifying the pages, extract the line art from them
+
+The previous section ends with a problem: the calibration corpus is 276 artbook pages selected by `ink_ratio < 0.30`,
+which admits finished colour illustrations, and a better test (monochrome-ness) would only separate them -- it would not
+give more line art. Searching for how this is done elsewhere found a better answer than a classifier: **the line art can
+be extracted from the illustrations, which removes the need to decide which pages are "linework" at all.**
+
+Tools that do this, in descending order of how directly they apply:
+
+* **`control_net_lineart_anime`** -- the anime line-art annotator, in the diffusers tooling
+  ([source](https://huggingface.co/diffusers/tools/blame/5f12b415568572b0746b1e3ee96dc5f5ebceefaf/control_net_lineart_anime.py)).
+  Purpose-built for exactly this material, and the standard tool for it in the ControlNet ecosystem
+  ([annotator overview](https://deepwiki.com/lllyasviel/ControlNet-v1-1-nightly/2.4-line-art-annotators)).
+* [`lineartization`](https://pypi.org/project/lineartization/) -- a packaged line-art extractor.
+* [`bloc97/SYNLA-Dataset`](https://github.com/bloc97/SYNLA-Dataset) and
+  [`SYNLA-Plus`](https://github.com/bloc97/SYNLA-Plus) -- synthetic line art generated from photographs, i.e. a ready-made
+  large corpus with known-good line art rather than an extraction problem at all.
+
+**Why this is worth more than a classifier for the immediate problem.** All 929 pages become usable rather than 276 being
+guessed at, the result is line art *by construction* rather than by threshold, and the extraction is repeatable so the
+corpus can be rebuilt when the method improves. The cost is honest and should be stated before anyone starts: these are
+**neural models with heavyweight dependencies**, so they belong in the corpus-building step and never in `lineweight`
+itself, which is deliberately stdlib-only and must stay that way. A corpus is data; the library that consumes it should
+not inherit a deep-learning stack.
+
+**What this still does not settle**: extracted lines are the extractor's opinion of where the lines are, and a thinner or
+thicker extraction shifts every width statistic built on top of it. So the extraction has to be validated before the
+numbers mean anything -- which is the same discipline the outline work needed, and the reason a cairo-rendered reference
+was proposed there.
+
+Also found, not yet read: [TuringSketchLine](https://ieee-dataport.org/documents/turingsketchline-real-manga-draft-line-benchmark),
+a benchmark of **real production manga draft lines** -- the closest thing found so far to a clean line-art corpus that did
+not have to be extracted -- and [Region-Wise Correspondence Prediction between Manga Line Art
+Images](https://openaccess.thecvf.com/content/CVPR2026/supplemental/Li_Region-Wise_Correspondence_Prediction_CVPR_2026_supplemental.pdf)
+(CVPR 2026), which is about comparing line art to line art.
