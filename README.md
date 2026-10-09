@@ -259,6 +259,38 @@ thinnest fifth of the runs is mostly **full-width** runs. `taper_ratio` is only 
 
 ## Checking it, rather than believing it
 
+**The library marks its own homework; `--judge` does not.** A project can be drawn a second time by **cairo**, which has
+never heard of this library, and the two compared:
+
+    python -m lineweight --judge draw.json          # both referees, with the numbers and their caveats
+
+    A. filler    -- the same polygon points, two unrelated rasterisers
+    B. offsetter -- outline() against cairo's stroker, per stroke, with the sharpest turn on that path
+
+Referee B reports the sharpest direction change alongside every stroke **because the number is unreadable without it**:
+agreement is expected while the path is smooth, and a disagreement at a reversal is the known invalid-loop problem
+rather than a regression. A 90-degree corner *in the control points* is not a sharp turn -- the curve is smoothed
+through it and the sampled turn is about 25 degrees.
+
+`--audit` draws the same project through cairo with **each mark in its own colour**, after Metzger 2024 (CESCG)
+Figure 5:
+
+    python -m lineweight --audit draw.json --out audit.png
+    python -m lineweight --audit draw.json --stage line --out lines.png
+    python -m lineweight --audit draw.json --out detail.png --zoom 250,120,44 --pixels 760
+
+**Why the colours are the point.** Visual similarity hides structure. A stroke that has merged into its neighbour, or
+crossed itself into a pinhole, is two or three slightly-off pixels in an honest render and nobody would ever see it.
+Painted its own colour it becomes **a hole in a solid field**, and a hole in a solid field is the one kind of defect
+that cannot be mistaken for antialiasing. Hue steps by the golden angle so that any two strokes adjacent in draw order --
+the only two that can touch -- are always furthest apart.
+
+Output is byte-identical for the same input, including across processes, because "I looked at the render" is only
+evidence if the render is the same thing next time.
+
+`audit.py` needs `pycairo`. **The library does not**: cairo is imported at the point of use, and `import lineweight`
+pulls in nothing but the standard library.
+
 The measurement code has tests; the bridges cannot, because they need an application to be installed and driven. So the
 checks live in `tests/tools/` and are run deliberately:
 

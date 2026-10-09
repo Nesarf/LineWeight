@@ -19,6 +19,10 @@ classifiers = [
 [project.optional-dependencies]
 fit = ["pillow>=9"]
 dev = ["pytest>=7"]
+# The independent referee (`--audit`, `--judge`) rasterises with cairo, which has never heard of this library. That is
+# the whole reason it is a separate extra: the renderer that ships is `raster.py`, in pure Python, and a check that
+# shares code with its subject is not a check. `import lineweight` pulls in nothing but the standard library either way.
+audit = ["pycairo>=1.20"]
 
 [project.scripts]
 lineweight = "lineweight.core:main"

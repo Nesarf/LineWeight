@@ -288,7 +288,7 @@ def composite(width: int, height: int, stack: list[tuple[Layer, str, float]]) ->
     return result
 
 
-def _parse_hex(colour: str) -> tuple[int, int, int]:
+def parse_hex(colour: str) -> tuple[int, int, int]:
     """`#RRGGBB` to a triple. Local rather than imported from `doc`, which imports `core`, which this file is beside --
     a three-line parse is cheaper than deciding which module is allowed to know about which."""
     text = colour.lstrip('#')
@@ -300,12 +300,27 @@ def _parse_hex(colour: str) -> tuple[int, int, int]:
 
 
 def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: float = 1.0,
-                 scale: float = 1.0) -> None:
-    """Fills a closed polygon into `layer`, by scanline, even-odd.
+                 scale: float = 1.0, fill_rule: str = 'nonzero') -> None:
+    """Fills a closed polygon into `layer`, by scanline.
 
-    **Even-odd, not nonzero, because that is what a bucket tool does** and because the polygons this receives come from
-    `weld_endpoints`, which can hand back a loop that touches itself. Even-odd gives the same answer as nonzero for
-    every simple polygon and a predictable one for a self-touching one, which is worth more here than the extra rule.
+    **Nonzero, and this was even-odd until a referee measured it.** The old reasoning was that even-odd is what a
+    bucket tool does and that `weld_endpoints` can hand back a loop that touches itself. The first half is true and
+    irrelevant; the second was never checked and is false -- `region_fill` returns one *simple* loop per region, and on
+    every closed shape tried the two rules agree to the pixel, so even-odd was buying nothing on the fill path.
+
+    What it was costing is a stroke that doubles back. `outline()` offsets the inside of a turn past the centreline, so
+    at a hairpin its polygon crosses itself, and under even-odd the crossed half has crossing number 2 and is
+    **erased**. Measured on an eyelash-style reversal (165 deg), against cairo's stroker as the reference:
+
+        cairo stroke                    1283 px
+        outline() filled nonzero        1233 px
+        outline() filled even-odd        138 px
+        raster.fill_polygon (was)        116 px     <- 91% of the stroke gone
+
+    **Two independent things already said nonzero and neither had been compared against the renderer.** `_holes`, the
+    acceptance test for the outline expansion, counts centreline points with *nonzero* winding -- so the test and the
+    renderer disagreed about the contract and both passed. And cairo, which knows nothing about this file, agrees with
+    nonzero. That is what `audit.py` is for; this is the first thing it found.
 
     The two end pixels of each span take partial coverage, so a slanted edge is not a staircase. Edges that are
     horizontal are not anti-aliased, which is a visible limitation and is left in rather than papered over.
@@ -315,6 +330,8 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
     n = len(points)
     if n < 3 or alpha <= 0:
         return
+    if fill_rule not in ('nonzero', 'even-odd'):
+        raise ValueError('unknown fill rule %r' % (fill_rule,))
     xs = [p[0] * scale for p in points]
     ys = [p[1] * scale for p in points]
     y0 = max(0, int(min(ys)))
@@ -322,22 +339,41 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
     r, g, b = colour
     for py in range(y0, y1 + 1):
         yc = py + 0.5
-        crossings: list[float] = []
+        crossings: list[tuple[float, int]] = []
         for i in range(n):
             j = (i + 1) % n
             ya, yb = ys[i], ys[j]
             if ya == yb:
                 continue
             # half-open in y, so a vertex shared by two edges is counted once and not twice
-            if (ya <= yc < yb) or (yb <= yc < ya):
-                t = (yc - ya) / (yb - ya)
-                crossings.append(xs[i] + t * (xs[j] - xs[i]))
+            if ya <= yc < yb:
+                direction = 1                      # downward on screen, and +y is down
+            elif yb <= yc < ya:
+                direction = -1
+            else:
+                continue
+            t = (yc - ya) / (yb - ya)
+            crossings.append((xs[i] + t * (xs[j] - xs[i]), direction))
         if len(crossings) < 2:
             continue
         crossings.sort()
+        spans: list[tuple[float, float]] = []
+        if fill_rule == 'even-odd':
+            for k in range(0, len(crossings) - 1, 2):
+                spans.append((crossings[k][0], crossings[k + 1][0]))
+        else:
+            # Accumulate signed winding; a span is inside wherever it is not zero. This is the whole fix: an offset
+            # that overshoots the centreline adds winding instead of cancelling.
+            winding = 0
+            start = 0.0
+            for x, direction in crossings:
+                if winding == 0:
+                    start = x
+                winding += direction
+                if winding == 0:
+                    spans.append((start, x))
         row = py * layer.width * 4
-        for k in range(0, len(crossings) - 1, 2):
-            left, right = crossings[k], crossings[k + 1]
+        for left, right in spans:
             if right <= 0 or left >= layer.width:
                 continue
             left = max(0.0, left)
@@ -373,7 +409,7 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     if not points:
         raise ValueError('fill mark %r has no points' % (mark.get('id'),))
     layer = Layer(width, height)
-    fill_polygon(layer, points, _parse_hex(appearance.get('fill', '#808080')),
+    fill_polygon(layer, points, parse_hex(appearance.get('fill', '#808080')),
                  float(appearance.get('opacity', 1.0)), scale)
     return layer
 
@@ -394,7 +430,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0)
             geometry = mark['geometry']
             record = {'brush': geometry['brush'], 'centre': geometry['centre'], 'pressure': geometry['pressure'],
                       'seed': geometry.get('seed', 0),
-                      'colour_int': _parse_hex(mark.get('appearance', {}).get('colour', '#1A1620'))}
+                      'colour_int': parse_hex(mark.get('appearance', {}).get('colour', '#1A1620'))}
             layer = stroke_layer(record, width, height, scale)
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)

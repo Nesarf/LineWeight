@@ -150,15 +150,29 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
     return out
 
 
-def outline(path: list[tuple[float, float]], width: list[float]) -> str:
+def polygon_to_path(points: list[tuple[float, float]]) -> str:
+    """A closed polygon as SVG path data. **The only place an outline's coordinates become text**, so that the text and
+    the points cannot describe different shapes."""
+    if not points:
+        return ''
+    return 'M %.2f %.2f ' % points[0] + ' '.join('L %.2f %.2f' % p for p in points[1:]) + ' Z'
+
+
+def outline_points(path: list[tuple[float, float]], width: list[float]
+                   ) -> list[tuple[float, float]]:
     """**A stroke with weight is a filled shape, not a stroke.** SVG cannot vary a stroke's width, so the width
     profile is turned into an outline: offset the path to both sides by half the local width and fill the result.
 
     This is the same operation Illustrator performs when a variable-width stroke is expanded, done here so that the
     output stays plain SVG with no dependence on any application.
+
+    Returns points rather than a `d` string because a path string can only be painted, and this shape also has to be
+    **handed to something else that will paint it** -- `audit.compare_fillers` gives these exact points to cairo. That
+    is the reason for the split and it is load-bearing: if the referee had to recover the polygon by parsing the `d`
+    string, it would be checking a rounded re-reading of the geometry rather than the geometry.
     """
     if len(path) < 2:
-        return ''
+        return []
     left: list[tuple[float, float]] = []
     right: list[tuple[float, float]] = []
     for i, (x, y) in enumerate(path):
@@ -170,9 +184,12 @@ def outline(path: list[tuple[float, float]], width: list[float]) -> str:
         half = max(0.35, width[i] / 2.0)
         left.append((x + nx * half, y + ny * half))
         right.append((x - nx * half, y - ny * half))
-    pts = left + list(reversed(right))
-    d = 'M %.2f %.2f ' % pts[0] + ' '.join('L %.2f %.2f' % p for p in pts[1:]) + ' Z'
-    return d
+    return left + list(reversed(right))
+
+
+def outline(path: list[tuple[float, float]], width: list[float]) -> str:
+    """The filled shape a weighted stroke has, as path data."""
+    return polygon_to_path(outline_points(path, width))
 
 
 def tremble(path: list[tuple[float, float]], amount: float, seed: int) -> list[tuple[float, float]]:
@@ -761,19 +778,32 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     }
 
 
+def stroke_widths(record: dict) -> list[float]:
+    """The width the brush reaches at each recorded pressure sample.
+
+    **The response curve is applied here, at expansion, rather than being baked into the record.** A record holds what
+    the pressure model produced; the curve is a decision about how the brush answers it -- under one it reaches full
+    width early and feels soft, over one it needs real pressure and feels like a pen. Because the curve lives on this
+    side, the same recorded stroke can be re-expanded with a different one, which is the practical difference between
+    keeping the line and keeping only its outline.
+    """
+    brush = BRUSHES[record['brush']]
+    gamma = float(brush.get('curve', 1.0))
+    return [brush['width'] * (float(p) ** gamma) for p in record['pressure']]
+
+
+def outline_polygon(record: dict) -> list[tuple[float, float]]:
+    """The shape a record expands to, as points. **Every consumer of a stroke's geometry comes through here** --
+    `from_record` to serialise it, `audit` to hand it to cairo -- so that the referee cannot hold a private opinion
+    about the geometry and thereby make the code it judges look correct."""
+    return outline_points([(float(x), float(y)) for x, y in record['centre']], stroke_widths(record))
+
+
 def from_record(record: dict) -> tuple[str, float]:
     """Rebuilds a stroke's outline from its record, which is what makes the record worth keeping."""
     brush = BRUSHES[record['brush']]
-    path = [(float(x), float(y)) for x, y in record['centre']]
     ps = [float(p) for p in record['pressure']]
-    # **The response curve is applied here, at expansion, rather than being baked into the record.** A record holds
-    # what the pressure model produced; the curve is a decision about how the brush answers it -- under one it
-    # reaches full width early and feels soft, over one it needs real pressure and feels like a pen. Because the
-    # curve lives on this side, the same recorded stroke can be re-expanded with a different one, which is the
-    # practical difference between keeping the line and keeping only its outline.
-    gamma = float(brush.get('curve', 1.0))
-    widths = [brush['width'] * (p ** gamma) for p in ps]
-    d = outline(path, widths)
+    d = polygon_to_path(outline_polygon(record))
     mean_p = sum(ps) / len(ps) if ps else 1.0
     opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
     return d, opacity
@@ -1107,6 +1137,89 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
     return 0
 
 
+def audit_report(project_path: str, out: str = 'audit.png', stage: str = '', upto: str = '',
+                 pixels: int = 1400, zoom: str = '') -> int:
+    """Draws a project with **cairo** instead of with `raster.py`, one colour per mark.
+
+    Two things this is for, and neither is a nicer picture. First, an independent rasteriser of the same geometry: if
+    cairo's version and `--render`'s version differ, one of them is wrong and until now nothing could say which.
+    Second, the Metzger Figure 5 view -- every mark its own colour, zoomed in -- where a stroke that merged into its
+    neighbour, crossed itself into a pinhole, or lost half its area stops being invisible.
+
+    `--zoom cx,cy,span` looks at one place instead of the whole canvas, because the whole canvas is exactly where
+    these faults are too small to see.
+    """
+    from .audit import View, render, save, stroke_colours
+    from .project import load_project
+
+    project = load_project(project_path)
+    if stage and upto:
+        raise SystemExit('--audit: give --stage or --upto, not both')
+    if stage:
+        marks, label = project.in_stage(stage), 'stage %s' % stage
+    elif upto:
+        marks, label = project.upto(upto), 'up to and including %s' % upto
+    else:
+        marks, label = project.live(), 'every live mark'
+    marks = [m.to_dict() for m in marks]
+
+    view = View.whole(int(project.width), int(project.height), pixels)
+    if zoom:
+        try:
+            cx, cy, span = (float(v) for v in zoom.split(','))
+        except ValueError:
+            raise SystemExit('--zoom wants cx,cy,span -- got %r' % (zoom,))
+        view = View.around(cx, cy, span, pixels)
+
+    surface = render(marks, view, colours=stroke_colours(len(marks)))
+    save(surface, out)
+    print('  %s' % out)
+    print('  %s: %d marks, view %g,%g %gx%g -> %dx%d px, one colour per mark'
+          % (label, len(marks), view.x, view.y, view.w, view.h, *view.size()))
+    return 0
+
+
+def judge_report(project_path: str, scale: float = 1.0) -> int:
+    """Runs both referees and prints the numbers, including the one that says whether to believe them.
+
+    **The point is that these numbers can come out wrong.** `--render` and `--check` are this library marking its own
+    homework; this is cairo, which has never heard of this library, being asked the same question.
+    """
+    from .audit import compare_fillers, compare_stroker, mark_polygon
+    from .project import load_project
+
+    project = load_project(project_path)
+    width = int(project.width * scale)
+    height = int(project.height * scale)
+    marks = [m.to_dict() for m in project.live()]
+
+    polygons = [mark_polygon(m) for m in marks]
+    print('  A. filler  -- the same points, two rasterisers')
+    # `(x,)` and not `x`: `Agreement` is a NamedTuple, and `'%s' % named_tuple` is read as *the argument tuple* and
+    # unpacks into "not all arguments converted" rather than calling its `__str__`. The one place a tuple is a trap.
+    print('     %s' % (compare_fillers(polygons, (width, height)),))
+
+    print('  B. offsetter -- outline() against cairo\'s stroker, at each mark\'s mean width')
+    print('     **read `turn` with the number**: agreement is expected while the path is smooth, and a')
+    print('     disagreement at a reversal is the known invalid-loop problem, not a regression.')
+    worst = 0
+    strokes = 0
+    for mark in marks:
+        if mark['kind'] != 'stroke':
+            continue
+        strokes += 1
+        centre = [(float(x), float(y)) for x, y in mark['geometry']['centre']]
+        widths = stroke_widths(mark['geometry'])
+        mean = sum(widths) / len(widths) if widths else 1.0
+        report = compare_stroker(centre, mean, (width, height))
+        if report.agreement.gross:
+            worst += 1
+        print('     %-8s turn %6.1f deg  width %5.2f  %s'
+              % (mark['id'], report.turn, report.width, report.agreement))
+    print('  %d of %d strokes disagree structurally' % (worst, strokes))
+    return 0
+
+
 def check_report(project_path: str, scale: float = 1.0) -> int:
     """Renders each pass and runs that pass's invariants against the result, then reports.
 
@@ -1243,6 +1356,14 @@ def main() -> int:
                         help='with --render: only this pass, e.g. line, value, colour, refine')
     parser.add_argument('--upto', default='', metavar='ROLE',
                         help='with --render: every pass up to and including this one -- the drawing as it stood then')
+    parser.add_argument('--audit', default='', metavar='PROJECT',
+                        help='draw a project with cairo instead of raster.py, one colour per mark')
+    parser.add_argument('--judge', default='', metavar='PROJECT',
+                        help='run the independent referees on a project and print the numbers')
+    parser.add_argument('--pixels', type=int, default=1400,
+                        help='with --audit: pixels across the longer side of the view')
+    parser.add_argument('--zoom', default='', metavar='CX,CY,SPAN',
+                        help='with --audit: look at one place instead of the whole canvas')
     args = parser.parse_args()
     if args.fit:
         return fit_report(args.fit)
@@ -1260,6 +1381,11 @@ def main() -> int:
         return check_report(args.check, scale=args.scale)
     if args.log:
         return log_report(args.log, rewind_to=args.rewind)
+    if args.audit:
+        return audit_report(args.audit, out=args.out, stage=args.stage, upto=args.upto,
+                            pixels=args.pixels, zoom=args.zoom)
+    if args.judge:
+        return judge_report(args.judge, scale=args.scale)
     return demo(args.out)
 
 
