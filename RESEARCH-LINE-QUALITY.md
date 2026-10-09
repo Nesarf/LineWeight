@@ -221,3 +221,45 @@ prose rules about proportion, and it is exactly why **measuring a corpus beats r
 incompatible numbers in adjacent paragraphs and still be useful, whereas an extractor that returns 1/2 where the drawing
 says 1/3 is simply wrong. It is the same reason the width numbers in `RESEARCH-SCENERY.md` had to be traced back to a
 mixed corpus before they meant anything.
+
+## Why line drawings work at all, and why nobody can say how
+
+From **Line Drawings and Perception** -- Doug DeCarlo, Part III of the SIGGRAPH 2005 course *Line Drawings from 3D
+Models* ([course7-6-lineinterp.pdf](https://gfx.cs.princeton.edu/proj/sg05lines/course7-6-lineinterp.pdf)).
+
+**The puzzle, stated plainly**: *"It's actually a bit surprising that line drawings are effective at all. Upon first
+inspection, line drawings seem to be too ambiguous. **An infinity of curves in 3D project to the same line in the
+image.**"* Same non-injectivity that makes vectorization hard, seen from the perception side rather than the
+representation side.
+
+**And then the sentence that describes this entire project's reason to exist** -- about Dürer and Flaxman:
+
+> While artists can produce drawings like this, **they don't have access to the nature of the processes behind what
+> they're doing.** They rely on their training, and **use their own perception to judge the effects of their
+> decisions**.
+
+That is the whole situation. The knowledge is real, it is not written down anywhere as a process, it is transmitted as
+training, and the only feedback loop is the artist's own eye. It is also why this project keeps finding that the
+authoritative sources are **procedures** (*"draw the body under the clothes"*) rather than principles -- the principles
+are unknown even to the people who execute them flawlessly. Every tutorial table in this file is a practitioner's
+compression of a process they cannot fully state, which is exactly why those tables contain contradictions like the
+eye-width one above.
+
+**Coherence is local, not global.** The Penrose triangle and Vasarely's impossible figures show that the perceptual
+integration of lines *"is not global"* -- inconsistencies survive and produce a non-convergent series of inferences. And:
+*"Interpretation of line drawings depends on context."* Consequence for any automatic line work: **there is no global
+consistency check that can be run on a line drawing**, because the human visual system does not run one either. A
+renderer that enforces global geometric consistency is enforcing something the viewer never applies.
+
+**The two-channel model of line patterns**, which is compact enough to be implemented:
+
+> These patterns of lines convey **shading through their local density** and convey **geometry through their direction**.
+
+Density carries tone; direction carries form. Two independent signals in one field of strokes. `lineweight` currently
+models neither explicitly -- it has strokes with width and pressure, and no notion of a stroke *field*. Hatching,
+cross-hatching and 陰影線 are all instances of the density channel, and the line-weight table's "solid fill (ベタ) for
+deep cast shadows" is what that channel does when density saturates.
+
+Dürer's print uses *"contour, crease, hatching, cross-hatching"*; Flaxman's uses *"contours and creases, and perhaps
+other lines such as suggestive contours, ridges and valleys"* -- the same vocabulary as the formal taxonomy in
+`RESEARCH-VECTORIZATION.md`, named from a 1505 woodcut and an 1805 etching.

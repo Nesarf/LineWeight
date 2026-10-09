@@ -126,9 +126,16 @@ Full write-up in `RESEARCH-VECTORIZATION.md`.
         **high curvature**, with *"a bias towards lower curvature"* and *"small holes"*.
         Same failure as `outline()` produces. It is the domain's open problem, not a bug
         here. Stop treating it as a local defect.
-      - **Settles where the differentiator is**: every surveyed method outputs curves with
-        a **fixed stroke width**. Variable width is what `lineweight` does and what nobody
-        else models.
+      - **Refines where the differentiator is, and corrects an overclaim**: every surveyed
+        *vectorizer* emits a **fixed stroke width**, but width modulation is well
+        established in **NPR** (Elber 1995b depth, Winkenbach 1996 line spacing, Hamel 1998
+        occlusion, Kindlmann 2003 and Sousa 2003a curvature, Sousa 2003b a full pipeline).
+        All of it is driven by a **geometric quantity**. None of it is driven by
+        **perceptual role** -- the 輪郭線/内部線/陰影線 hierarchy or the measured
+        potency/naturalness trade-off. So: NPR has width but takes **meshes**;
+        vectorization takes **rasters** but has no width. Raster input *and* width is the
+        actual gap. The pipeline shape itself (extract → chain → fit → render with varying
+        width) is `Sousa 2003b`, published in 2003 -- not a contribution.
 - [x] **Izumi, Sakurai, Yoneda & Yamada, *Changes of Impression in the Animation
       Characters with the Different Color and Thickness in Outlines***, KEER2014,
       pp. 921-926. Read. See the role-model item under P2 — this is its evidence.
@@ -145,6 +152,24 @@ Full write-up in `RESEARCH-VECTORIZATION.md`.
       Read.
       - The line-art-to-line-art comparison machinery this repo lacks — the reason the four
         width tables cannot be compared to each other. Learned, so corpus-side only.
+- [x] **SVG variable-width stroke: the standards answer.** There is a W3C proposal, last
+      action **2013**, issue [#953](https://github.com/w3c/svgwg/issues/953) closed in
+      **September 2024**. Its author Brian Birtles gives the reason it died: *"adding
+      primitives not natively supported by underlying graphics libraries would be a
+      significant hurdle"* — cairo, Skia, CoreGraphics and Direct2D all stroke at a
+      **constant width**. So the stack is closed at the bottom and **filling an expanded
+      outline is the only expressible form**. Not a workaround; the only option. The
+      developer who asked was doing the same thing — *"trying to 'fake' variable width
+      lines using fill"*.
+- [x] **Princeton SIGGRAPH 2005 Course 7, *Line Drawings from 3D Models*** — Rusinkiewicz,
+      DeCarlo, Finkelstein. All nine course notes are free and downloaded to
+      `E:\DaShaoHuo\downloads\papers\sg05\`.
+      - Gives the **formal** line taxonomy that the drawing convention in
+        `RESEARCH-LINE-QUALITY.md` is an informal version of: **silhouette / contour /
+        suggestive contour / ridge / valley**, each mathematically defined and computable.
+        Cross-referenced into `RESEARCH-VECTORIZATION.md`.
+      - The annotated bibliography is a map of the whole field, 1967-2005, and is what
+        **corrected this repo's overclaim about width**.
 
 ### Not yet read
 

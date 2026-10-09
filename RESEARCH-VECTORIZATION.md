@@ -9,6 +9,96 @@ question "has someone already solved this" should be asked before implementing, 
 
 ---
 
+## Why the output has to be a filled outline
+
+Before the prior art on *how* to vectorize, the reason vectorizing is necessary at all -- and it is not a preference.
+
+**SVG cannot express a variable-width stroke.** There is a W3C proposal,
+[Variable_width_stroke](https://www.w3.org/Graphics/SVG/WG/wiki/Proposals/Variable_width_stroke), whose simplest form
+would be "allowing a 'start' and 'end' width and smoothly adjusting along the path". Its status, as answered by its own
+author **Brian Birtles** when asked in September 2024
+([thread](https://lists.w3.org/Archives/Public/public-svg-issues/2024Sep/0000.html),
+[reply](https://lists.w3.org/Archives/Public/public-svg-issues/2024Sep/0001.html),
+[w3c/svgwg#953](https://github.com/w3c/svgwg/issues/953), since closed):
+
+> It looks like that was my proposal and … it was discussed at the 2013 Tokyo F2F. I then updated the proposal in
+> September. **I don't know if it was ever discussed after that.** (I notice the polyfill is broken too because we
+> deprecated several SVG path APIs.)
+>
+> I think since that point **browsers have been investing less in new SVG features** for various reasons. I believe I
+> might also have received feedback offline that **adding primitives not natively supported by underlying graphics
+> libraries would be a significant hurdle for many implementations.**
+
+**Last action: 2013. Reason it died: the layer underneath cannot do it either.** cairo, Skia, CoreGraphics and Direct2D
+all stroke at a constant width. A variable-width stroke in SVG would therefore not be a new attribute on an existing
+primitive -- every implementer would have to build a new primitive from nothing.
+
+So the stack is closed at the bottom:
+
+```
+cairo / Skia / CoreGraphics / Direct2D   →  constant-width stroke only
+        ↓  therefore
+SVG                                      →  no variable-width stroke (proposal dead since 2013)
+        ↓  therefore
+the only expressible form is            →  expand the centreline into a filled outline
+```
+
+**That is what `lineweight` does, and it is not a workaround.** There is no other form the output could take. It also
+explains the incident that started this section: the developer who filed the issue was *"trying to 'fake' variable width
+lines using `fill`"* -- the same operation, arrived at independently, by someone who had no reason to care about line
+quality at all and only wanted the file to be correct.
+
+**Two consequences worth carrying.**
+
+The claim in the section below -- that no vectorizer in the literature models width -- is **not an oversight by that
+field**. It is downstream of the format. There is nowhere to put the width, so the width is dropped, and the entire
+research programme inherited a fixed-width output because the container has no field for anything else. `lineweight` is
+not competing with those methods on their axis; it is producing a different kind of object -- a *shape* that carries the
+width inside it, which is legal SVG and therefore works everywhere, including in Illustrator, Animate and SAI.
+
+And it sets a constraint on the verification plan: **the underlying rasterisers stroke at constant width too**, so
+cairo cannot stroke a reference for a tapered line. That is the same limitation noted in `TODO.md` under P0 -- cairo is
+usable as a referee for a *uniform* stroke, and for a tapered one the comparison has to be against
+`cairo_fill` of an independently produced outline, not against `cairo_stroke`.
+
+## The formal line taxonomy, and the drawing convention it matches
+
+From **Line Drawings from 3D Models**, SIGGRAPH 2005 Course 7 -- Szymon Rusinkiewicz (Princeton), Doug DeCarlo
+(Rutgers), Adam Finkelstein (Princeton)
+([course intro](https://gfx.cs.princeton.edu/proj/sg05lines/course7-1-intro.pdf)):
+
+> We will mathematically **define** lines such as **silhouettes, contours, suggestive contours, and ridges and
+> valleys**. We describe algorithms for finding them efficiently, discuss methods of stylization…
+
+This is the computational counterpart of the drawing convention in `RESEARCH-LINE-QUALITY.md`, and the two line up:
+
+| 2D drawing convention | formal term | what it is |
+|---|---|---|
+| 輪郭線 (outer contour) | **silhouette** | where the surface turns away from the viewer |
+| 内部線 (interior line) | **contour** | a depth or orientation discontinuity -- an occlusion edge |
+| 陰影線 (shadow / form line) | **suggestive contour** | where the surface is about to turn away; the line an artist draws to imply form that the silhouette does not show |
+| -- | **ridge / valley** | extremal curvature |
+| -- | **apparent ridge** | view-dependent ridge, defined to match where artists actually put lines |
+
+**Why this matters for the line-hierarchy model in `TODO.md`.** The drawing convention says which lines get thicker
+(*"the outer contour; the shadow side; the base of hair strands"*) but gives no way to *compute* which line is which.
+The NPR taxonomy says exactly that, and it is defined on a surface -- which means it is computable from a mesh and, more
+importantly here, **checkable against a drawing**. A proposed 輪郭線 can be tested for whether it actually lies on a
+silhouette.
+
+**The bridge between the two is the thing this project is missing**, and it is the same bridge the original complaint
+was about: 2.5D modelling produces silhouettes and nothing else, which is why it *"looks unintentional"* -- a mesh has
+no 内部線 and no 陰影線 unless something computes them, and the moe convention's most characteristic lines (eyelashes,
+hair masses, cloth folds) are largely **suggestive** rather than silhouette.
+
+Also relevant, not yet read: **Apparent Ridges for Line Drawing** (Judd, Durand, Adelson, MIT),
+[PDF](http://www-bcs.mit.edu/pub_pdfs/ApparentLines.pdf) -- and a study titled *The relative effectiveness of line
+drawing algorithms at depicting 3D shape*, which is an **empirical** comparison of which line types actually convey
+form. That is the question "which lines should exist" asked as an experiment rather than a convention, which is the same
+move KEER2014 made for thickness.
+
+---
+
 ## The paper that states this project's problem as a research question
 
 **Semantically Meaningful Vectorization of Line Art in Drawn Animation** -- Calvin Metzger, supervised by Michael Wimmer,
@@ -91,16 +181,41 @@ before spending more time on it: the pinhole problem is not a local oversight, i
 
 ## The gap this project actually occupies
 
-Every method surveyed -- learned and heuristic -- outputs curves with a **fixed stroke width**. Width is not a
-parameter anywhere in the prior art reviewed here.
+**Correction to an earlier claim in this file.** An earlier version of this section said *"width is not a parameter
+anywhere in the prior art reviewed here"*. That was **too strong, and wrong** -- it generalised from the vectorization
+literature, which is one community, to the whole field, which is not. The annotated bibliography from the Princeton 2005
+course ([course7-3-bib.pdf](https://gfx.cs.princeton.edu/proj/sg05lines/course7-3-bib.pdf), ~50 kB, 1967-2005) shows
+width modulation is an **established technique in NPR**, with at least six precedents:
 
-**`lineweight`'s entire output is variable width.** Pressure → width is the model, `stroke_record` carries `pressure` and
-`brush`, and the line-hierarchy work in `RESEARCH-LINE-QUALITY.md` is about making width vary *by role*. The one
-measured, published, perceptually-validated property of this material -- outline thickness controls the impression of
-**potency** -- is the property no vectorizer models.
+| paper | width driven by |
+|---|---|
+| **Elber 1995b** | **depth** -- *"performing depth cuing by modulating line width and intensity, drawing thin light strokes for background lines"*, plus trimming background lines near intersections |
+| **Winkenbach 1996** | **proximity to other lines** -- controlled-density hatching where width follows line spacing |
+| **Hamel 1998** | **occlusion** -- transparency shown *"by modifying line width, density, or style for occluded surfaces"* |
+| **Kindlmann 2003** | **estimated curvature** -- contour thickness controlled by curvature, ridges and valleys emphasised by thresholding principal curvature |
+| **Sousa 2003a** | **surface curvature** -- mesh edges selected as strokes, *"drawn with width modulated by surface curvature"* |
+| **Sousa 2003b** | full pipeline: extracts silhouettes, boundaries, ridges and valleys, chains lines, **fits curves to paths**, and renders paths *"sparsely with varying line width"* |
 
-That is a genuine, unoccupied position, and it also explains why a raster trace was never going to be enough: a trace
-recovers *where* the boundary is and throws away *how heavily it was drawn*, which is the part a viewer reads.
+**So the honest position is narrower, and more interesting.** Width modulation in NPR is real, mature, and always driven
+by a **geometric quantity** -- depth, occlusion, curvature, line density. What is not present in any of it is width
+driven by **perceptual role**: the 輪郭線 / 内部線 / 陰影線 hierarchy, and the measured potency-versus-naturalness
+trade-off from KEER2014. NPR asks *"what does the geometry say this line's width should be"*; the drawing convention
+asks *"what should this line's width be so the picture reads right"*. Those are different questions, and only the first
+one has been automated.
+
+**And the vectorization literature is a separate community that drops width entirely** -- which is downstream of the
+format (see the SVG section above: there is nowhere to put a width). So the two halves are split: NPR has width but
+works from **meshes**, vectorization works from **rasters** but has no width. `lineweight` is raster-input *and*
+width-carrying, which is the gap between them.
+
+**What `Sousa 2003b` shows is that the pipeline shape is not novel.** Extract lines, chain them, fit curves to paths,
+render with varying width -- that is exactly this library's shape, published in 2003 from mesh input. Worth knowing
+before claiming the architecture as a contribution. The contribution available here is the **input** (raster, not mesh)
+and the **width driver** (role and pressure, not curvature), not the sequence of stages.
+
+Also of note, since `stroke_record` carries a `seed`: **Kalnins 2003** maintains frame-to-frame temporal coherency for
+stylized silhouettes *"by propagating line stroke parameterizations between frames"* -- the same problem a seed solves,
+solved by propagation instead. Relevant if this ever animates.
 
 ## A verification technique worth stealing
 
