@@ -929,7 +929,9 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
 
 
 def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
-                  colour: str = '', resolution: int = 14, role: str = '') -> dict:
+                  colour: str = '', resolution: int = 14, role: str = '',
+                  width_profile: list[float] | None = None,
+                  alpha_profile: list[float] | None = None) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -961,6 +963,15 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # that the role survives into the project file and can be changed later without redrawing anything -- which is
         # the professional order of operations: get the form right first, decide the line hierarchy afterwards.
         'role': role,
+        # **The four knobs pressure actually decomposes into, made explicit.** In a tablet application pressure moves
+        # width (the dominant effect), opacity, dab spacing and a little colour jitter; a record that can only express
+        # the first cannot be a substitute for the hand. Both of these are optional and absent means "derived", so a
+        # record written before they existed expands exactly as it did.
+        #
+        # They sit *before* the role's multiplier rather than after it, so assigning a role still rescales a profile
+        # that was supplied by measurement -- otherwise the second pass would not reach the strokes that need it most.
+        'width_profile': [float(w) for w in width_profile] if width_profile else [],
+        'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],
         'pressure': [round(p, 4) for p in ps],
@@ -1029,6 +1040,12 @@ def stroke_widths(record: dict) -> list[float]:
     # variation -- which is the whole point of this library, and the thing the drawing convention says artists forget
     # to add to hair. An empty role is 1.0 and changes nothing.
     scale = roles.width_scale(record.get('role', ''))
+    supplied = record.get('width_profile')
+    if supplied:
+        # A measured or hand-authored profile, used as given. This is the field that lets the model be *fitted* --
+        # `ref.py` measures a width distribution out of real artwork, and without somewhere to put it the measurement
+        # has nowhere to land except the brush table, which is per-brush and therefore cannot be per-stroke.
+        return [scale * float(w) for w in supplied]
     return [brush['width'] * scale * (float(p) ** gamma) for p in record['pressure']]
 
 
@@ -1053,9 +1070,39 @@ def from_record(record: dict) -> tuple[str, float]:
     ps = [float(p) for p in record['pressure']]
     chain = outline_chain_of(record)
     d = (curve.chain_to_path(chain) + ' Z') if chain else ''
+    return d, record_opacity(record)
+
+
+def record_opacity(record: dict) -> float:
+    """The one opacity a *vector* export can carry for a stroke.
+
+    **A profile, reduced to its mean, because that is all SVG has.** A filled path takes one `fill-opacity`; there is
+    no way to vary it along a curve, any more than there is a way to vary the width -- which is why the width becomes
+    an outline and this cannot become anything. So a record with an `alpha_profile` exports at its mean here, and the
+    profile itself survives only in the raster and PSD paths, where each dab is placed individually.
+
+    Stated rather than silent: a caller who wrote a fade into a record and got a flat export back would otherwise have
+    no way to tell that from a fade that was too subtle to see. `collapses_alpha` is the detectable form.
+    """
+    brush = BRUSHES[record['brush']]
+    profile = record.get('alpha_profile')
+    if profile:
+        # **The brush's opacity is the medium and still applies**, exactly as it does per dab in `raster.stroke_layer`.
+        # The first version of this returned the bare mean of the profile, so a wash with a full profile exported at
+        # 1.0 while it rendered at 0.35 -- two renderers of one record disagreeing, which is the failure this project
+        # keeps meeting and a test caught within the minute.
+        return brush['opacity'] * (sum(float(a) for a in profile) / len(profile))
+    ps = [float(p) for p in record['pressure']]
     mean_p = sum(ps) / len(ps) if ps else 1.0
-    opacity = brush['opacity'] * (0.55 + 0.45 * mean_p)
-    return d, opacity
+    return brush['opacity'] * (0.55 + 0.45 * mean_p)
+
+
+def collapses_alpha(record: dict) -> bool:
+    """Whether a vector export of this record loses something. True when the alpha varies along the stroke."""
+    profile = record.get('alpha_profile')
+    if not profile:
+        return False
+    return max(profile) - min(profile) > 1e-6
 
 
 def save_strokes(records: list[dict], path: str) -> None:

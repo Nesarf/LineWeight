@@ -338,6 +338,39 @@ difference between outer and inner line width?* — with the library's own measu
 refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
 sticker look, deliberate rather than accidental. What must not happen is that it is silent.
 
+## The four knobs a hand has
+
+Pen pressure moves **width** (the dominant effect), **opacity**, **dab spacing** and a little **colour jitter**. Those
+correspond to four parameters a vector stroke already exposes, which is what makes a pressure model possible at all —
+and a record that can express only the first cannot stand in for the hand. A stroke record now carries:
+
+| knob | field | absent means |
+|---|---|---|
+| width | `width_profile` (per point) | `brush.width * pressure ** brush.curve` |
+| opacity | `alpha_profile` (per point) | `brush.opacity * (0.55 + 0.45 * mean(pressure))` |
+| spacing | `brush.spacing` | a brush table value; not yet per stroke |
+| colour | `appearance.colour` | the line role's ink, or `DEFAULT_INK` |
+| role | `geometry.role` | the brush width exactly as given |
+
+    record = stroke_record(pts, 'ink', width_profile=measured_widths, alpha_profile=[1.0, ..., 0.2])
+    project.add_stroke(record)
+
+**Absent means absent.** Every one of these defaults to empty and *derives*, rather than being filled in with a
+computed list at creation — so a project file written before a field existed expands byte-for-byte as it did, and no
+file claims a caller supplied something they never mentioned. `width_profile` is where a **measured** distribution
+lands: `ref.py` reads width distributions out of real artwork, and the brush table is per-brush, so it cannot hold a
+per-stroke measurement. A role multiplies a supplied profile rather than being overridden by it, so the second pass
+still reaches the strokes that need it most.
+
+**SVG cannot carry a varying alpha, any more than it can carry a varying width.** A filled path takes one
+`fill-opacity`; the width becomes an outline because of that, and an alpha profile cannot become anything — so the
+vector export uses its **mean**, and `collapses_alpha(record)` is the detectable form of the loss. Without it, a
+caller who wrote a fade and got a flat export back could not tell that from a fade too subtle to see.
+
+**A field the renderer ignores is a comment**, so each knob is tested by changing it and measuring the picture. The
+two profiles have deliberately different signatures: a width change moves both the ink *and* the touched-pixel count,
+an alpha change moves the ink and **leaves the shape alone**.
+
 ## 強弱: the failure this library exists to prevent
 
 > 「私は髪を描くたび線画に強弱を付けることを忘れがち」

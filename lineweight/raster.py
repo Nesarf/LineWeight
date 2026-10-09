@@ -143,6 +143,8 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
     pressure = record['pressure']
+    widths = record.get('width_profile') or []
+    alphas = record.get('alpha_profile') or []
     # **Spacing is measured against the radius, not against the width times a factor.** The first version
     # multiplied the brush width by its spacing factor, which for a 22-pixel wash with a factor of 1.4 drew a
     # dab every 15 pixels -- a string of separate beads. A brush's spacing is how far apart its dabs sit
@@ -161,9 +163,21 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             x = (x0 + (x1 - x0) * t) * scale
             y = (y0 + (y1 - y0) * t) * scale
             p = pressure[min(i, len(pressure) - 1)]
-            radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5)
-            layer.wet_dab(x, y, radius, colour, min(1.0, brush['opacity'] * (p ** gamma)), wet, under,
-                          float(brush.get('grain', 0.0)))
+            # **The record's own profiles when it has them, the brush's derivation when it does not.** A field the
+            # renderer ignores is a comment, and both of these exist to be the place a *measured* profile lands --
+            # `ref.py` measures width and darkness distributions out of real artwork, and the brush table is
+            # per-brush, so it cannot hold a per-stroke measurement.
+            if widths:
+                radius = max(0.5, float(widths[min(i, len(widths) - 1)]) * scale * 0.5)
+            else:
+                radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5)
+            if alphas:
+                # The profile is the stroke's opacity along its length; the brush's own opacity is the medium and
+                # still applies, exactly as it does on the vector side.
+                alpha = min(1.0, brush['opacity'] * float(alphas[min(i, len(alphas) - 1)]))
+            else:
+                alpha = min(1.0, brush['opacity'] * (p ** gamma))
+            layer.wet_dab(x, y, radius, colour, alpha, wet, under, float(brush.get('grain', 0.0)))
             travelled += max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
         carry = travelled - segment
     return layer
@@ -431,6 +445,8 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0)
             geometry = mark['geometry']
             record = {'brush': geometry['brush'], 'centre': geometry['centre'], 'pressure': geometry['pressure'],
                       'seed': geometry.get('seed', 0),
+                      'width_profile': geometry.get('width_profile') or [],
+                      'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_int': parse_hex(mark_ink(mark))}
             layer = stroke_layer(record, width, height, scale)
         elif kind == 'fill':

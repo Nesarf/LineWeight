@@ -174,10 +174,33 @@
 
 SIGGRAPH 2005 课程给出的 per-stroke 规范，`stroke_record` 是它的子集。逐字段对照后缺的：
 
-- [ ] **`colour` per stroke** —— 现在整篇一种墨。
-- [ ] **`width_profile` 存成 profile** —— 现在宽度曲线隐含在 `pressure` 里；显式化之后 role 才能覆盖压感模型而不必发明第二套机制。
-- [ ] **`alpha_profile`** —— 无。
-- [ ] **`paper`** —— 无纹理/媒介模拟。
+- [x] **`colour` per stroke** —— 已完成（P2「轮廓颜色轴」那一项：`mark_ink` + 四个角色的墨色 + `DEFAULT_INK`）。
+- [x] **`width_profile` 存成 profile** —— 已完成。显式的逐点宽度；**缺省（空列表）时才回落到「笔宽 × 压感^curve」**，所以在此字段存在之前写下的工程文件展开结果**逐字节不变**。
+  - **它才是「拟合统计而不是拟合手感」那条路的落点**：`ref.py` 从真实画作里量出宽度分布，而 brush 表是**按笔刷**的，装不下**按笔画**的测量值。
+  - **role 乘在它*之上*，不是被它覆盖** —— 否则给一笔指定 `silhouette` 会在**最需要它的那些线**上变成空操作。有测试钉住。
+- [x] **`alpha_profile`** —— 已完成。逐点不透明度，raster/PSD 路径**逐 dab** 使用；**刷子的 opacity 仍是媒介、仍然相乘**。
+  - **SVG 装不下变化的 alpha，就像它装不下变化的宽度**：一条填充路径只有一个 `fill-opacity`。宽度因此变成轮廓，而这个**变不成任何东西**。所以矢量导出取它的**均值**，而 `collapses_alpha()` 是这件事**可检测**的形式 —— 否则调用者写了一个渐变却拿到平坦导出，**没法把这个和「渐变太细微看不出来」区分开**。
+  - **我第一版的 `record_opacity` 在有色 profile 时忘了乘刷子 opacity** —— 于是一条 wash 用满 profile 时**导出 1.0 而渲染 0.35**。**两个渲染器对同一条记录各说各话**，测试一分钟内抓到了。
+- [ ] **`paper`** —— 仍缺：无纹理/媒介模拟。**没做，理由照实写**：纸纹是**渲染**特性（笔刷已有 `grain`），而它要动的是 P4 的合成层，不是记录格式。放在这里而不是假装完成。
+- [ ] 同课程未读：*Visibility of lines in 3D*、*Temporal coherence for stylized lines*（`seed` 解决的是同一个问题，Kalnins 2003 用帧间参数化传播解决）。
+
+## 顺带发现的一条（未修，进 P4）
+
+**同一条记录，两个渲染器的不透明度差 37%。**
+
+```
+raster dab 渲染   1236 px   ink 690.7  → 平均 alpha 0.5588
+矢量导出          record_opacity      = 0.8909          比值 1.59
+```
+
+两个推导本来就不一样，而且**不能明显看出哪个对**：
+
+```
+矢量: brush.opacity * (0.55 + 0.45 * mean(pressure))
+raster: brush.opacity * pressure**curve，逐 dab，然后合成
+```
+
+**平板笔刷是「一笔一个印章」**，所以重叠的 dab 不该把笔画叠深 —— 按这个说法**错的是 raster 那一侧**。没在这里修：那是渲染改动，会移动语料表里每一个标定数。**但它意味着 `--render` 看到的不是 Illustrator 拿到的东西**，这一条得在 P4 里解决。
 - [ ] 同课程未读：*Visibility of lines in 3D*、*Temporal coherence for stylized lines*（`seed` 解决的是同一个问题，Kalnins 2003 用帧间参数化传播解决）。
 - [ ] **背景**：`Hsu 94, Skeletal Strokes` 是这套模型的源头，而它 *"is now standard fare in commercial programs such as Adobe Illustrator"*。**lineweight 桥接到 Illustrator —— 下游应用比喂给它的库实现了更多这套模型。**
 

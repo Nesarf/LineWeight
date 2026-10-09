@@ -212,7 +212,9 @@ class Project:
                     geometry={'centre': record['centre'], 'control': record.get('control', []),
                               'pressure': record['pressure'], 'brush': record['brush'],
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
-                              'role': record.get('role', '')},
+                              'role': record.get('role', ''),
+                              'width_profile': list(record.get('width_profile') or []),
+                              'alpha_profile': list(record.get('alpha_profile') or [])},
                     # **Only a colour the caller actually chose is written down.** An absent colour is the answer
                     # "the role decides", which is what lets a role be assigned to a stroke after it was drawn --
                     # `assign_role` is the second pass and it has to be able to change the ink. The whitelist above
