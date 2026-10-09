@@ -61,6 +61,27 @@ DEFAULT_STAGES = (
      ]},
 )
 
+
+# **A second preset: a base draft at the bottom, then the refinement passes on top of it.**
+#
+# Some artists work this way -- build a rough underneath, then draw the clean passes over it, and either keep the rough
+# as scaffolding, hide it, or throw it away once the clean version is done. It is not universal: of two recorded
+# processes examined, one started on a genuinely blank canvas with no underdrawing at all, and the other traced over a
+# faded copy of the finished image. So this is offered, not assumed, and `stages` is a per-project list precisely
+# because the answer differs.
+#
+# The rough is a pass like any other, which means it is addressed the same way: mark it superseded when the clean line
+# is done, or leave it -- either way it stays in the file with its geometry, so "show me the rough again" is a question
+# the project can answer.
+ROUGH_STAGES = (
+    {'role': 'rough',
+     'note': 'the base draft: alignment, proportion and position, drawn loosely and meant to be drawn over',
+     'invariants': [
+         {'name': 'the rough is actually loose', 'measure': 'coverage', 'op': '>', 'value': 0.02,
+          'note': 'a rough that covered nothing is a stage that did no work.'},
+     ]},
+) + DEFAULT_STAGES
+
 LIVE = 'live'
 SUPERSEDED = 'superseded'
 # **A mark can be drawn without being accepted.** Drawing programs for tablets have a commit step for exactly this
@@ -135,6 +156,17 @@ class Project:
     # `discard m0001`, `draft m0001`, which says one stroke was drafted twice when it was two different strokes. The
     # log is the record of what happened; an id that means different things at different points in it is not a record.
     counter: int = 0
+    # **Whether marks arrive as drafts by default -- the commit gate switched on for the whole project.**
+    #
+    # Artists differ on this and the same artist differs by task, so it is a setting rather than a fixed behaviour.
+    # Off (the default) is the drawing program's shipped state: draw, and it is in the drawing. On, every mark must be
+    # accepted before it counts, which is what stops a drawing silting up with lines nobody chose to keep -- and it is
+    # also what costs an action per stroke, so it is the right setting for careful linework and the wrong one for
+    # blocking in tone.
+    #
+    # `add_*` takes a `commit` argument that overrides this for a single call, because a project can reasonably want
+    # the gate on for the linework and off for a fill.
+    incremental: bool = False
 
     # ---- adding ---------------------------------------------------------------------------------------------
 
@@ -146,7 +178,7 @@ class Project:
             raise ValueError('no such stage: %r (have %s)' % (stage, ', '.join(self.stage_names())))
 
     def add_stroke(self, record: dict, stage: str = 'line', note: str = '', source: str = '',
-                   commit: bool = True) -> Mark:
+                   commit: bool | None = None) -> Mark:
         """A stroke_record becomes a mark. Geometry comes from the record; nothing is copied out of it.
 
         **`commit=True` by default, and that default is the considered one.** Drawing programs put an auto-confirm on
@@ -155,6 +187,7 @@ class Project:
         `commit=False` and then `commit()` or `begin()`, and that is where the gate pays for itself.
         """
         self._check_stage(stage)
+        commit = (not self.incremental) if commit is None else commit
         self.counter = _highest_id(self) + 1
         mark = Mark(id='m%04d' % self.counter, kind='stroke', stage=stage, seq=len(self.marks),
                     geometry={'centre': record['centre'], 'control': record.get('control', []),
@@ -169,7 +202,7 @@ class Project:
         return mark
 
     def add_fill(self, region, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
-                 blend: str = 'normal', note: str = '', source: str = '', commit: bool = True) -> Mark:
+                 blend: str = 'normal', note: str = '', source: str = '', commit: bool | None = None) -> Mark:
         """A fill is a mark like any other, so it can be deleted by id.
 
         **This is the difference that matters.** `region_fill()` used to hand back bare `d` strings; a caller could
@@ -177,6 +210,7 @@ class Project:
         path data, so it can be re-styled, re-ordered or dropped without touching any other mark.
         """
         self._check_stage(stage)
+        commit = (not self.incremental) if commit is None else commit
         self.counter = _highest_id(self) + 1
         mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
                     geometry={'points': [list(p) for p in region.points], 'd': region.d},
@@ -210,7 +244,7 @@ class Project:
         return entry
 
     def add_strokes(self, records: list[dict], stage: str = 'line', note: str = '',
-                    source: str = '', commit: bool = True) -> list[Mark]:
+                    source: str = '', commit: bool | None = None) -> list[Mark]:
         """Adds several strokes as one operation. Order within the batch is the order drawn.
 
         A batch is one attempt, so it is committed or drafted as a unit -- which is what makes `commit=False` usable
@@ -219,7 +253,7 @@ class Project:
         return [self.add_stroke(r, stage=stage, note=note, source=source, commit=commit) for r in records]
 
     def add_fills(self, regions, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
-                  blend: str = 'normal', note: str = '', source: str = '', commit: bool = True) -> list[Mark]:
+                  blend: str = 'normal', note: str = '', source: str = '', commit: bool | None = None) -> list[Mark]:
         """Adds several fills as one operation -- the shape a bucket tool's result arrives in."""
         return [self.add_fill(r, stage=stage, colour=colour, opacity=opacity, blend=blend,
                               note=note, source=source, commit=commit) for r in regions]
@@ -454,7 +488,8 @@ class Project:
                 'stages': self.stages,
                 'marks': [m.to_dict() for m in self.marks],
                 'log': self.log,
-                'counter': self.counter}
+                'counter': self.counter,
+                'incremental': self.incremental}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Project':
@@ -467,7 +502,8 @@ class Project:
                    stages=d.get('stages') or [dict(s) for s in DEFAULT_STAGES],
                    marks=[Mark.from_dict(m) for m in d.get('marks', [])],
                    log=d.get('log', []),
-                   counter=int(d.get('counter', 0)))
+                   counter=int(d.get('counter', 0)),
+                   incremental=bool(d.get('incremental', False)))
 
 
 def save_project(project: Project, path: str) -> None:

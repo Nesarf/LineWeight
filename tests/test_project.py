@@ -680,3 +680,75 @@ def test_drafts_survive_a_round_trip_so_an_unfinished_attempt_is_not_lost():
     # and continuing the attempt still clears only the unfinished one
     back.begin()
     assert len(back.live()) == 1 and back.drafts() == []
+
+
+# --- the switch, and the layer structure a project may choose -----------------------------------------------
+
+def test_incremental_is_a_project_setting_not_a_baked_in_behaviour():
+    """Artists differ on whether every stroke must be accepted, and the same artist differs by task: it is the right
+    setting for careful linework and the wrong one for blocking in tone. So it is a setting."""
+    from lineweight import stroke_record
+
+    off = Project(width=200, height=200)
+    off.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    assert off.marks[-1].state == LIVE, 'with the gate off a mark is in the drawing immediately'
+
+    on = Project(width=200, height=200, incremental=True)
+    on.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    assert on.marks[-1].state == DRAFT, 'with the gate on a mark has to be accepted'
+    assert on.live() == []
+
+
+def test_a_single_call_can_override_the_project_setting():
+    """A project can reasonably want the gate on for the linework and off for a fill, so the argument wins over the
+    setting rather than the other way round."""
+    from lineweight import stroke_record
+    from lineweight.raster import render_marks
+    from lineweight import region_fill
+
+    project = Project(width=200, height=200, incremental=True)
+    project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1), commit=True)
+    assert project.marks[-1].state == LIVE
+    square = [[(20.0, 100.0), (120.0, 100.0)], [(122.0, 102.0), (122.0, 180.0)],
+              [(120.0, 182.0), (20.0, 182.0)], [(18.0, 180.0), (18.0, 102.0)]]
+    from lineweight import Region
+    region = region_fill(square, 3.0)[0]
+    project.add_fill(region, commit=False)
+    assert project.marks[-1].state == DRAFT
+
+    # and with the gate off, a caller can still ask for a draft explicitly
+    plain = Project(width=200, height=200)
+    plain.add_fill(region, commit=False)
+    assert plain.marks[-1].state == DRAFT
+
+
+def test_the_switch_survives_a_round_trip(tmp_path):
+    """Reopening a project must not silently change whether work has to be accepted, or a file saved with the gate on
+    would start committing strokes the artist never confirmed."""
+    project = Project(width=200, height=200, incremental=True)
+    path = str(tmp_path / 'p.json')
+    save_project(project, path)
+    assert load_project(path).incremental is True
+    assert Project.from_dict(Project().to_dict()).incremental is False
+
+
+def test_a_rough_pass_can_sit_underneath_the_others():
+    """The base-draft workflow: build a rough, then draw the clean passes over it. Offered rather than assumed --
+    of two recorded processes examined, one began on a genuinely blank canvas and the other traced a faded image, so
+    the staging has to be the project's choice and `stages` is a per-project list for exactly that reason."""
+    from lineweight import ROUGH_STAGES, stroke_record
+
+    assert [s['role'] for s in ROUGH_STAGES] == ['rough', 'line', 'value', 'colour', 'refine']
+    project = Project(width=200, height=200, stages=ROUGH_STAGES)
+    rough = project.add_stroke(stroke_record([(10.0, 10.0), (180.0, 90.0)], 'pencil', seed=1), stage='rough')
+    clean = project.add_stroke(stroke_record([(15.0, 12.0), (178.0, 88.0)], 'ink', seed=2), stage='line')
+
+    assert [m.id for m in project.upto('rough')] == [rough.id], 'the rough on its own is the first state'
+    assert [m.id for m in project.upto('line')] == [rough.id, clean.id], 'the clean line sits over it'
+    assert [m.id for m in project.in_stage('rough')] == [rough.id]
+
+    # the rough can be taken out once it has done its job, and brought back: it stays in the file either way
+    project.supersede(rough.id, reason='clean line is done')
+    assert [m.id for m in project.upto('line')] == [clean.id]
+    project.restore(rough.id)
+    assert [m.id for m in project.upto('line')] == [rough.id, clean.id]
