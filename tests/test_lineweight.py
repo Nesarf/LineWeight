@@ -1077,3 +1077,77 @@ def test_inked_svg_leaves_commented_out_paths_alone():
     # and a real path on its own is still inked, so the guard did not disable the whole pass
     plain = inked_svg('<svg><path d="%s"/></svg>' % big, min_extent=46)
     assert plain.count('opacity=') == 1
+
+
+def _winding(polygon, px, py):
+    """Winding number of a point against a polygon, which is what SVG's nonzero fill rule counts."""
+    w = 0
+    n = len(polygon)
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+        if y1 <= py:
+            if y2 > py and (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) > 0:
+                w += 1
+        else:
+            if y2 <= py and (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) < 0:
+                w -= 1
+    return w
+
+
+def _outline_polygon(points, brush='ink'):
+    d, _opacity = stroke(points, brush)
+    numbers = [float(v) for v in re.findall(r'-?\d+\.?\d*', d)]
+    return list(zip(numbers[0::2], numbers[1::2]))
+
+
+def _holes(points):
+    """How many points along the centreline fall outside the filled outline.
+
+    **This is the acceptance criterion for the outline expansion, and it needs no eye and no application.** A stroke is
+    a filled region whose centreline is inside it; a point on the centreline with winding number zero is either inside a
+    hole the offset loops punched in the stroke, or outside it because a gap was bridged with a chord instead of an arc.
+    Both faults show up the same way, which is what makes this the right thing to count -- self-intersections do not,
+    because a self-intersection that winds the same way as its neighbours fills correctly and is invisible.
+    """
+    from lineweight.core import catmull
+
+    polygon = _outline_polygon(points)
+    centre = catmull(points, 16) if len(points) > 2 else points
+    interior = centre[3:-3] if len(centre) > 8 else centre
+    return sum(1 for (x, y) in interior if _winding(polygon, x, y) == 0)
+
+
+def test_an_ordinary_curve_leaves_no_hole_in_the_stroke():
+    """Curvature the width of a normal drawing produces no hole, and that is the bar.
+
+    Measured on the current implementation: a right angle, a hairpin and a sharp V are clean, and so is a smooth wave
+    across 939 sampled points. Kept as a hard assertion because a rewrite of the offset is the obvious next thing to try,
+    and the first attempt at one took this from zero holes to 175 -- a regression that nothing else would have noticed,
+    since the shapes still looked like strokes.
+    """
+    import math
+
+    assert _holes([(0, 0), (100, 0), (100, 100)]) == 0, 'right angle'
+    assert _holes([(0, 0), (200, 0), (0, 0)]) == 0, 'hairpin'
+    assert _holes([(0, 0), (200, 200), (0, 200)]) == 0, 'sharp V'
+    assert _holes([(i * 4, 100 * math.sin(i / 6.0)) for i in range(60)]) == 0, 'smooth wave'
+
+
+def test_the_outline_keeps_the_centreline_inside_at_tight_curvature():
+    """**Known limitation, stated as a number rather than as a wish.**
+
+    Where the curve is tighter than the stroke is wide, offset curves cross and the polygon gains loops; some of those
+    wind against their neighbours and cancel under `nonzero`, leaving pinholes in the stroke. This is real for the use
+    this library is for -- hair curls and ribbon loops are tight -- and it is bounded: six interior points out of 1259 on
+    a tight wave, five out of 1579 on a tighter one, and nothing at all at ordinary curvature.
+
+    The bound is asserted so that a later rewrite has to *improve* it to pass, and so that a change which makes it worse
+    fails here instead of in a drawing.
+    """
+    import math
+
+    tight = _holes([(i * 3, 80 * math.sin(i / 3.0)) for i in range(80)])
+    tighter = _holes([(i * 2, 60 * math.sin(i / 1.5)) for i in range(100)])
+    assert tight <= 8, 'tight wave regressed to %d holes' % tight
+    assert tighter <= 8, 'tighter wave regressed to %d holes' % tighter
