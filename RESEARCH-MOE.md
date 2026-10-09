@@ -265,3 +265,62 @@ second `/S` silently did nothing and popped a window instead — the user placed
 greyscale bitmaps: pymupdf 249.17, poppler 249.13, mutool 249.17, ghostscript 249.17; mean absolute difference against
 pymupdf is **0.00** for mutool (same MuPDF engine, as expected), **0.33** for poppler and **0.43** for ghostscript. A
 page that one engine renders and another does not is a fact about the file, and before this there was no way to ask.
+
+## The head-body ratio: the book supplies its own reference standard
+
+The earlier note in `TODO.md` asked for a corpus check against the 2–6 boundary and called it *"a genuinely independent
+check"* because it needs no width statistic. It is independent, and it is also **not the measurement that was
+assumed**. What follows is what the chapter actually provides.
+
+### The chapter is a labelled validation set
+
+Printed **57** draws six figures side by side -- **7, 6, 5, 4, 3 and 2 頭身** -- each with **dotted horizontal guide
+lines** across it, and the captions give each one's ratio in print. That is ground truth for a head detector, printed
+in the source, on the same page as the figures to be measured. Nothing like it existed for the corpus, which is why the
+first attempt had no way to know whether it was right.
+
+It also settles what 2頭身 means, which the boundary statement needed:
+
+> 赤ん坊、またはコミカルなキャラクターの体格。萌えキャラクターで赤ん坊はあまりいないので、2頭身は**超デフォルメキャラとして
+> 描かれることが多い**です。
+
+2頭身 is a super-deformed figure. So the 2–6 range **includes chibi**, and the Q-version drawings on every Blue Archive
+character sheet are inside the range rather than outside it.
+
+### The guide lines are detectable, and they are exact
+
+The dotted rules have a signature a scanned page does not otherwise produce: a row of **many short runs** (≥ 70 runs,
+mean length under 6 px). Detecting them on pp. 58, 60, 62 and 64 (rendered at 200 dpi) and dividing the span between
+the outermost lines by the ratio printed on the page:
+
+| page | ratio printed | lines found | span ÷ ratio | lines land on |
+|---|---|---|---|---|
+| printed 58 | 6頭身 | 7 | **6.00** | 0, 1, 2, 3, 4, 5, 6 |
+| printed 60 | 5頭身 | 6 | **5.00** | 0, 1, 2, 3, 4, 5 |
+| printed 62 | 4頭身 | 3 | **4.00** | 0, 2, 4 |
+| printed 64 | 3頭身 | 4 | **3.00** | 0, 1, 2, 3 |
+
+**They land on whole head units, and the ratio comes back to two decimals.** Two things follow, and both matter more
+than the check itself: the folio mapping is confirmed independently of the text layer, and **the head is exactly one
+guide-line interval** — the book defines it that way rather than leaving it to be inferred from a face.
+
+The first run of this was wrong and looked plausible, which is worth recording. A loose threshold also caught the
+**title rule** above the crown and the **textured hair** above the forehead, so the 6頭身 page yielded nine lines
+starting at y=201 instead of seven starting at y=336, and the head unit came out at 242.8 px instead of 220.3. The
+filter that fixes it is not a better threshold but a consistency requirement: the lines have to be a contiguous run
+whose positions are whole or half units apart. **A dotted-rule detector without that constraint reports the heading as
+part of the figure.**
+
+### What the corpus check still needs, stated as an instrument
+
+A Blue Archive sheet has **no guide lines**, and the previous round established with measurements that neither of the
+obvious ways to find the head works on one: the silhouette has no neck minimum (row extents 12 → 106 → 157 → 222 → 283,
+monotone, because the **halo** sits above and outside the head and the **hair** is wider than the face down to the
+shoulders), and an anime-skin predicate hits the **pink halo** at the top and the **bare thighs** at the bottom of the
+same page.
+
+So the missing piece is a **face detector** — a head is an arrangement of eyes, nose and mouth, not a hue or an outline
+feature. And pp. 57–65 are where it gets validated: **four figures whose ratios are printed on the page and whose head
+units are drawn as dotted rules.** Build it, check it recovers 6.00 / 5.00 / 4.00 / 3.00 on those, and only then point
+it at the 292 sheets. That is an afternoon's work with a stated pass condition, which is a different thing from the
+"one-afternoon item" this was dismissed as being.
