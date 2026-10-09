@@ -202,8 +202,130 @@ thicker extraction shifts every width statistic built on top of it. So the extra
 numbers mean anything -- which is the same discipline the outline work needed, and the reason a cairo-rendered reference
 was proposed there.
 
-Also found, not yet read: [TuringSketchLine](https://ieee-dataport.org/documents/turingsketchline-real-manga-draft-line-benchmark),
-a benchmark of **real production manga draft lines** -- the closest thing found so far to a clean line-art corpus that did
-not have to be extracted -- and [Region-Wise Correspondence Prediction between Manga Line Art
-Images](https://openaccess.thecvf.com/content/CVPR2026/supplemental/Li_Region-Wise_Correspondence_Prediction_CVPR_2026_supplemental.pdf)
-(CVPR 2026), which is about comparing line art to line art.
+## TuringSketchLine: read, and it is a warning rather than a corpus
+
+[TuringSketchLine](https://ieee-dataport.org/documents/turingsketchline-real-manga-draft-line-benchmark)
+(Xinran Deng, Libo Zhang, University of Chinese Academy of Sciences; DOI `10.21227/kcvr-qf66`; 3.44 GB; created 2026-05-29)
+is real manga production material: aligned pairs between **real intermediate drafts and final line-art panels**, with
+panel-level JSON/JSONL index files, train/test split, evaluation scripts, and character-level bounding boxes and identity
+labels. Download requires an IEEE DataPort login; non-commercial research use only.
+
+It was filed above as "the closest thing found so far to a clean line-art corpus that did not have to be extracted". Read
+properly, it is the opposite, and the abstract says so in one sentence:
+
+> These drafts are often **incomplete, provisional, and geometrically unreliable**: they convey composition, pose, and
+> semantic intent, while **many final contours are missing or differ from the draft strokes.**
+
+**The draft stroke is not the contour.** In production manga the two diverge by design -- the draft carries intent, the
+final line carries geometry -- and the benchmark exists precisely to close that gap. That is a boundary condition on this
+library's central operation, not a detail: `outline()` takes a centreline and expands it into a silhouette, which assumes
+the drawn stroke *is* where the boundary is. For the material lineweight is aimed at, that assumption is the thing being
+tested. It does not make the operation wrong -- a stroke record still has to become a shape -- but it does mean the input
+to `outline()` is a claim, and the corpus is where the claim gets checked.
+
+The dataset is still worth having, for two narrower uses: as a source of **real** drafts to run the expansion against, and
+as the only available measurement of **how far** a draft stroke sits from its final contour. The second number is the
+interesting one and would set a tolerance for the whole outline pipeline.
+
+**What was hoped for and is not here**: a clean line-art corpus that needs no extraction. It does not exist in this
+dataset -- the clean side of the pair is the *answer*, not the input.
+
+## Region-wise correspondence between line art images: read
+
+[Region-Wise Correspondence Prediction between Manga Line Art
+Images](https://openaccess.thecvf.com/content/CVPR2026/html/Li_Region-Wise_Correspondence_Prediction_between_Manga_Line_Art_Images_CVPR_2026_paper.html)
+-- Yingxuan Li, Jiafeng Mao, Qianru Qiu, **Yusuke Matsui**; CVPR 2026, pp. 15334-15342;
+[arXiv 2509.09501](https://arxiv.org/abs/2509.09501).
+
+It states this project's comparison problem as a formal task, in one line:
+
+> Unlike natural images that contain rich visual cues, manga line art consists only of **sparse black-and-white strokes**,
+> making it challenging to determine which regions correspond across images.
+
+Method: a Transformer trained on large-scale automatically generated region correspondences, learning to suppress noisy
+matches, then at inference segmenting each line art and establishing region-level correspondence through **edge-aware
+clustering and region matching**. 78.4-84.4% region-level accuracy against manually annotated benchmarks. Downstream uses
+are line-art colorization and in-between frame generation.
+
+**What it is good for here**: it is the "compare line art against line art" machinery that this file has twice identified
+as missing -- the reason the four width tables above cannot be compared to each other is that nothing in this repository
+can say which region of one drawing corresponds to which region of another. Region correspondence is what would make
+`--fit-dir` able to compare like with like instead of averaging across sets drawn in different styles.
+
+**What it is not good for**: it is a learned model, so it belongs with the extractors -- corpus construction and
+verification, never inside `lineweight`. Same boundary as `control_net_lineart_anime`, and for the same reason: the
+library is deliberately stdlib-only, and a corpus is data.
+
+## The vanishing point is deliberately ambiguous
+
+Source: the **JAniCA** (日本アニメーター・演出協会 -- the Japanese Animation Creators Association) perspective course
+handouts, at `https://www.janica.jp/course/perspective/<name>_handout.pdf`. These are professional animator training
+material, not a tutorial site. Handouts are 5-10 MB each; `basic04` does not exist (404).
+
+**Reading them is not free, and this is worth knowing before anyone tries.** The CJK glyphs carry no `ToUnicode` map, so
+`pdftotext` returns only the ASCII -- dates, `AKIRA`, `MEMORIES`, page numbers -- and drops every Japanese sentence.
+Measured: `history02.pdf` yields 14396 chars of which the Japanese is entirely absent. So the handouts are **image-only
+material** and need OCR or direct visual reading; the quotes below are indexed text from a search engine that had
+already done one of those, not text this project extracted. Downloads are also slow and flaky (5-10 MB, frequent
+timeouts, partial files that `pdftotext` then rejects with `Couldn't read xref table`); copies live in
+`E:\DaShaoHuo\downloads\janica\`. No PDF rasteriser is installed (`pdftoppm` absent, PyMuPDF absent), so rendering a
+page to look at it is itself a task.
+
+**`basic03`** -- the natural-looking cut is the vague one:
+
+> 結構自然に見えますが、このカットも『**消失点を曖昧にして**』描かれています
+> It looks quite natural, but this cut too was drawn with the **vanishing point left ambiguous**.
+
+**`basic02`** -- and this is a construction technique rather than a caveat:
+
+> つまり、画面の**右側はカメラを右側に振ったようなパース**で描き、**左側はカメラを左に振ったようなパース**で描いて、
+> それを**なだらかにつなげる**、という描き方です
+> The right side of the frame is drawn with the perspective of a camera panned right, the left side with the
+> perspective of a camera panned left, and the two are **smoothly joined**.
+
+**A wide background is not one perspective.** It is two or more differing perspectives blended across the frame, which
+means the correct model is a **spatially varying projection**, and a single global vanishing point is not an
+approximation of it but a **structurally different** thing. On a wide cut, one vanishing point is wrong at one edge no
+matter how well it is fitted -- and the industry's answer is to move the projection, not to fit harder.
+
+**`history02`** -- the earlier grid warning, now with its source identified rather than remembered:
+
+> 先にパースの線だけ描いて、それに無理矢理合わせてキャラや背景を描こうとすると失敗しがち
+> Draw only the perspective lines first and then force the characters and background to match them, and it tends to
+> fail.
+
+So all three statements agree, from three different handouts in the same course, and they say the same thing in
+different registers: *a grid is a check, not a construction*. `RESEARCH-SCENERY.md` arrived at the two-point grid
+mathematics earlier and treated it as useful; it is useful **as a check**. Using it as a generator would reproduce the
+documented failure mode.
+
+**Consequence for anything generated here**: fitting every scene to a detected vanishing point would produce something
+**measurably correct and visually wrong**. A perspective estimate is a useful weak prior and a bad strong constraint. If
+scenery is ever generated, the projection parameters need to be able to vary across the frame, and the test for that is
+not "does it converge" but "does it look natural" -- which is exactly the kind of criterion this project keeps finding it
+cannot compute.
+
+## Layout is not a drawing
+
+From **Exploring the Layout Process in Commercial Animation Production and its Application to Art Education** --
+SUZUKI Hiroshi, ISHIZAKI Tomokazu, SUZUKI Yasuo, Kanazawa College of Art, bulletin No. 66 (2022), 14 pages,
+[PDF](https://kanazawa-bidai.repo.nii.ac.jp/record/687/files/2022-08%20%E9%88%B4%E6%9C%A8%E3%83%BB%E7%9F%B3%E5%B4%8E%E3%83%BB%E9%88%B4%E6%9C%A8.pdf).
+The body text is scanned CJK and does not extract with `pdftotext`, so this rests on the indexed title plus the
+following indexed sentence; **the paper itself has not been read**.
+
+> 【米林監督】アニメーションにおけるレイアウトとは美術、作画、仕上げ、撮影など**各部署への指示を具体的に書いた設計図**です
+> -- director Yonebayashi: layout in animation is a **blueprint** that concretely sets out the instructions to each
+> department -- art, animation, finishing, compositing.
+
+**レイアウト is a specification, not an artwork.** It is the document a production runs from, and its function is to
+carry intent to four departments that will each act on it separately.
+
+That reframes what the scenery direction needs. If the output of this project is ever to be useful for backgrounds, the
+target is not a nice picture but a **blueprint**: something that states what is where, in terms a downstream step can
+consume. The `Document -> Layer -> Path -> Appearance` IR is already the right shape for that, and `stroke_record` is
+already a per-stroke specification. The gap is that neither currently carries anything a background department would
+need -- no camera, no vanishing structure, no depth ordering.
+
+**Not yet read, and it is the one book-length source found for this direction**: 建築知識 21/06,
+*最高の建物と街を描く技術* ([X-Knowledge](https://mail.xknowledge-books.jp/book/4910034290611)) -- a magazine issue
+devoted specifically to drawing buildings and cities.

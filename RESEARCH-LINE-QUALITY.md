@@ -90,3 +90,134 @@ strongest evidence so far that the record is the right abstraction to build the 
 
 None of this is code. It is the material for a construction layer, and it is the actual ceiling on this project's output
 quality.
+
+## The difference between 萌え and 美人 is not beauty
+
+The tutorials above say *how*. This says *what the target actually is*, and it is the only research-grade source found.
+
+**[「萌える」キャラクタの顔と声のデザインのための科学的設計指針の構築](https://kaken.nii.ac.jp/en/grant/KAKENHI-PROJECT-25560011/)**
+-- KAKENHI 25560011, Grant-in-Aid for Challenging Exploratory Research, Kanazawa Institute of Technology, PI 山田真司,
+FY2013-2016. The project's premise is the one sentence worth keeping:
+
+> 従来、制作者達の**センスや経験、勘**に基づいて制作されていた「萌えキャラクタ」の顔…のデザインとその知覚印象との関係について、
+> 心理学的・工学的手法による実験研究で明らかにする
+> -- what has until now been made from **taste, experience and intuition** is to be settled by experiment.
+
+Method, and this is why it beats every tutorial: professional designers produced a 「萌える」 face and a 「美人だが萌えない」
+face; face parameters were then varied **interpolatively and extrapolatively** between the two; **83 stimuli** were rated by
+semantic differential and factor-analysed.
+
+The result:
+
+| | |
+|---|---|
+| four factors explain the impression | **美しさ** (beauty), **派手さ** (flashiness), **力強さ** (strength), **大人っぽさ** (adultness) |
+| a face read as **美人** | 美しくて・地味で・大人っぽい -- beautiful, plain, adult |
+| a face read as **萌え** | 美しくて・派手で・子供っぽい -- beautiful, flashy, childish |
+
+**Both are 美しい.** Moe is not "more beautiful" than a beautiful woman -- the two differ on 派手さ and 大人っぽさ, and
+beauty is common to both. That is a design constraint stated as a direction in a four-dimensional space, and it is the
+first thing found that says what to vary rather than how to hold the pen. The parameters actually manipulated were
+**両目の間の距離 / 目の大きさ / 口の位置 / 顔輪郭の縦横比** -- inter-eye distance, eye size, mouth position, face-contour
+aspect ratio. All four are numbers.
+
+Reference: Wada, Yoneda, Kanamori, Yamada, *A perceptual study of face design for "MOE" characters*, IWIMQA 2013.
+
+### The result that lands directly on this library
+
+The same laboratory published, in the same year, the study that this library's output variable deserves:
+
+**[Changes of Impression in the Animation Characters with the Different Color and Thickness in
+Outlines](https://ep.liu.se/ecp/100/077/ecp14100077.pdf)** -- Haruna Izumi, Masato Sakurai, Ryo Yoneda, Masashi Yamada,
+Kanazawa Institute of Technology. KEER2014 (International Conference on Kansei Engineering and Emotion Research),
+Linköping, pp. 921-926. Free full text.
+
+Setup, which is unusually clean for this question: four characters drawn so that they **do not** impress similarly;
+white background; and -- the detail that makes the whole experiment work --
+
+> The outlines of each character are drawn using the pen tool **without the effect of pen pressure**.
+
+Removing pressure isolates width as a controlled variable. Ten outline conditions per character (none, four black
+thicknesses at constant colour, five chromatic colours at constant thickness), **40 stimuli**, 18 bipolar adjective pairs,
+7 ranks, 16 subjects, factor analysis. **Cumulative contribution ratio 81% on three factors**: naturalness, potency,
+activity.
+
+And then the two sentences that matter:
+
+> the impressions to naturalness and potency are affected by the colors and thickness of the outlines **rather than the
+> design of animation characters**
+>
+> the impression to activity is related to the design of the animation characters **without the effects of outlines**
+
+**Naturalness and potency are properties of the line. Activity is a property of the design. They are separable.** That is
+a diagnostic this project has never had: if a drawing reads wrong and the complaint is that it looks unnatural or weak,
+the fault is in the linework, and no amount of character-design work will move it. It also means the linework can be
+evaluated on its own terms, which is what `corpus_summary.json` has been trying to do without knowing what it was
+measuring.
+
+The measured effects, stated as directions:
+
+| change | naturalness | potency |
+|---|---|---|
+| **thicker outline** | falls | **rises** |
+| **brown / reddish-brown outline** (vs black at equal thickness) | **rises** | falls |
+| black, reddish brown, pale brown | positive | -- |
+| green, blue, red | negative | -- |
+
+Two things follow.
+
+**There is a trade-off, not an optimum.** Thickness buys potency and costs naturalness; brown buys naturalness and costs
+potency. The paper explains the industry's move to brown outlines as exactly this purchase -- *"it gives animation
+characters more natural and usual impressions"* -- and states the cost in the same breath: *"Although it decreases usual
+and natural impression for them, the impression to potency increases with the thickness."* So "make the outline thicker"
+is not an improvement, it is a **trade**, and a line-hierarchy model that only ever thickens the contour is spending
+naturalness to buy potency without saying so.
+
+**Colour near skin tone reads as natural, and so does black.** The colours that scored positive on naturalness are black
+and the two browns; the ones that scored negative are green, blue and red. The paper's reading: *"the use of color close
+to human skin color in the outline gives animation characters natural impression, as well as the use of black."*
+lineweight currently has **no colour model at all** for outlines -- one brush, one ink. This is the evidence that colour is
+not decoration but a second axis with a measured effect, and that the axis is legible: warm-and-desaturated versus
+everything else.
+
+**The limit of the finding, which has to be stated**: the study used **constant-width** outlines, because pressure was
+deliberately removed. lineweight's pressure model produces **tapered** width. So the monotone "thicker → more potent"
+result is measured on uniform outlines, and nobody has measured the tapered case. The honest position is that the
+direction is likely to carry over and the magnitude is unknown -- and that this is exactly the kind of gap that the
+`--fit-dir` corpus numbers were supposed to fill and could not, because they were computed over a mixed corpus.
+
+Two more references from its bibliography, both on quantifying moe, neither yet obtained:
+
+* Kawatani, Kashiwazaki, Takai & Takai (2010), *Feature Evaluation by **Moe-Factor** of ANIME Characters Images and its
+  Application*, IEICE Technical Report 109(415), 113-118.
+* Kawatani, Kashiwazaki, Takai & Takai (2008), *ANIME Degree Evaluation by Feature Extraction of Animation Characters*,
+  IPSJ SIG Technical Report 2008-CG-132, 35-38.
+
+"Moe-factor" is a numeric moe score computed from character images -- the earliest attempt found at turning the thing
+this project is aiming at into a number.
+
+## Frontal-face construction, and why its numbers cannot be trusted
+
+[CLIP STUDIO TIPS, 正面顔イラストの描き方](https://tips.clip-studio.com/ja-jp/articles/16685) (もえかき編集部) gives the
+standard construction, and the useful part is that it is explicit about *why* the frontal view is the hard one:
+**正面顔は左右差が目立ちやすい** -- a three-quarter view hides imbalance in foreshortening, a frontal view does not.
+
+The stated rules, worth recording because they are what a construction layer would encode:
+
+* **ear** spans from the eye-height line down to about the nose
+* **hair is drawn outside the skull**, not along its contour -- 一回り外側にボリュームを持たせて
+* **hair is masses, not strands** -- 一本一本の髪の毛ではなく…大きな「かたまり」として考える
+* **nose and mouth get few lines**; over-rendering them makes the whole face read heavy
+* **左右反転** to check -- the same trick as looking at a drawing in a mirror, and the same one a renderer gets for free
+
+And the rule that does not survive contact with itself:
+
+> 目の大きさは顔の横幅のおよそ**2分の1**を目安に -- eye width ≈ **1/2** the face width
+> 左右の目の間隔は「**目1個分**」程度空ける -- the gap between the eyes is about **one eye width**
+
+Two eyes plus one gap is **three eye-widths** across the face, which forces eye width ≈ 1/3 of the face, not 1/2. The two
+sentences on the same page cannot both be true. This is not a criticism of the article -- it is the ordinary condition of
+prose rules about proportion, and it is exactly why **measuring a corpus beats reading rules**: a tutorial can state two
+incompatible numbers in adjacent paragraphs and still be useful, whereas an extractor that returns 1/2 where the drawing
+says 1/3 is simply wrong. It is the same reason the width numbers in `RESEARCH-SCENERY.md` had to be traced back to a
+mixed corpus before they meant anything.
