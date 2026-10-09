@@ -516,3 +516,41 @@ fine strokes. **A count and a width, not a style.**
 - **Hips and chest (104–111)**: the buttock's shape changes with the seated pose; the bra's structure (hook, cups,
   straps); and an underwear colour table — 白 清楚, 黒 大人っぽい, 赤 派手, ピンク 可愛らしい, 水色 爽やか.
 - **Character making (121)**: 意外性 — the unexpected trait — is listed as what makes a character.
+
+### The head-body check: the pass condition was circular, and that is the finding
+
+Five approaches have now been tried. The one that matters is not a measurement but a defect in the test I wrote, so it
+goes first.
+
+**The pass condition cannot test what it claims.** It was *"recover 6.00 / 5.00 / 4.00 / 3.00 on pp. 57–65"*, and the
+eye-line constant is **0.58**, calibrated from the printed ratios on pp. 58 and 64. Recovering a ratio from that
+constant on those same pages recovers the calibration. Worse, on those pages the head is **given**: the guide-line
+interval *is* the head, by the book's own definition. So the four pages validate that a detector can *find a face*.
+They cannot validate a ratio they hand over first. **A test whose inputs contain its answer is not a test**, and this
+one was written that way and then pursued for four rounds before the shape of it was noticed.
+
+**What the book's pages are actually good for**, and it is not nothing: printed 57 draws six figures at
+**7/6/5/4/3/2 頭身** on one page, with the ratio printed beside each. That is a **calibration set of six** — six points
+spanning the whole range, same artist, same page. A **silhouette-only proxy** calibrated on those six and then applied
+to drawings that were not used to build it is a genuine test, and it is the one route here that is not circular. It is
+also unfinished: the six silhouettes **touch** on the page, so they come out as a single column band
+(x 155–1154) and need splitting before anything can be calibrated.
+
+**The five failures, recorded so the next attempt does not repeat them.**
+
+| approach | what happened |
+|---|---|
+| silhouette neck minimum | no minimum: the **halo** sits above and outside the head, the **hair** is wider than the face down to the shoulders, the **collar** meets the jaw. Row extents 12 → 106 → 157 → 222 → 283, monotone |
+| skin colour | the predicate hits the **pink halo** at the top and the **bare thighs** at the bottom of the same page — three regions, one predicate |
+| silhouette crotch | **returns 1.000 on every page**: the figures stand 内股 with the legs together, so no row ever splits into two clusters. The crotch is an interior line, not an outline |
+| stroke clustering | the figure is **not one component** — it is ~2000 separate strokes (30–75 px each), because every drawn line is its own stroke. Dilating and union-finding them groups text and rules into tidy blocks and the figure into nothing |
+| run-signature text filter | excluding rows with many short runs removes the heading **and the toes and hair texture**, so the silhouette came out starting above the crown and ending short of the feet |
+
+**And the honest question, which is not rhetorical.** The end product is a sanity check on 292 Blue Archive sheets —
+*are they inside the book's 2–6 range?* It changes no output, no drawing consumes it, and the role model does not
+consume it. Against that: a proxy calibrated on six points and applied to a corpus is a real experiment, but it is a
+few more rounds of layout analysis before it produces its first number, and layout analysis is what all five failures
+above were.
+
+Recorded open. The measurements that survived are the useful part: **the eye line at 0.58 of the head**, the **page
+segmenter that finds exactly two figures per page** and correctly rejects back views, and the **five failure modes**.
