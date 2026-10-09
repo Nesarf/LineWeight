@@ -666,3 +666,69 @@ is calibrated with a stated error. **What is missing is a figure segmenter** —
 page belongs to the main character — and every span rule tried here is an attempt to avoid writing one. The corpus
 question is still unanswered, and the honest sample sizes are **31 of 120 under the strict rule** and **66 of 120
 under the loose one**, neither of which is the corpus.
+
+### ②, third design: the records were on the machine, and the art is not images at all
+
+The instruction was to look for existing records and tooling before writing a segmenter. **That turned out to be the
+right call, because it made the segmenter unnecessary.** The corpus is not a pile of flat pictures.
+
+#### What was already on disk
+
+| | |
+|---|---|
+| `E:\hollow-court\docs\reverse\mobile-games-on-the-phone.md` | 815 lines studying Blue Archive's data and technology; §9–§10.1 are the art half |
+| `E:\~Harumi~Desuwa~\bluearchive\` | the phone copy: **11.56 GiB, 44,671 files**, `AssetBundles/` 26,829 |
+| `E:\DaShaoHuo\downloads\bluearchive-ui\` | 2,092 textures already exported from those bundles |
+
+The record says it outright: **`assets-_mx-spinecharacters-` and `spinelobbies-` hold the character art, and it is
+Spine.** **660 distinct Spine characters** are in the copy. A character is therefore **a rig with named bones**, not
+an image to be segmented — and the proportions this whole check was trying to *measure off a picture* are **stated by
+the rig**.
+
+#### The toolchain, and it works
+
+- **UnityPy 1.25.3** — extract `TextAsset`s out of the bundles (`airi_home.skel` 601 KB, `airi_home.atlas` 22 KB).
+- **spine-core (npm) — and the version must match.** The files are Spine **4.2.33**; spine-core **4.3.13**, which is
+  what `npm install` gives by default, **parses the file and then throws `Bone name must not be null`** because the
+  format moved between minor versions. Installing `@esotericsoftware/spine-core@4.2` (4.2.120) reads it correctly.
+  **A parser that is merely the wrong version fails late and looks like a corrupt file.**
+- `new TextureAtlas(text)` takes **only the text** in 4.2 — the second `textureLoader` argument is silently ignored.
+- `skeletonData.findBone(name)` returns **BoneData**; only `skeleton.findBone(name)` gives a **Bone** with
+  `worldX`/`worldY`.
+
+**Parsed, and they are real rigs**: `airi_home` **374 bones, 174 slots, 20 animations**; `izuna` 272; `yuuka` 210;
+`hina` 152; `shiroko` 93. And the skeleton chain is explicit:
+
+```
+Hip → Spine_01_Root → Spine_02_Root → Torso_1 → Torso_11 → Neck_Root → Neck → Head_Root → head
+                                                                  len 134.8            len 154.7
+```
+
+#### Two more silent bugs, both worth keeping
+
+- **Writing the atlas in Python text mode corrupts it.** The file already ends its lines with `\r\n`; `open(..., 'w')`
+  on Windows rewrites every `\n` as `\r\n`, so the file came out with **`\r\r\n`**, every line ended in a stray `\r`,
+  and the atlas parsed as **33 pages and 0 regions**. Write extracted assets as **bytes**.
+- **`/ear/i` matches `forEARm`.** The head-extent filter included `L_ForeArm_01` and put the head's bottom at y=122
+  instead of at the head. Anchored to `(^|_)ear`, it stops.
+
+#### And the honest blocker, which is why no ratio is reported
+
+Reading a *head's drawn extent* out of a rig needs to know which slots are skull, which are hair, and which are halo
+— and **the names do not settle it**. On `airi_home`: the `Head` slot spans y 1230–1776, while `L_Eye_White` sits at
+1113–1256, **below the `Head` slot's own bottom**. So `Head` is largely the hair over the skull, and a name filter
+cannot separate them. Five characters measured this way gave **2.55 and 2.70** with three failing to find feet at
+all — numbers that are wrong in an obvious direction (a lobby 立绘 is not a two-and-a-half-head chibi), so they are
+recorded as a failed measurement rather than a result.
+
+**What would finish it**: the face's attachment geometry interpreted properly — the eye slots are a fixed, findable
+landmark, and the head is a known multiple of the eye line above and below it. That is the same eye-line idea the
+book gave (§ printed 59), applied to a rig instead of a picture, and **it has a ground truth to check against, which
+the pictures never did**.
+
+#### What this changes, beyond ②
+
+The corpus question is still open, but it is no longer an image-segmentation problem. **660 moe characters, with
+their bone proportions, their part decomposition, seven facial-expression skins each, and the halo as its own slot,
+are readable on this machine.** That is the game's own construction of the thing this library is trying to draw —
+which is what §`RESEARCH-MOE.md` has been assembling from a textbook, except that here it is exact and it is data.
