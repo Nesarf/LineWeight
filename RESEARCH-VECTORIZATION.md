@@ -264,6 +264,99 @@ explicitly rather than rhetorically.
 raster is a claim that the field has not met. What it can honestly claim is narrower and still worthwhile --
 variable-width stroke records with explicit pressure and role, which is the axis nobody else is on.
 
+## The per-stroke specification, and the fields `stroke_record` is missing
+
+From **Stylization of Line Drawings** -- Adam Finkelstein, Part V of the same SIGGRAPH 2005 course
+([course7-8-style.pdf](https://gfx.cs.princeton.edu/proj/sg05lines/course7-8-style.pdf)).
+
+Six aspects of stylization are named -- **lighting, tonal marks, brush style, brush path, paper effect,
+abstraction** -- and then the primitive is defined:
+
+> Strokes are the fundamental primitive of a line drawing. Each individual stroke has many qualities in addition to its
+> path -- it can have **varying thickness, wiggliness, opacity, and texture**, not to mention its time-dependent nature.
+> **These qualities give line drawings much of their character or charm, and can convey feeling as well.**
+
+*"And can convey feeling as well"* is the KEER2014 result stated as a design principle twenty years earlier: stroke
+qualities are not decoration, they are the channel the feeling travels on.
+
+**The per-stroke style record**, verbatim from the notes:
+
+```
+ Brush Style
+  Per stroke:
+      • Color
+      • Width profile
+      • Alpha profile
+      • Paper
+      • etc.
+```
+
+Compare `stroke_record`, which carries `centre`, `control`, `pressure`, `brush`, `resolution`, `seed`. The shape is the
+same -- a per-stroke record of everything needed to redraw the stroke -- but the fields do not line up:
+
+| the course's field | `stroke_record` | status |
+|---|---|---|
+| **Width profile** | `pressure` + `brush` | **present**, but implicit: the profile is folded into a pressure model rather than stored as a profile |
+| **Color** | -- | **absent.** One ink for the whole document |
+| **Alpha profile** | -- | **absent** |
+| **Paper** | -- | **absent** |
+| path / control points | `centre`, `control` | present |
+| time-dependent nature | `seed` | partially -- a seed makes a stroke reproducible, not animated |
+
+**That table is the concrete work list for the stylization axis**, and it agrees with the independent finding in
+`RESEARCH-LINE-QUALITY.md` that there is no colour model at all. It also makes a sharper point than the drawing
+convention can: the convention says *"thicken the outer contour"*, which is a **width** statement, but the record that
+would carry it does not exist yet either.
+
+### The stylization vocabulary, and where it came from
+
+The notes give the standard set, attributed:
+
+| technique | source | what varies |
+|---|---|---|
+| **Width tapering** | Kalnins 02 | width along the stroke |
+| **Alpha tapering** | Kalnins 02 | opacity along the stroke |
+| **1D texture / 2D texture** | Kalnins 02 | texture along and across the stroke |
+| **Media simulation** | Kalnins 02 | paper interaction |
+| **triangle strips + 1D alpha texture + vertex alpha + haloing at occlusions** | Northrup 00 | how to draw all of it efficiently through OpenGL |
+| **wiggle, watercolour texture, dashes, thorny silhouettes** | Kalnins 02 | path deviation and geometric stylization |
+
+**And the lineage, which is the most operationally useful sentence in the file**: the qualities were defined by
+**Hsu 94, *Skeletal Strokes***, and
+
+> Indeed many of these features are now **standard fare in commercial programs such as Adobe Illustrator**.
+
+**Illustrator's brush and width-profile machinery descends from Hsu 1994.** That closes a loop this project has been
+working inside without knowing it: `lineweight` drives Illustrator through a bridge, and Illustrator already implements
+the stylization model from the same course notes -- while the library generating the strokes implements only the
+`pressure`-as-width slice of it. The downstream application is the more capable one.
+
+**Also flagged in the section list and not yet read: *Visibility of lines in 3D* and *Temporal coherence for stylized
+lines*** -- the latter being the same problem `seed` addresses, solved by propagating parameterisations between frames
+(Kalnins 2003).
+
+## A source that exists and cannot be reached from this machine
+
+Two complete professional Japanese drawing textbooks are on the Internet Archive, free:
+
+* **漫画の教科書シリーズ No.02, 萌えキャラの上手な描き方** -- a full moe-character textbook
+* **How to draw a men's moe character: face & body**
+
+The first has an indexed line that is exactly this project's subject:
+
+> **頭身を描き分ける上で重要なのが「輪郭の線」です**
+> What matters in drawing different head-to-body ratios is **the contour LINE**.
+
+**archive.org is unreachable from here.** DNS resolves (`archive.org` → `108.160.167.174`), then the connection fails:
+`curl` returns `000` against `archive.org`, `ia601902.us.archive.org` and the metadata API, and `ping` loses 100% of
+packets. Retried across several minutes; not transient, and not a DNS problem. So the material is **identified with
+attribution but not retrieved**, and anything quoted from it above rests on search-engine index text rather than on
+this project having read the page.
+
+Worth recording as a finding rather than a nuisance: the two best sources found for the *moe construction* direction
+are both on one host that this machine cannot reach, and no mirror was found. Any plan that depends on reading them
+needs an egress path first.
+
 ---
 
 ## References

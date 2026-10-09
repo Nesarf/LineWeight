@@ -63,6 +63,27 @@ Ordered by what unblocks what. `P0` means *without this the rest is guesswork*.
       - 2D construction is **inside-out** (draw the body under the clothes);
         2.5D is outside-in — the same target built two different ways.
 
+## P2.5 — The stylization record
+
+The SIGGRAPH 2005 course gives a **per-stroke style specification** that `stroke_record` is a subset of
+(`RESEARCH-VECTORIZATION.md`). Filling the gaps is the concrete work list for this axis:
+
+- [ ] **`colour` per stroke.** Absent today — one ink for the whole document. KEER2014 says
+      outline colour is a measured perceptual axis (brown/skin-tone read natural; green, blue,
+      red do not), so this is not a cosmetic field.
+- [ ] **`width_profile` as a profile, not as `pressure`.** Today the width curve is implicit in
+      the pressure model. The course stores the profile. Making it explicit is what lets a role
+      override the pressure model without inventing a second mechanism.
+- [ ] **`alpha_profile`.** Absent.
+- [ ] **`paper`.** Absent — no texture or media simulation at all.
+- [ ] Known-but-unread from the same course: *Visibility of lines in 3D*, and *Temporal coherence
+      for stylized lines* (the problem `seed` addresses, solved by propagating parameterisations
+      between frames — Kalnins 2003).
+- [ ] **Context worth having**: `Hsu 94, Skeletal Strokes` is the origin of this whole model, and
+      *"many of these features are now standard fare in commercial programs such as Adobe
+      Illustrator"*. `lineweight` bridges to Illustrator, so **the downstream application already
+      implements more of the stylization model than the library that feeds it does.**
+
 ## P3 — Rendering
 
 - [ ] **Cel shading.** Only after the linework is trustworthy; shading hides line faults.
@@ -173,6 +194,23 @@ Full write-up in `RESEARCH-VECTORIZATION.md`.
 
 ### Not yet read
 
+- [ ] **BLOCKED — the two best moe-construction sources are unreachable.** *漫画の教科書シリーズ
+      No.02, 萌えキャラの上手な描き方* and *How to draw a men's moe character: face & body* are
+      complete professional Japanese textbooks, free on the **Internet Archive** — and **archive.org
+      does not connect from this machine**. DNS resolves (`108.160.167.174`), then `curl` returns
+      `000` against archive.org, `ia601902.us.archive.org` and the metadata API, and `ping` loses
+      100%. Retried over several minutes; not transient. No mirror found. **Needs an egress path
+      before the moe direction can use them.**
+      - The one indexed line is already on target: 頭身を描き分ける上で重要なのが**「輪郭の線」**です
+        -- what matters in drawing different head-to-body ratios is **the contour line**.
+- [ ] **The tutorial numbers disagree with each other, twice now.** CSP says eye width ≈ 1/2 the
+      face width *and* the inter-eye gap ≈ one eye width, which cannot both hold; a Chinese source
+      gives the anime 三庭 as **1 : 0.7 : 1.3** (vs realistic 1:1:1) with the eye gap widened to
+      **1.2–1.5×** pupil width. Different numbers, same feature, and the second source is
+      **AI-generated content-farm text with no provenance**.
+      - Recorded as evidence for the corpus position, not as fact: prose rules about proportion
+        cannot be trusted, and a large share of what is searchable on this topic is now
+        machine-written. **Measuring the corpus is the only way to settle any of it.**
 - [ ] **JAniCA (日本アニメーター・演出協会) perspective course handouts.**
       Downloading to `E:\DaShaoHuo\downloads\janica\`. 5-6 MB each; `basic04` returned 404.
       - Why: `basic03` says *「結構自然に見えますが、このカットも『消失点を曖昧にして』描かれています」*
