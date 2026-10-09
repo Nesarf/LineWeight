@@ -137,3 +137,37 @@ A structural note for whoever keeps this: the reference library now contains **t
 clean line drawings, full-colour illustrations, and painted scenery. `--fit-dir` currently treats them identically, so the
 next thing worth building is not more geometry but a **classifier that decides which corpus a file belongs to** before any
 statistic is computed on it. Without that, the trap described above recurs by default.
+
+## Correction: the calibration corpus is this artbook, and "linework" does not mean line art
+
+Two things established by looking rather than by assuming, and the second one weakens a claim made earlier in this file.
+
+**The corpus source is identified.** `F:\素材\图\碧蓝档案官方设定资料` holds three subdirectories -- `1` (292), `2` (321),
+`3` (316) -- for **929 files in total**, which is exactly `/totals/records` in `tests/data/corpus_summary.json`. The
+summary's own note says the images and their paths are deliberately not in the repository, which is why this was not
+obvious from the file alone. So the "line-drawing library" of 276 is **276 pages of this set**, and the comparison
+recorded above between it and a 15-page stride sample of volume 1 is **not target-versus-calibration -- it is two subsets
+of one book.** That comparison still says something real (within a single artbook, the full-colour pages and the sparse
+ones measure differently) but it says much less than "the calibration is suited to the target", which is how it was first
+written.
+
+**And the split was made by a threshold, not by looking:**
+
+```python
+linework = [r for r in good if r['note'] == '' and r['line_runs'] >= 200 and r['ink_ratio'] < 0.30]
+paintings = [r for r in good if r['note'] == '' and r['ink_ratio'] >= 0.30]
+```
+
+**Full-colour illustration pages pass that test.** The 15-page sample measured `ink_ratio` 0.1901 and was drawn from the
+full-colour section of volume 1 -- comfortably inside the "linework" band. So **the 276 are not line drawings; they are
+pages that happen not to be ink-heavy**, and that set will contain finished colour illustrations alongside actual line art.
+Every figure in `corpus_summary.json` is a distribution over that mixed set.
+
+This does not make the calibration wrong. It makes it **a measurement of a different thing than its name says**, and that
+matters for the three comparisons in this file, all of which treated "the line-drawing library" as a clean reference. It
+is the same failure mode the retracted PSD claims had: a number computed correctly, named confidently, and describing
+something other than what the name implies.
+
+**What a real classifier would need to test**, now that the material is known: monochrome-ness (the Blue Archive artbook
+separates cleanly -- line pages are greyscale scans, illustrations are saturated), which is a different signal from ink
+ratio and would not admit a finished colour illustration into a linework corpus.
