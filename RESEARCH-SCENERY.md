@@ -102,3 +102,38 @@ painted work the only sound use of these figures is as a classifier for which co
 Also worth recording: the `16+` folder is **mixed** -- Pixiv illustrations, phone photographs and screenshots in one
 directory. Pooling photographs with drawings would corrupt any corpus they were added to, and the 25-image figure is not
 25 drawings. The 14 illustrations were separated out above for that reason; the photographs were not measured.
+
+## The moe target, and it validates the calibration
+
+`F:\素材\图\碧蓝档案官方设定资料` -- 292 scanned pages of *Blue Archive Official Artworks*, 223 MB. Sampled every 20th page
+(15 images) and measured:
+
+| set | ink fraction | width median | width p90 | taper ratio |
+|---|---|---|---|---|
+| the line-drawing library (276) | 0.1485 | 4.0 | 11.0 | 0.4213 |
+| **Blue Archive official artworks (15)** | **0.1901** | **4.0** | **12.0** | **0.3923** |
+| `16+` illustrations (14) | 0.3429 | 5.0 | 13.0 | 0.3811 |
+| `ACG建筑` (20) | 0.6290 | 5.0 | 13.0 | 0.3564 |
+
+**This is the first comparison where agreement means something.** The artbook sits next to the line-drawing library and
+far from the other two, and unlike them it genuinely contains linework -- the pages are full-colour illustrations with
+visible, weight-varying lines over cel shading, not painted masses. Ink fraction 0.19 against 0.15 is the colour content a
+finished illustration has and a line drawing does not; width median is identical, p90 is within one pixel, taper within
+seven per cent.
+
+**So the existing calibration -- 276 line drawings, `p90/median` 2.750 -- is suited to this target**, which was an
+assumption until now rather than a measurement. And these are the numbers to aim at for moe character work:
+
+```
+width median 4 px · width p90 12 px · taper ratio 0.392 · ink fraction 0.190
+```
+
+Two things this does not say. It does not say the output *looks* like Blue Archive -- every measure here is a
+distribution over ink runs, and nothing in this file measures rhythm, curvature, line confidence or overlap hierarchy. And
+the sample is 15 pages of 292, chosen by stride rather than at random, so the page mix is whatever the book's ordering
+happens to put at those positions.
+
+A structural note for whoever keeps this: the reference library now contains **three corpora that must never be pooled** --
+clean line drawings, full-colour illustrations, and painted scenery. `--fit-dir` currently treats them identically, so the
+next thing worth building is not more geometry but a **classifier that decides which corpus a file belongs to** before any
+statistic is computed on it. Without that, the trap described above recurs by default.
