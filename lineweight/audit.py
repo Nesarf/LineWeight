@@ -33,7 +33,7 @@ from typing import NamedTuple, Sequence
 
 from . import curve, raster
 from .roles import DEFAULT_INK
-from .core import outline_chain_of, outline_polygon, outline_points, stroke_widths
+from .core import mark_ink, outline_chain_of, outline_polygon, outline_points, stroke_widths
 
 # The same paper `raster.save_png` uses. Not a style choice: two pictures with different paper cannot be compared, and
 # the comparison is the only reason either exists.
@@ -303,7 +303,7 @@ def mark_colour(mark: dict) -> tuple[float, float, float]:
     if mark.get('kind') == 'fill':
         r, g, b = raster.parse_hex(appearance.get('fill', '#808080'))
     else:
-        r, g, b = raster.parse_hex(appearance.get('colour', DEFAULT_INK))
+        r, g, b = raster.parse_hex(mark_ink(mark))
     return (r / 255.0, g / 255.0, b / 255.0)
 
 

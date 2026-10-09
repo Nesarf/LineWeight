@@ -953,7 +953,9 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # **Resolved here, once.** The default used to be a literal, which meant a role could never supply its ink:
         # `colour or role_ink(...)` never reached the second half. An explicit colour still wins, and a record with
         # neither a colour nor a role gets the historical default.
-        'colour': colour or roles.ink(role),
+        # **The caller's colour, or nothing.** Not the role's -- see `mark_ink`: resolving the role's ink into the
+        # record made the colour explicit, which is exactly what stops a later role assignment from changing it.
+        'colour': colour,
         'resolution': resolution,
         # **What this line is *for*, not how wide it is.** Stored on the record rather than passed to the expander so
         # that the role survives into the project file and can be changed later without redrawing anything -- which is
@@ -963,6 +965,19 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],
         'pressure': [round(p, 4) for p in ps],
     }
+
+
+def mark_ink(mark: dict) -> str:
+    """The ink a mark is drawn in: its own if the caller chose one, the role's otherwise.
+
+    **An absent colour is not a missing value, it is the answer "the role decides".** The drawing convention's order
+    of work is form first and line hierarchy afterwards -- アンミ: get the shape right, then add the width variation --
+    so a role has to be assignable to a stroke that was drawn before anyone knew what it was for, and that only works
+    if changing the role can still change the ink. Resolving the role's ink at creation looked right and quietly made
+    re-assignment a no-op for colour.
+    """
+    return (mark.get('appearance', {}).get('colour')
+            or roles.ink(mark.get('geometry', {}).get('role', '')))
 
 
 def stroke_widths(record: dict) -> list[float]:
@@ -1528,6 +1543,42 @@ def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False
     return 0 if result.ok else 1
 
 
+def assign_roles(project_path: str, spec: str, note: str = '') -> int:
+    """The second pass from the command line: **`--assign-role m0001=silhouette,m0007=detail`.**
+
+    Form first, line hierarchy afterwards -- and the point of doing it here rather than at drawing time is that the
+    geometry is already settled. Nothing is redrawn: the role reaches the expansion through `stroke_widths`, so the
+    same record produces a different outline and the same empty `appearance` produces a different ink. That is what
+    makes the hierarchy something a caller can revise after seeing the drawing, which is the whole order of work the
+    convention describes.
+
+    The file is saved in place, because a second pass that has to be re-applied is not a pass.
+    """
+    from .project import load_project, save_project
+
+    project = load_project(project_path)
+    assignments = {}
+    for item in spec.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        if '=' not in item:
+            raise SystemExit('--assign-role wants id=role pairs, e.g. m0001=silhouette; got %r' % item)
+        mark_id, role = item.split('=', 1)
+        assignments[mark_id.strip()] = role.strip()
+    if not assignments:
+        raise SystemExit('--assign-role got nothing to assign')
+    project.next_turn(note or 'assign %d line roles' % len(assignments))
+    project.assign_roles(assignments, note=note)
+    save_project(project, project_path)
+    for mark_id, role in assignments.items():
+        mark = project.by_id(mark_id)
+        widths = stroke_widths(mark.geometry)
+        print('  %-8s -> %-11s mean width %5.2f  ink %s'
+              % (mark_id, role or '(cleared)', sum(widths) / len(widths), mark_ink(mark.to_dict())))
+    return 0
+
+
 def roles_report(project_path: str) -> int:
     """**The role model checking itself against the drawing it was applied to.**
 
@@ -1561,7 +1612,7 @@ def roles_report(project_path: str) -> int:
         widths = stroke_widths(mark['geometry'])
         by_role.setdefault(name, []).extend(widths)
         everything.extend(widths)
-        inks.setdefault(name, set()).add(mark.get('appearance', {}).get('colour', roles.DEFAULT_INK))
+        inks.setdefault(name, set()).add(mark_ink(mark))
 
     def ratio(values, fraction):
         ordered = sorted(values)
@@ -1643,6 +1694,8 @@ def main() -> int:
                         help='with --audit: pixels across the longer side of the view')
     parser.add_argument('--zoom', default='', metavar='CX,CY,SPAN',
                         help='with --audit: look at one place instead of the whole canvas')
+    parser.add_argument('--assign-role', default='', metavar='SPEC',
+                        help='with --roles PROJECT: id=role pairs, assigned to strokes that are already drawn')
     parser.add_argument('--roles', default='', metavar='PROJECT',
                         help="report a project's line roles, their widths, their inks and the trade each makes")
     args = parser.parse_args()
@@ -1667,6 +1720,10 @@ def main() -> int:
                             pixels=args.pixels, zoom=args.zoom)
     if args.judge:
         return judge_report(args.judge, scale=args.scale)
+    if args.assign_role:
+        if not args.roles:
+            raise SystemExit('--assign-role needs a project: give --roles PROJECT')
+        return assign_roles(args.roles, args.assign_role)
     if args.roles:
         return roles_report(args.roles)
     return demo(args.out)

@@ -19,7 +19,8 @@ import json
 import pytest
 
 from lineweight import (DEFAULT_STAGES, DRAFT, LIVE, SUPERSEDED, Mark, Project, Region, load_project,
-                        region_fill, save_project, stroke_record)
+                        region_fill, roles, save_project, stroke_record)
+from lineweight.core import mark_ink
 
 
 def quads():
@@ -942,3 +943,110 @@ def test_undoing_a_turn_that_did_nothing_is_not_an_error():
     project.next_turn('just thinking')
     assert project.undo_last_turn() == []
     assert project.live() == []
+
+
+# ------------------------------------------------------------------------ the second pass: roles on finished work
+
+def test_assigning_a_role_leaves_the_geometry_untouched():
+    """**This is the property that makes it a second pass rather than a second attempt.**
+
+    The drawing convention's order of work is form first and width variation afterwards. So a role is a decision about
+    a stroke that already exists, and assigning one must not move a single point -- if it did, the first pass would
+    have been wasted and "get the shape right, then decide the hierarchy" would not be available.
+
+    Compared field by field over the whole geometry rather than just `centre`, because a role that quietly resampled,
+    or that reset the seed and therefore the tremor, would be just as damaging and would not show up in a centre
+    check alone.
+    """
+    from lineweight.core import stroke_record
+
+    project = Project(width=200, height=200)
+    project.add_stroke(stroke_record([(10, 10), (100, 40), (180, 20)], 'ink', seed=7, resolution=11))
+    before = dict(project.by_id('m0001').geometry)
+
+    project.assign_role('m0001', 'silhouette')
+    after = dict(project.by_id('m0001').geometry)
+
+    assert set(after) == set(before), 'a role assignment added or removed a field'
+    changed = {k for k in after if after[k] != before[k]}
+    assert changed == {'role'}, 'assigning a role changed %r as well' % sorted(changed - {'role'})
+    for field in ('centre', 'control', 'pressure', 'brush', 'seed', 'resolution'):
+        assert after[field] == before[field], 'assigning a role changed %r' % field
+
+
+def test_the_role_changes_the_drawing_without_redrawing_anything():
+    """The point of touching only the role: one record, two drawings.
+
+    The record is unchanged and the *expansion* of it is not, because every width comes from `stroke_widths`, which
+    reads the role. That is what makes the second pass cheap and reversible -- there is no second copy of the stroke
+    to keep in step.
+    """
+    from lineweight.core import from_record, stroke_record
+
+    record = stroke_record([(10, 10), (100, 40), (180, 20)], 'ink', seed=7)
+    project = Project(width=200, height=200)
+    project.add_stroke(record)
+    plain, _ = from_record(project.by_id('m0001').geometry)
+
+    project.assign_role('m0001', 'silhouette')
+    heavy, _ = from_record(project.by_id('m0001').geometry)
+
+    assert plain != heavy, 'the outline did not change, so the role is being ignored'
+    assert project.by_id('m0001').geometry['centre'] == record['centre']
+
+
+def test_a_whole_second_pass_is_one_undoable_operation():
+    """`assign_roles` is one decision even when it covers many strokes.
+
+    Forty roles assigned one at a time appear in the log as forty operations, and "undo the hierarchy I just set" then
+    has no answer -- which is the sentence this software exists to answer. The undo has to restore the *inks* too, and
+    it does so because they were never written down: an absent colour means the role decides, so rewinding the role
+    rewinds the ink with it.
+    """
+    from lineweight.core import mark_ink, stroke_record
+
+    project = Project(width=200, height=200)
+    for i in range(4):
+        project.add_stroke(stroke_record([(10, 10 + i * 20), (100, 40 + i * 20), (180, 20 + i * 20)],
+                                         'ink', seed=i))
+    before_inks = [mark_ink(m.to_dict()) for m in project.live()]
+    assert len(set(before_inks)) == 1
+
+    project.next_turn('the line hierarchy')
+    project.assign_roles({m.id: 'silhouette' for m in project.live()})
+    assert {mark_ink(m.to_dict()) for m in project.live()} == {roles.ROLES['silhouette'].ink}
+
+    # the correction is a turn of its own -- that is what "undo the last thing I said" means
+    project.next_turn('no, that hierarchy is wrong')
+    project.undo_last_turn()
+    assert [m.geometry.get('role', '') for m in project.live()] == [''] * 4
+    assert [mark_ink(m.to_dict()) for m in project.live()] == before_inks, \
+        'undoing the roles did not undo the inks'
+
+
+def test_a_fill_cannot_be_given_a_line_role():
+    """A role describes a line. Accepting it on a fill would store a claim that nothing can act on."""
+    project = Project(width=200, height=200)
+    project.add_fill(Region(points=[(10.0, 10.0), (90.0, 10.0), (90.0, 90.0)], d='M 10 10 L 90 10 L 90 90 Z'))
+    with pytest.raises(ValueError):
+        project.assign_role(project.by_id('m0001').id, 'silhouette')
+
+
+def test_an_unknown_role_is_refused_by_the_document_and_a_role_can_be_cleared():
+    """The document refuses the same names the registry does, and clearing is a real operation.
+
+    Clearing matters because a role is not a permanent classification: an artist who decides a line is an interior
+    line after all has to be able to say so, and the result must be the brush width exactly as given rather than some
+    other role's.
+    """
+    from lineweight.core import stroke_record, stroke_widths
+
+    project = Project(width=200, height=200)
+    project.add_stroke(stroke_record([(10, 10), (100, 40), (180, 20)], 'ink', seed=7))
+    with pytest.raises(ValueError):
+        project.assign_role('m0001', 'outline')
+    project.assign_role('m0001', 'detail')
+    thinned = stroke_widths(project.by_id('m0001').geometry)
+    project.assign_role('m0001', '')
+    assert project.by_id('m0001').geometry['role'] == ''
+    assert stroke_widths(project.by_id('m0001').geometry) > thinned

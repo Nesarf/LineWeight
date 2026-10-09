@@ -13,7 +13,7 @@ import pytest
 
 from lineweight import Project, save_project, load_project
 from lineweight import roles
-from lineweight.core import BRUSHES, stroke_record, stroke_widths
+from lineweight.core import BRUSHES, mark_ink, stroke_record, stroke_widths
 
 
 def a_drawing(mix, strokes=60, seed=5):
@@ -199,8 +199,12 @@ def test_a_role_and_its_ink_survive_the_project_file(tmp_path):
     save_project(project, path)
     again = load_project(path)
     assert [m.geometry.get('role') for m in again.live()] == ['silhouette', 'detail']
-    assert again.by_id('m0001').appearance['colour'] == roles.ROLES['silhouette'].ink
-    assert again.by_id('m0002').appearance['colour'] == roles.ROLES['detail'].ink
+    # **The ink is not written down when it was only defaulted.** An absent colour is the answer "the role decides",
+    # and storing the resolved colour instead is what would make a later role assignment silently not change the ink.
+    for mark_id, name in (('m0001', 'silhouette'), ('m0002', 'detail')):
+        mark = again.by_id(mark_id)
+        assert 'colour' not in mark.appearance
+        assert mark_ink(mark.to_dict()) == roles.ROLES[name].ink
 
 
 def test_the_role_supplies_the_ink_and_an_explicit_colour_wins():
@@ -211,13 +215,21 @@ def test_the_role_supplies_the_ink_and_an_explicit_colour_wins():
     times. A default that is always present makes the fallback after it dead code.
     """
     control = [(0, 0), (50, 10), (100, 0)]
-    assert stroke_record(control, 'ink', seed=1, role='silhouette')['colour'] == roles.ROLES['silhouette'].ink
-    assert stroke_record(control, 'ink', seed=1, role='')['colour'] == roles.DEFAULT_INK
-    chosen = stroke_record(control, 'ink', seed=1, role='silhouette', colour='#123456')
-    assert chosen['colour'] == '#123456', 'an explicit colour has to beat the role'
     project = Project(width=200, height=200)
-    project.add_stroke(chosen)
-    assert project.by_id('m0001').appearance['colour'] == '#123456'
+    project.add_stroke(stroke_record(control, 'ink', seed=1, role='silhouette'))
+    project.add_stroke(stroke_record(control, 'ink', seed=2, role='silhouette', colour='#123456'))
+
+    implicit, explicit = project.by_id('m0001'), project.by_id('m0002')
+    assert 'colour' not in implicit.appearance, 'a defaulted ink must not be written down'
+    assert mark_ink(implicit.to_dict()) == roles.ROLES['silhouette'].ink
+    assert explicit.appearance['colour'] == '#123456', "a chosen colour is the mark's own"
+
+    # and the difference is exactly what a later role assignment acts on
+    for mark in (implicit, explicit):
+        project.assign_role(mark.id, 'detail')
+    assert mark_ink(project.by_id('m0001').to_dict()) == roles.ROLES['detail'].ink
+    assert mark_ink(project.by_id('m0002').to_dict()) == '#123456', (
+        'an explicitly chosen colour must not be overwritten by a role')
 
 
 def test_the_report_is_reachable_and_prints_the_trade():

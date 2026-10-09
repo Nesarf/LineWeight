@@ -295,6 +295,29 @@ positive on naturalness; green, blue and red scored negative. Reddish-brown and 
 hue and land on opposite sides, so `roles.measured_natural` tests saturation. Every role's default ink is checked
 against that axis by a test.
 
+### Two passes, which is the order the convention describes
+
+アンミ (CGイラストテクニック vol.9): get the **form** right first, and add the width variation at the colouring stage.
+So a role is a decision made *about* a stroke that already exists, not a parameter of drawing it:
+
+    project.add_stroke(stroke_record(jaw, 'ink'))          # pass one: the shape, and nothing about hierarchy
+    project.add_stroke(stroke_record(eyelid, 'ink'))
+    ...
+    project.next_turn('the line hierarchy')                # pass two: what each line is for
+    project.assign_roles({'m0001': 'silhouette', 'm0002': 'contour'})
+
+    python -m lineweight --roles face.json --assign-role m0001=silhouette,m0002=contour
+
+**Nothing is redrawn.** `assign_role` touches `geometry['role']` and nothing else -- a test asserts the geometry is
+byte-identical afterwards, because that is the property that makes it a second pass rather than a second attempt.
+Every width comes from `stroke_widths`, which reads the role, so the same record produces a different outline; and
+every ink is resolved at the point of use, so **an absent `appearance.colour` means "the role decides"**. That last
+part is load-bearing: resolving the role's ink when the mark was created looked right and would have made a later role
+assignment silently not change the colour.
+
+A whole second pass is one turn, so one correction undoes all of it — roles *and* inks, since the inks were never
+written down.
+
 **The model examines the drawing it was applied to, which is the only way to argue with it:**
 
     python -m lineweight --roles face.json

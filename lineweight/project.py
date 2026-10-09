@@ -24,6 +24,8 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from . import roles
+
 # The common staging, as a starting point a project may replace. Order is meaningful: it is the order the passes run.
 #
 # **The invariants below are advisory and come from ONE recording.** They are kept because a worked example of the
@@ -211,10 +213,11 @@ class Project:
                               'pressure': record['pressure'], 'brush': record['brush'],
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
                               'role': record.get('role', '')},
-                    # The colour is the record's, and the record's default is the role's ink -- so naming a role gives
-                    # the line the ink that role is drawn in unless the caller said otherwise. The whitelist above is
-                    # why `role` needed a line here at all: fields not named are dropped on the way into the document.
-                    appearance={'colour': record.get('colour') or _role_ink(record.get('role', ''))},
+                    # **Only a colour the caller actually chose is written down.** An absent colour is the answer
+                    # "the role decides", which is what lets a role be assigned to a stroke after it was drawn --
+                    # `assign_role` is the second pass and it has to be able to change the ink. The whitelist above
+                    # is why `role` needed a line here at all: unnamed fields are dropped on the way into the document.
+                    appearance=({'colour': record['colour']} if record.get('colour') else {}),
                     provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)
         self.marks.append(mark)
@@ -324,6 +327,39 @@ class Project:
         self._record('revise', ids=[mark_id], changed=changed,
                      before={k: before[k] for k in changed}, after={k: after[k] for k in changed})
         return mark
+
+    def assign_role(self, mark_id: str, role: str, note: str = '') -> Mark:
+        """**The second pass: give a finished stroke a line role.**
+
+        The drawing convention's order of work is form first and width variation afterwards -- アンミ: get the shape
+        right, then add the line hierarchy -- so a role is a decision made *about* a stroke that already exists, not a
+        parameter of drawing it. This touches `geometry['role']` and nothing else, and because every width and every
+        ink is derived from the role at the point of use, the whole drawing changes without a single stroke being
+        redrawn. A test asserts the geometry is byte-identical afterwards, because that is the property that makes
+        this the second pass rather than a second attempt.
+
+        `role=''` clears it, which restores the brush width exactly as given. An unknown name is refused rather than
+        guessed at -- the name is the claim being made about the line.
+        """
+        mark = self.by_id(mark_id)
+        if mark.kind != 'stroke':
+            raise ValueError('%s is a %s; a line role describes a line' % (mark_id, mark.kind))
+        if role:
+            roles.role(role)                      # refuses an unknown name, listing the known ones
+        return self.revise_mark(mark_id, geometry={'role': role},
+                                note=note or ('role %s' % role if role else 'role cleared'))
+
+    def assign_roles(self, assignments: dict, note: str = '') -> list[Mark]:
+        """Several assignments that share one **turn**, so a whole second pass is one thing to undo.
+
+        Assigning a hierarchy is one decision even when it covers forty strokes, and a log in which it appears as
+        forty is a log in which "undo the hierarchy I just set" has no answer. The caller opens the turn with
+        `next_turn`, the same way it does before a batch of strokes -- **this does not open one itself**, and the
+        first version did, which was worse than not doing it at all: it wrote a `turn` marker without advancing
+        `self.turn`, so the entries it produced carried the *previous* turn's number and `undo_last_turn` could not
+        find them. A correction that silently does nothing is the failure this mechanism exists to prevent.
+        """
+        return [self.assign_role(mark_id, role, note=note) for mark_id, role in assignments.items()]
 
     def supersede(self, mark_id: str, reason: str = '') -> Mark:
         """Takes a mark out of the drawing **without removing it**.
