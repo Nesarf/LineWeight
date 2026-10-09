@@ -158,3 +158,110 @@ eyes, nose and mouth, not a hue — and that is a new instrument with its own va
 bolted on. It is worth having; it is not a one-afternoon item, and calling it one would have produced a number nobody
 could trust. The alternative is reading the ratio off a stated sample by eye, which tests the *boundary* and cannot
 test the *corpus* — and a sample is what this project has already been burned by once.
+
+---
+
+## Chapter map, from the book's own contents page (printed 11)
+
+The folio mapping is **printed page N = PDF page N + 2**, confirmed against the contents page. The two chapters this
+repository needs, and the correction to the earlier note:
+
+| chapter | printed pages | note |
+|---|---|---|
+| 髪型の描き方 (hair) | 34–41 | includes 前髪 39–41 and long-hair variation 40–41 |
+| 頭身 (head-body ratio) | 57–65 | **a page per ratio**: 6頭身 58, 5頭身 60, 4頭身 62, 3頭身 64, 2頭身 65 |
+| 萌えポーズ (pose) | 52–56 | 基本は **S字ライン** 52, 「交互」54, 「ひねり」55 |
+| **衣服のシワ (cloth folds)** | **112–121** | 薄手 112, 厚手 114, ぴっちり 116, ふんわり 117, 制服 118–121 |
+
+**The earlier note in `TODO.md` said folds were printed 111–116. It was off by one and stopped halfway** — printed 111
+is 下着 (underwear), and the folds chapter runs 112–121. Corrected here and in the TODO.
+
+## Hair: bunches, rooted at the parting, lifted off the forehead (printed 39–41)
+
+Printed 39, 「前髪強調の描き方」:
+
+> 前に描いた通り、前髪がボリュームのある髪型は、額の生え際に**「バナナの房」**がくっついているようにイメージします。
+> 房の根元は、髪を左右に分けた**「分け目」**の上に合わせます。
+> 房を額から**軽く浮かせる**ようにすると、**ボリューム感が出ます**。
+> 房の根元を**立てて生え際を見せます**。房の裏側の生え際は、毛の流れに沿って丁寧に描きましょう。
+
+For voluminous bangs: imagine **「バナナの房」— banana-shaped bunches — attached to the hairline**. Each bunch's base
+aligns with the **parting**. **Lifting the bunches slightly off the forehead is what produces the volume.** Standing the
+bases up exposes the hairline, and the hairline behind a bunch is drawn carefully along the hair's flow.
+
+Printed 40, 「セミロング＆ロングヘアの描き方」: the back view is built by **頭のアタリをとって、そこから髪を足す** —
+*establish the head's construction guide first, and add the hair onto it.* Three tip treatments are named and they are
+**the 強弱 axis applied to hair**: 毛先が揃っている (tips aligned) / 毛先が細くなる (tips taper) / 毛先がウェーブがかっている
+(tips wave).
+
+Printed 41, 「ウェーブの描き方」, and this is the rule that matters most to a width model:
+
+> 髪の房の流れを意識して、大まかなアタリをとります。
+> **カーブの外側がふくらむ。内側はゆるく。**
+> 髪の房が**「S」字に波打つ**ように描きます。巻きクセの付いた**紙テープ**のようなイメージです。細めの房を混ぜると効果的です。
+
+A wavy bunch is an **S**, and it is not symmetric: **the outside of each bend bulges while the inside goes slack.** The
+book's own summary calls this the one trick that unlocks free arrangement, and it is a **width rule along a stroke**, not
+a path rule — the same bunch is thicker on the outside of every bend.
+
+## Cloth folds: origin points, pull-folds, and thin-versus-thick as a fold *count* (printed 112, 114)
+
+Printed 112, 「薄手の服」. The labels are the rules:
+
+- **基点 (origin points)**: 「脇腹がシワの基点です」 and 「脇の下がシワの基点になります」 — the **side of the abdomen** and the
+  **armpit** are where folds originate.
+- **引っ張りシワ (pull-folds)**: they run *between* anchors — 「脇の下とひじを結ぶシワ」 (armpit to elbow), 「ひざの外側に
+  向かい、引っ張られシワ」 (toward the outside of the knee).
+- **Folds point back at volume**: 「シワの流れをさかのぼると、**胸の頂点**に向かいます」 — follow a fold backwards and it
+  leads to the **apex of the breast**. So a fold is evidence of a volume, which is the formal
+  *suggestive contour* idea stated as a drawing instruction.
+- **The ✗ example**: 「服の輪郭だけを描いていくと、いびつになるので、服の中には**裸の肉体がある**ような意識して描くように
+  しましょう」 — drawing only the garment's outline comes out distorted; draw with the awareness that **there is a naked
+  body inside the clothes**. 「裸のラフを描いてから、その上に服を描けばバランスが取れます」.
+
+Printed 114, 「厚手の服」, and the contrast is the useful part — **it is a count, not a style**:
+
+> 布地が厚いので、シワも**厚みがある**ように。
+> 胸は出っ張りがある程度に。布地が厚いので**細かいシワが入りません**。
+> **薄手の布地のときより、シワは少なめに描きます。**
+
+Thick fabric gets **fewer** folds, each drawn as **having thickness**; fine folds do not form over the chest. And one
+rule here is a **directly measurable geometric relation**:
+
+> **裸の体のラインより、外側に服の輪郭を描きます。** 裸のラインに近ければ「ぴっちり」、余裕を持たせれば「ゆったり」になります。
+> Draw the garment's outline **outside** the nude body's line. Close to the nude line reads as *tight*; with slack reads
+> as *loose*.
+
+That is two line sets and a distance between them, and ぴっちり / ゆったり is that distance — the material for a
+garment-fit measure rather than for a fold rule. Also: 「肩の縫い目（袖付け部分）は**肩の頂点よりも下**にあります」 — the
+shoulder seam sits *below* the shoulder's apex, which is a construction landmark a drawing can be checked against.
+
+## Why this is P3 and not P4
+
+None of the above is code. It is the **construction knowledge** the initiative records as the binding constraint —
+proportions, symbolic eyes, hair as masses, conventional folds — and the value of having it written down is that each
+line is a statement a drawing can be checked against: a fold that does not lead back to a volume, a thin-fabric garment
+with three folds, an outline inside the nude line. Those are checks, and they need a way to say where a fold *is*,
+which is why the line-role work came first.
+
+## Toolchain: reading a scanned book whose text layer is broken
+
+`pdftotext` returns mojibake, and `pdfinfo` says why: **Creator `PDFArea Image to PDF Converter`** — the book is
+**scanned images** with an OCR text layer whose fonts carry no ToUnicode map. So the text is not recoverable and the
+pages have to be **rendered and read as pictures**, which for a drawing textbook is the right method anyway.
+
+Installed, on `E:` where the disk policy puts things (the first attempt's `/D=` was ignored by the installer and the
+second `/S` silently did nothing and popped a window instead — the user placed it by hand, on `E:`):
+
+| engine | provides | location |
+|---|---|---|
+| pymupdf 1.28.2 | Python render / text / embedded images | site-packages |
+| mutool 1.28.5 | CLI render (`mutool draw`) | `E:\DaShaoHuo\tools\mupdf` |
+| poppler 25.07.0 | `pdftoppm` `pdftocairo` `pdfimages` `pdfinfo` `pdftotext` | WinGet Packages |
+| ghostscript 10.08.0 | an independent renderer | `E:\gs\gs10.08.0` |
+| qpdf 12.4.2 · pdftk · pypdf · pdfminer.six · pdfplumber | structure and text | — |
+
+**They agree, which is the reason to have more than one.** Rendering page 41 at 170 dpi with all four and comparing the
+greyscale bitmaps: pymupdf 249.17, poppler 249.13, mutool 249.17, ghostscript 249.17; mean absolute difference against
+pymupdf is **0.00** for mutool (same MuPDF engine, as expected), **0.33** for poppler and **0.43** for ghostscript. A
+page that one engine renders and another does not is a fact about the file, and before this there was no way to ask.
