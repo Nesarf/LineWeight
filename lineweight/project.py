@@ -133,18 +133,20 @@ class Project:
         raise KeyError(mark_id)
 
     def in_stage(self, stage: str, live_only: bool = True) -> list[Mark]:
-        """Marks of one pass, in drawing order. This is what `--stage` renders."""
-        return [m for m in self.marks
-                if m.stage == stage and (m.state == LIVE or not live_only)]
+        """Marks of one pass, **in drawing order**. This is what `--stage` renders."""
+        return sorted((m for m in self.marks
+                       if m.stage == stage and (m.state == LIVE or not live_only)),
+                      key=lambda m: m.seq)
 
     def upto(self, stage: str, live_only: bool = True) -> list[Mark]:
         """Every mark from the first pass through `stage` inclusive -- the state the drawing was in at that point."""
         self._check_stage(stage)
         order = self.stage_names()[:self.stage_names().index(stage) + 1]
-        return [m for m in self.marks if m.stage in order and (m.state == LIVE or not live_only)]
+        return sorted((m for m in self.marks if m.stage in order and (m.state == LIVE or not live_only)),
+                      key=lambda m: m.seq)
 
     def live(self) -> list[Mark]:
-        return [m for m in self.marks if m.state == LIVE]
+        return sorted((m for m in self.marks if m.state == LIVE), key=lambda m: m.seq)
 
     # ---- saving ---------------------------------------------------------------------------------------------
 

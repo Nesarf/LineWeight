@@ -18,8 +18,8 @@ import json
 
 import pytest
 
-from lineweight import (DEFAULT_STAGES, LIVE, Mark, Project, Region, load_project, region_fill, save_project,
-                        stroke_record)
+from lineweight import (DEFAULT_STAGES, LIVE, SUPERSEDED, Mark, Project, Region, load_project, region_fill,
+                        save_project, stroke_record)
 
 
 def quads():
@@ -164,6 +164,19 @@ def test_a_version_1_file_is_rejected_rather_than_misread():
     assert 'version' in str(err.value).lower()
 
 
+def test_seq_is_what_orders_a_render_not_the_list_position():
+    """`seq` is the drawing order and it is authoritative; a mark's position in the list is incidental. Anything that
+    reordered the list -- a sort by colour, a merge from two sources -- would otherwise change the picture, and the
+    failure would look like a plausible drawing rather than like a bug."""
+    project = a_project_with_marks()
+    ordered = [m.id for m in project.live()]
+    project.marks.reverse()
+    assert [m.id for m in project.live()] == ordered, 'the accessors must sort by seq, not by list position'
+    assert [m.id for m in project.upto('colour')] == ordered
+    assert [m.id for m in project.in_stage('colour')] == \
+           [i for i in ordered if project.by_id(i).kind == 'fill']
+
+
 def test_saved_files_are_utf8_and_end_with_a_newline(tmp_path):
     """The file is meant to be read and diffed by a person, so it is indented, UTF-8, and ends with a newline."""
     project = Project(title='日本語のタイトル')
@@ -176,3 +189,91 @@ def test_saved_files_are_utf8_and_end_with_a_newline(tmp_path):
     assert raw.endswith(b'\n')
     assert '日本語のタイトル'.encode('utf-8') in raw
     assert b'\\u' not in raw, 'the file escaped its non-ASCII instead of writing it'
+
+
+# --- rendering a project: what makes a pass checkable ------------------------------------------------------------
+
+def covered(layer) -> int:
+    return sum(1 for i in range(0, layer.width * layer.height * 4, 4) if layer.data[i + 3] > 0)
+
+
+def test_filling_a_polygon_covers_the_area_it_says_and_no_more():
+    """An area check, because a fill that leaks or that stops short is still a plausible-looking patch of colour.
+    Three shapes whose areas are known exactly by hand."""
+    from lineweight.raster import Layer, fill_polygon
+
+    square = Layer(60, 60)
+    fill_polygon(square, [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)], (200, 60, 60), 1.0)
+    assert covered(square) == 1600, '40x40 is 1600 pixels'
+
+    triangle = Layer(60, 60)
+    fill_polygon(triangle, [(5.0, 5.0), (55.0, 5.0), (30.0, 55.0)], (20, 20, 20), 1.0)
+    assert 1200 <= covered(triangle) <= 1300, 'a 50x50 triangle is about 1250'
+
+    # a closed loop as `weld_endpoints` actually returns it: first point repeated at the end
+    loop = Layer(80, 40)
+    fill_polygon(loop, [(5.0, 5.0), (35.0, 5.0), (35.0, 35.0), (5.0, 35.0), (5.0, 5.0)], (10, 10, 10), 1.0)
+    assert covered(loop) == 900, 'the repeated closing point must not double the edge'
+
+
+def test_rendering_respects_drawing_order_because_order_is_the_picture():
+    """A renderer that grouped by kind, or sorted by stage, would produce a perfectly plausible image of something that
+    was never drawn. Two fills over the same square: whichever is later must win."""
+    from lineweight.raster import Layer, fill_polygon, render_marks
+
+    square = [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
+    def mark(mid, colour, seq):
+        return {'id': mid, 'kind': 'fill', 'stage': 'colour', 'seq': seq, 'state': 'live',
+                'geometry': {'points': square, 'd': 'M 0 0 L 40 0 L 40 40 L 0 40 Z'},
+                'appearance': {'fill': colour, 'opacity': 1.0, 'blend': 'normal'},
+                'provenance': {}}
+
+    red, blue = mark('m0001', '#FF0000', 0), mark('m0002', '#0000FF', 1)
+    for order, expected, why in ((('m0001', 'm0002'), (0, 0, 255), 'blue was drawn last'),
+                                 (('m0002', 'm0001'), (255, 0, 0), 'red was drawn last')):
+        marks = [red, blue] if order == ('m0001', 'm0002') else [blue, red]
+        out = render_marks(marks, 40, 40, 1.0)
+        index = ((20 * 40) + 20) * 4
+        got = tuple(out.data[index:index + 3])
+        assert got == expected, '%s, but got %s' % (why, got)
+
+
+def test_a_superseded_mark_is_not_rendered():
+    """Erasing is a normal part of drawing -- the analysed video drew five times the line it kept -- so a mark that was
+    painted over must not reappear the next time the project is rendered."""
+    from lineweight.raster import render_marks
+
+    square = [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
+    mark = {'id': 'm0001', 'kind': 'fill', 'stage': 'colour', 'seq': 0, 'state': SUPERSEDED,
+            'geometry': {'points': square, 'd': 'M 0 0 L 40 0 L 40 40 L 0 40 Z'},
+            'appearance': {'fill': '#FF0000', 'opacity': 1.0}, 'provenance': {}}
+    assert covered(render_marks([mark], 40, 40, 1.0)) == 0
+    mark['state'] = LIVE
+    assert covered(render_marks([mark], 40, 40, 1.0)) == 1600
+
+
+def test_an_unrenderable_kind_is_refused_rather_than_skipped():
+    """Silently skipping a mark the renderer does not understand would produce a drawing quietly missing something."""
+    from lineweight.raster import render_marks
+
+    with pytest.raises(ValueError) as err:
+        render_marks([{'id': 'm0001', 'kind': 'gradient', 'stage': 'colour', 'seq': 0, 'state': LIVE,
+                       'geometry': {}, 'appearance': {}}], 20, 20, 1.0)
+    assert 'gradient' in str(err.value)
+
+
+def test_each_pass_renders_to_a_different_picture():
+    """The point of staging: acceptance is per pass, so the passes have to come out separately. If two stages rendered
+    identically, one of them is not doing anything."""
+    from lineweight.raster import render_marks
+
+    project = a_project_with_marks()
+    shots = {}
+    for stage in ('line', 'colour'):
+        shots[stage] = render_marks([m.to_dict() for m in project.in_stage(stage)], 500, 500, 0.5)
+    assert covered(shots['line']) > 0 and covered(shots['colour']) > 0
+    assert covered(shots['line']) != covered(shots['colour'])
+
+    # and `upto` is a superset: it must contain both
+    everything = render_marks([m.to_dict() for m in project.upto('colour')], 500, 500, 0.5)
+    assert covered(everything) >= max(covered(shots['line']), covered(shots['colour']))

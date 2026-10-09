@@ -1067,6 +1067,46 @@ def to_xfl(out_path: str, launch: bool = False) -> int:
     return 0 if result.ok else 1
 
 
+def render_report(project_path: str, stage: str = '', upto: str = '', out: str = 'render.png',
+                  scale: float = 1.0) -> int:
+    """Renders a project file to an image, optionally one pass at a time.
+
+    **This is an export, not the product.** What lineweight makes is the project file; an image is one reading of it,
+    and the reason to take that reading per pass is that acceptance is per pass -- "is the linework right", "is the
+    value structure there" and "is the colour sitting on top of it" are three different questions about three different
+    states of the same drawing, and answering them from the finished picture is guesswork.
+
+    The imports are inside the function on purpose: `raster` imports `core`, so `core` importing `raster` at module
+    level would be a cycle. Every other command here that crosses a module boundary does the same thing.
+    """
+    from .project import load_project
+    from .raster import render_marks, save_png
+
+    project = load_project(project_path)
+    if stage and upto:
+        raise SystemExit('--render: give --stage or --upto, not both')
+    if stage:
+        marks, label = project.in_stage(stage), 'stage %s' % stage
+    elif upto:
+        marks, label = project.upto(upto), 'up to and including %s' % upto
+    else:
+        marks, label = project.live(), 'every live mark'
+
+    width = int(project.width * scale)
+    height = int(project.height * scale)
+    layer = render_marks([m.to_dict() for m in marks], width, height, scale)
+    parent = os.path.dirname(out)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    save_png(layer, out)
+
+    covered = sum(1 for i in range(0, width * height * 4, 4) if layer.data[i + 3] > 0)
+    print('  %s' % out)
+    print('  %s: %d of %d marks, %d x %d, %d px covered (%.1f%%)'
+          % (label, len(marks), len(project.marks), width, height, covered, 100.0 * covered / (width * height)))
+    return 0
+
+
 def bridge(out_path: str, svg_out: str = '', report: str = '', run: bool = False, ai_out: str = '') -> int:
     """The demo sheet, carried into Illustrator as a real document instead of as SVG.
 
@@ -1120,6 +1160,12 @@ def main() -> int:
     parser.add_argument('--psd', default='', metavar='PSD', help='write the demo sheet as a layered PSD for SAI')
     parser.add_argument('--scale', type=float, default=1.0, help='with --psd: pixels per drawing unit')
     parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
+    parser.add_argument('--render', default='', metavar='PROJECT',
+                        help='render a project file to an image; combine with --stage or --upto')
+    parser.add_argument('--stage', default='', metavar='ROLE',
+                        help='with --render: only this pass, e.g. line, value, colour, refine')
+    parser.add_argument('--upto', default='', metavar='ROLE',
+                        help='with --render: every pass up to and including this one -- the drawing as it stood then')
     args = parser.parse_args()
     if args.fit:
         return fit_report(args.fit)
@@ -1131,6 +1177,8 @@ def main() -> int:
         return to_psd(args.psd, scale=args.scale)
     if args.xfl:
         return to_xfl(args.xfl, launch=args.run)
+    if args.render:
+        return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale)
     return demo(args.out)
 
 

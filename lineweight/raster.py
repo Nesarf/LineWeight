@@ -288,6 +288,122 @@ def composite(width: int, height: int, stack: list[tuple[Layer, str, float]]) ->
     return result
 
 
+def _parse_hex(colour: str) -> tuple[int, int, int]:
+    """`#RRGGBB` to a triple. Local rather than imported from `doc`, which imports `core`, which this file is beside --
+    a three-line parse is cheaper than deciding which module is allowed to know about which."""
+    text = colour.lstrip('#')
+    if len(text) == 3:
+        text = ''.join(c * 2 for c in text)
+    if len(text) != 6:
+        raise ValueError('not a #RRGGBB colour: %r' % (colour,))
+    return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: float = 1.0,
+                 scale: float = 1.0) -> None:
+    """Fills a closed polygon into `layer`, by scanline, even-odd.
+
+    **Even-odd, not nonzero, because that is what a bucket tool does** and because the polygons this receives come from
+    `weld_endpoints`, which can hand back a loop that touches itself. Even-odd gives the same answer as nonzero for
+    every simple polygon and a predictable one for a self-touching one, which is worth more here than the extra rule.
+
+    The two end pixels of each span take partial coverage, so a slanted edge is not a staircase. Edges that are
+    horizontal are not anti-aliased, which is a visible limitation and is left in rather than papered over.
+
+    Pure Python, like the rest of this file: one pass over the scanlines the polygon actually occupies.
+    """
+    n = len(points)
+    if n < 3 or alpha <= 0:
+        return
+    xs = [p[0] * scale for p in points]
+    ys = [p[1] * scale for p in points]
+    y0 = max(0, int(min(ys)))
+    y1 = min(layer.height - 1, int(max(ys)) + 1)
+    r, g, b = colour
+    for py in range(y0, y1 + 1):
+        yc = py + 0.5
+        crossings: list[float] = []
+        for i in range(n):
+            j = (i + 1) % n
+            ya, yb = ys[i], ys[j]
+            if ya == yb:
+                continue
+            # half-open in y, so a vertex shared by two edges is counted once and not twice
+            if (ya <= yc < yb) or (yb <= yc < ya):
+                t = (yc - ya) / (yb - ya)
+                crossings.append(xs[i] + t * (xs[j] - xs[i]))
+        if len(crossings) < 2:
+            continue
+        crossings.sort()
+        row = py * layer.width * 4
+        for k in range(0, len(crossings) - 1, 2):
+            left, right = crossings[k], crossings[k + 1]
+            if right <= 0 or left >= layer.width:
+                continue
+            left = max(0.0, left)
+            right = min(float(layer.width), right)
+            first = int(left - 0.5)
+            last = int(right - 0.5)
+            for px in range(max(0, first), min(layer.width - 1, last) + 1):
+                # coverage of this pixel's 1-wide box by the span
+                cover = min(px + 0.5, right) - max(px - 0.5, left)
+                if cover <= 0:
+                    continue
+                a = alpha * min(1.0, cover)
+                index = row + px * 4
+                old_a = layer.data[index + 3] / 255.0
+                new_a = a + old_a * (1 - a)
+                if new_a <= 0:
+                    continue
+                layer.data[index] = int((r * a + layer.data[index] * old_a * (1 - a)) / new_a)
+                layer.data[index + 1] = int((g * a + layer.data[index + 1] * old_a * (1 - a)) / new_a)
+                layer.data[index + 2] = int((b * a + layer.data[index + 2] * old_a * (1 - a)) / new_a)
+                layer.data[index + 3] = int(new_a * 255)
+
+
+def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Layer':
+    """Rasterises a `fill` mark.
+
+    Takes the mark rather than a bare polygon because the appearance belongs to the mark: colour and opacity are its
+    fields, and a renderer that had to be told them separately would be a second place for them to live.
+    """
+    geometry = mark['geometry']
+    appearance = mark.get('appearance', {})
+    points = geometry.get('points')
+    if not points:
+        raise ValueError('fill mark %r has no points' % (mark.get('id'),))
+    layer = Layer(width, height)
+    fill_polygon(layer, points, _parse_hex(appearance.get('fill', '#808080')),
+                 float(appearance.get('opacity', 1.0)), scale)
+    return layer
+
+
+def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0) -> 'Layer':
+    """Composites marks bottom to top **in the order given**, which is the drawing order.
+
+    **Order is the picture.** A later mark covers an earlier one, so this must not sort, group or otherwise reorder
+    what it is handed -- a renderer that rendered by kind, or by stage, would produce a perfectly plausible image of
+    something that was never drawn. The caller decides the order; `Project.in_stage` and `Project.upto` are how.
+    """
+    out = Layer(width, height)
+    for mark in marks:
+        if mark.get('state', 'live') != 'live':
+            continue
+        kind = mark.get('kind')
+        if kind == 'stroke':
+            geometry = mark['geometry']
+            record = {'brush': geometry['brush'], 'centre': geometry['centre'], 'pressure': geometry['pressure'],
+                      'seed': geometry.get('seed', 0),
+                      'colour_int': _parse_hex(mark.get('appearance', {}).get('colour', '#1A1620'))}
+            layer = stroke_layer(record, width, height, scale)
+        elif kind == 'fill':
+            layer = fill_layer(mark, width, height, scale)
+        else:
+            raise ValueError('cannot render a mark of kind %r' % (kind,))
+        out = blend(out, layer, 'normal', 1.0)
+    return out
+
+
 def save_png(layer: Layer, path: str, background: tuple[int, int, int] = (244, 241, 233)) -> None:
     """Writes the buffer out. Pillow is optional: without it the compositor still runs, it just cannot show you."""
     from PIL import Image
