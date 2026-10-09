@@ -167,6 +167,12 @@ class Project:
     # `add_*` takes a `commit` argument that overrides this for a single call, because a project can reasonably want
     # the gate on for the linework and off for a fill.
     incremental: bool = False
+    # **Which interaction the project is on.** The stated use is describing a drawing and then correcting it, so the
+    # unit a person actually thinks in is not the individual mark ("the third stroke of the left eyebrow") but the
+    # instruction ("the eyebrow I asked for a moment ago, that one was wrong"). A per-mark undo cannot express that;
+    # a turn can. Every mark and every log entry carries the turn that produced it, which is what makes "undo what I
+    # just asked for" a single operation rather than a search.
+    turn: int = 0
 
     # ---- adding ---------------------------------------------------------------------------------------------
 
@@ -194,11 +200,14 @@ class Project:
                               'pressure': record['pressure'], 'brush': record['brush'],
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14)},
                     appearance={'colour': record.get('colour', '#1A1620')},
-                    provenance={'source': source, 'note': note},
+                    provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)
         self.marks.append(mark)
-        if not commit:
-            self._record('draft', ids=[mark.id])
+        # **Every addition is recorded, not only the drafted ones.** It was the other way round, which meant the most
+        # common operation of all left no trace: a turn that added four strokes appeared in the log as nothing, so
+        # "undo what I just asked for" had nothing to undo. The entry names the mark and nothing else -- the mark
+        # itself is in `marks`, and duplicating its geometry into the log would be a second copy to keep in step.
+        self._record('draft' if not commit else 'add', ids=[mark.id])
         return mark
 
     def add_fill(self, region, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
@@ -215,11 +224,10 @@ class Project:
         mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
                     geometry={'points': [list(p) for p in region.points], 'd': region.d},
                     appearance={'fill': colour, 'opacity': opacity, 'blend': blend},
-                    provenance={'source': source, 'note': note},
+                    provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)
         self.marks.append(mark)
-        if not commit:
-            self._record('draft', ids=[mark.id])
+        self._record('draft' if not commit else 'add', ids=[mark.id])
         return mark
 
     # ---- revising ---------------------------------------------------------------------------------------------
@@ -233,13 +241,19 @@ class Project:
     # to produce the same picture would be indistinguishable from a local edit. So the tests assert it structurally --
     # every other mark's serialised bytes, before and after, must be identical.
 
+    def next_turn(self, note: str = '') -> int:
+        """Moves to the next turn and returns its number. Everything added afterwards carries it."""
+        self.turn += 1
+        self._record('turn', ids=[], note=note)
+        return self.turn
+
     def _record(self, op: str, **fields) -> dict:
         """Appends one entry to the operation log and returns it.
 
         A plain append rather than a mutable history object: the log is read far more often than it is written, and
         the simplest thing that preserves the sequence is the least likely to lose an entry.
         """
-        entry = dict({'op': op, 'at': len(self.log)}, **fields)
+        entry = dict({'op': op, 'at': len(self.log), 'turn': self.turn}, **fields)
         self.log.append(entry)
         return entry
 
@@ -431,7 +445,10 @@ class Project:
         # Walk back over real operations; `rewind` markers are a record, not something to reverse.
         while len(self.log) > 0 and (steps is None or len(undone) < steps):
             index = len(self.log) - 1
-            while index >= 0 and self.log[index].get('op') == 'rewind':
+            # `rewind` and `turn` entries are both records rather than operations, so they are stepped over and
+            # left in place. Treating a `turn` marker as an operation made rewind raise on it, which meant a project
+            # could not be walked back past the second instruction at all.
+            while index >= 0 and self.log[index].get('op') in ('rewind', 'turn'):
                 index -= 1
             if index < 0:
                 break                                   # nothing left but markers
@@ -454,6 +471,10 @@ class Project:
                     raise ValueError('cannot rewind a %s: the mark is not in the file any more' % op)
                 for mark_id in entry['ids']:
                     self.by_id(mark_id).state = inverse
+            elif op == 'add':
+                # the inverse of adding is taking it out again; the mark itself is removed rather than superseded,
+                # because undoing an addition means it was never drawn
+                self.marks.remove(self.by_id(entry['ids'][0]))
             elif op == 'remove':
                 mark = Mark.from_dict(entry['mark'])
                 if mark.id in [m.id for m in self.marks]:
@@ -474,6 +495,64 @@ class Project:
             self._record('rewind', ids=[i for e in undone for i in e.get('ids', [])],
                          undid=[e.get('op') for e in undone])
         return undone
+
+    # ---- turns -----------------------------------------------------------------------------------------------
+    #
+    # A turn is one instruction and everything it produced. It exists because the unit a person corrects in is the
+    # instruction, not the mark: "the eyebrow I just asked for" is a thing somebody says, and "m0117" is not. Without
+    # it, walking back a conversation means counting marks, which is counting the wrong thing.
+
+    def marks_from_turn(self, turn: int, live_only: bool = False) -> list[Mark]:
+        """Every mark a turn produced, in drawing order -- including the ones later reconsidered."""
+        return sorted((m for m in self.marks
+                       if m.provenance.get('turn') == turn and (m.state == LIVE or not live_only)),
+                      key=lambda m: m.seq)
+
+    def turns(self) -> list[int]:
+        """The turns that did anything, in order."""
+        seen = sorted({m.provenance.get('turn') for m in self.marks if m.provenance.get('turn')})
+        return [t for t in seen if t]
+
+    def rewind_to_turn(self, turn: int) -> list[dict]:
+        """Undoes everything done from `turn` onwards, and records that it did.
+
+        **The operation the stated use of this software actually needs.** "That instruction was wrong" is followed by
+        the artist wanting to be back where they were before they said it -- and that is a point in the conversation,
+        not a number of marks. Implemented on top of `rewind`, so every entry it walks back is reversed by the same
+        code, and the rewind is recorded the same way.
+        """
+        undone: list[dict] = []
+        while True:
+            # `turn` and `rewind` entries are records, not operations, and rewind steps over them -- so they must
+            # not count as stale work either. Counting them made this loop never finish: the turn marker for the
+            # target turn stays in the log by design, so `stale` stayed non-empty and the walk went all the way back
+            # through everything the artist had ever done.
+            stale = [e for e in self.log
+                     if e.get('op') not in ('turn', 'rewind') and e.get('turn', 0) >= turn]
+            if not stale:
+                break
+            step = self.rewind(1)
+            if not step:
+                break
+            undone = step + undone
+        return undone
+
+    def undo_last_turn(self, exclude_current: bool = True) -> list[dict]:
+        """Undoes whatever the most recent instruction did.
+
+        **"Undo the last turn" means the last turn that did something, not the turn the caller is standing in.** In a
+        conversation the corrective instruction *is* a turn of its own -- the artist says "that line is wrong" -- so
+        looking only at the current turn finds nothing to undo and the correction silently does nothing. With
+        `exclude_current` (the default) the search starts at the turn before this one, which is what the sentence
+        means when somebody says it.
+        """
+        ceilings = [e.get('turn', 0) for e in self.log
+                    if e.get('op') not in ('turn', 'rewind')]
+        if exclude_current:
+            ceilings = [t for t in ceilings if t < self.turn]
+        if not ceilings:
+            return []
+        return self.rewind_to_turn(max(ceilings))
 
     # ---- reading --------------------------------------------------------------------------------------------
 
@@ -509,7 +588,8 @@ class Project:
                 'marks': [m.to_dict() for m in self.marks],
                 'log': self.log,
                 'counter': self.counter,
-                'incremental': self.incremental}
+                'incremental': self.incremental,
+                'turn': self.turn}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Project':
@@ -523,7 +603,8 @@ class Project:
                    marks=[Mark.from_dict(m) for m in d.get('marks', [])],
                    log=d.get('log', []),
                    counter=int(d.get('counter', 0)),
-                   incremental=bool(d.get('incremental', False)))
+                   incremental=bool(d.get('incremental', False)),
+                   turn=int(d.get('turn', 0)))
 
 
 def save_project(project: Project, path: str) -> None:

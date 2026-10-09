@@ -166,6 +166,15 @@ def test_a_version_1_file_is_rejected_rather_than_misread():
 
 # --- revising a mark: the hard rule, made structural -------------------------------------------------------------
 
+def ops_since(project, baseline: int) -> list[str]:
+    """The operations logged after `baseline`, so a test can talk about what it did rather than what the fixture did.
+
+    This became necessary when additions started being logged: a fixture that builds five marks now logs five `add`
+    entries, and a test asserting an exact log was really asserting the fixture's construction order.
+    """
+    return [e['op'] for e in project.log[baseline:]]
+
+
 def snapshot(project) -> dict:
     """Every mark's serialised bytes, keyed by id. The unit of comparison for "nothing else moved"."""
     return {m.id: json.dumps(m.to_dict(), sort_keys=True) for m in project.marks}
@@ -300,6 +309,7 @@ def test_every_revision_is_recorded_in_order():
     """The log is what makes "the last thing you changed was wrong" answerable, which the stated use of this software
     -- describing, then correcting, repeatedly -- depends on."""
     project = a_project_with_marks()
+    base = len(project.log)
     a, b = project.marks[0], project.marks[1]
     project.revise_mark(a.id, appearance={'colour': '#111111'})
     project.supersede(b.id)
@@ -307,9 +317,9 @@ def test_every_revision_is_recorded_in_order():
     project.revise_mark(a.id, note='second pass')
     project.remove_mark(b.id)
 
-    assert [e['op'] for e in project.log] == ['revise', 'supersede', 'restore', 'revise', 'remove']
-    assert [e['at'] for e in project.log] == list(range(5)), 'the log must keep its own order'
-    assert project.log[0]['ids'] == [a.id] and 'appearance' in project.log[0]['changed']
+    assert ops_since(project, base) == ['revise', 'supersede', 'restore', 'revise', 'remove']
+    assert [e['at'] for e in project.log] == list(range(len(project.log))), 'the log must keep its own order'
+    assert project.log[base]['ids'] == [a.id] and 'appearance' in project.log[base]['changed']
 
 
 def test_the_log_survives_a_round_trip(tmp_path):
@@ -459,7 +469,7 @@ def test_rewinding_everything_restores_the_file_exactly():
     project, before, _, _ = project_after_three_changes()
     assert json.dumps(project.to_dict(), sort_keys=True) != before
 
-    undone = project.rewind(None)
+    undone = project.rewind(3)          # the three changes this test made, not the fixture's construction
 
     assert [e['op'] for e in undone] == ['remove', 'supersede', 'revise'], 'newest first'
     # **The marks come back byte for byte; the log does not, and should not.** The rewind is itself recorded, so a
@@ -481,20 +491,22 @@ def test_rewinding_a_removal_puts_the_mark_back_where_it_was():
     project.remove_mark(victim.id)
     assert victim.id not in [m.id for m in project.marks]
 
-    project.rewind(None)
+    base = len(project.log)
+    project.rewind(1)                   # undo the removal, not the fixture's construction
     assert [m.id for m in project.marks] == [m['id'] for m in json.loads(before)['marks']]
-    # The marks are exactly as they were; the log now ends with the record that a rewind happened. That difference is
-    # the point -- a project walked back must not look like one that was drawn in fewer steps.
+    # The marks are exactly as they were; the log ends with the record that a rewind happened. That difference is the
+    # point -- a project walked back must not look like one that was drawn in fewer steps.
     assert json.dumps([m.to_dict() for m in project.marks], sort_keys=True) == \
            json.dumps(json.loads(before)['marks'], sort_keys=True)
-    assert [e['op'] for e in project.log] == ['rewind']
+    assert ops_since(project, base - 1) == ['rewind']
 
 
 def test_rewinding_partway_lands_on_a_state_the_drawing_was_actually_in():
     """Newest first, so a partial rewind is one of the project's own past states rather than a half-applied edit."""
     project, _, stroke, fill = project_after_three_changes()
+    base = len(project.log)
     project.rewind(2)
-    assert [e['op'] for e in project.log] == ['revise', 'rewind']
+    assert ops_since(project, base - 3) == ['revise', 'rewind']
     assert project.by_id(fill.id).appearance['fill'] == '#3355AA', 'the revise should still stand'
     # the stroke is back and the removed mark is back, because both were undone
     assert project.by_id(stroke.id).state == LIVE
@@ -516,10 +528,12 @@ def test_an_operation_the_log_cannot_reverse_is_refused_without_corrupting_the_l
 def test_rewinding_more_steps_than_exist_undoes_what_there_is_and_no_more():
     """Asking to go back further than the history goes is not an error -- it undoes everything there is."""
     project = a_project_with_marks()
+    base = len(project.log)
     project.revise_mark(project.marks[0].id, appearance={'colour': '#000000'})
     undone = project.rewind(999)
-    assert len(undone) == 1, 'only the one real operation existed'
-    assert [e['op'] for e in project.log] == ['rewind']
+    assert len(undone) == base + 1, 'every operation there is, and no more'
+    assert project.marks == [], 'undoing everything includes the additions'
+    assert set(e['op'] for e in project.log) == {'rewind'}
 
     with pytest.raises(ValueError):
         project.rewind(-1)
@@ -779,10 +793,13 @@ def test_a_rewind_is_itself_recorded_because_a_truncatable_record_is_not_one():
     assert project.log[-1]['op'] == 'rewind'
     assert project.log[-1]['undid'] == ['supersede']
 
-    # and rewinding again records that too, rather than replacing the previous record
+    # and rewinding again records that too, rather than replacing the previous record. Counted rather than sliced:
+    # a rewind *shortens* the log, so an index captured before it points somewhere different afterwards -- which is
+    # how an earlier version of this test ended up asserting about an empty slice.
     project.rewind(1)
-    assert [e['op'] for e in project.log] == ['rewind', 'rewind']
-    assert [e['undid'] for e in project.log] == [['supersede'], ['revise']]
+    markers = [e for e in project.log if e['op'] == 'rewind']
+    assert len(markers) == 2, 'both rewinds should be on the record'
+    assert [e['undid'] for e in markers] == [['supersede'], ['revise']]
 
 
 def test_a_rewind_marker_is_not_itself_undoable():
@@ -791,11 +808,13 @@ def test_a_rewind_marker_is_not_itself_undoable():
     project = a_project_with_marks()
     project.revise_mark(project.marks[0].id, appearance={'colour': '#111111'})
     project.rewind(1)
-    assert [e['op'] for e in project.log] == ['rewind']
+    assert [e['op'] for e in project.log if e['op'] == 'rewind'] == ['rewind']
 
+    # the next rewind moves on to the fixture's additions -- it does not undo the marker. The way to tell is that the
+    # marker count only ever grows.
     undone = project.rewind(1)
-    assert undone == [], 'there is nothing left to undo'
-    assert [e['op'] for e in project.log] == ['rewind'], 'the marker must survive'
+    assert [e['op'] for e in undone] == ['add'], 'the marker is not what gets undone next'
+    assert len([e for e in project.log if e['op'] == 'rewind']) == 2, 'and the first marker is still there'
 
 
 def test_rewinding_a_commit_puts_the_mark_back_to_draft():
@@ -812,3 +831,114 @@ def test_rewinding_a_commit_puts_the_mark_back_to_draft():
     project.rewind(1)
     assert mark.state == DRAFT, 'undoing an acceptance restores the draft, not nothing'
     assert mark in project.marks
+
+
+# --- turns: the unit a person actually corrects in ----------------------------------------------------------
+
+def test_a_mark_knows_which_instruction_produced_it():
+    """The stated use is describing a drawing and then correcting it, so the unit somebody thinks in is the
+    instruction -- "the eyebrow I just asked for" -- not the mark id. Nothing can walk back a conversation without
+    knowing which marks a sentence produced."""
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200)
+    project.next_turn('draw a rough')
+    a = project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    b = project.add_stroke(stroke_record([(10.0, 60.0), (90.0, 90.0)], 'ink', seed=2))
+    project.next_turn('add an inner line')
+    c = project.add_stroke(stroke_record([(20.0, 20.0), (80.0, 80.0)], 'fine', seed=3))
+
+    assert [m.id for m in project.marks_from_turn(1)] == [a.id, b.id]
+    assert [m.id for m in project.marks_from_turn(2)] == [c.id]
+    assert project.turns() == [1, 2]
+    assert a.provenance['turn'] == 1 and c.provenance['turn'] == 2
+    # and every mark carries one, including the very first, so there is no mark outside the conversation
+    assert all(m.provenance.get('turn') is not None for m in project.marks)
+
+
+def test_a_turn_survives_a_round_trip(tmp_path):
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200)
+    project.next_turn('first')
+    project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    project.next_turn('second')
+    project.add_stroke(stroke_record([(10.0, 60.0), (90.0, 90.0)], 'ink', seed=2))
+
+    path = str(tmp_path / 'p.json')
+    save_project(project, path)
+    back = load_project(path)
+    assert back.turn == 2
+    assert [m.provenance['turn'] for m in back.marks] == [1, 2]
+    assert [m.id for m in back.marks_from_turn(2)] == [project.marks[1].id]
+
+
+def test_undoing_the_last_turn_means_the_last_turn_that_did_something():
+    """**The corrective instruction is a turn of its own.** The artist says "that line is wrong" and that sentence
+    advances the turn counter before anything is undone -- so looking only at the current turn finds nothing and the
+    correction silently does nothing at all."""
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200)
+    project.next_turn('draw a rough')
+    project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    project.add_stroke(stroke_record([(10.0, 60.0), (90.0, 90.0)], 'ink', seed=2))
+    kept = [m.id for m in project.live()]
+
+    project.next_turn('add an inner line')
+    inner = project.add_stroke(stroke_record([(20.0, 20.0), (80.0, 80.0)], 'fine', seed=3))
+
+    project.next_turn('no, that line is wrong')
+    undone = project.undo_last_turn()
+
+    assert [e['op'] for e in undone] == ['add'], 'only the inner line should go'
+    assert [m.id for m in project.live()] == kept, 'the first instruction must survive'
+    assert inner.id not in [m.id for m in project.marks]
+
+
+def test_undoing_turns_lays_one_instruction_on_top_of_another():
+    """Walking back a conversation means walking back instructions, in order, until the drawing is where it was."""
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200)
+    for turn, count in ((1, 2), (2, 1), (3, 3)):
+        project.next_turn('instruction %d' % turn)
+        for i in range(count):
+            project.add_stroke(stroke_record([(10.0 + i, 10.0), (90.0, 40.0 + i)], 'ink', seed=turn * 10 + i))
+
+    assert [len(project.marks_from_turn(t)) for t in (1, 2, 3)] == [2, 1, 3]
+    project.next_turn('undo that')
+    project.undo_last_turn()
+    assert len(project.marks_from_turn(3)) == 0 and len(project.live()) == 3
+
+    project.next_turn('and that')
+    project.undo_last_turn()
+    assert len(project.live()) == 2, 'back to the first instruction only'
+
+
+def test_rewinding_to_a_turn_undoes_everything_from_it_onwards_and_records_it():
+    from lineweight import stroke_record
+
+    project = Project(width=200, height=200)
+    project.next_turn('first')
+    project.add_stroke(stroke_record([(10.0, 10.0), (90.0, 40.0)], 'ink', seed=1))
+    project.next_turn('second')
+    project.add_stroke(stroke_record([(10.0, 60.0), (90.0, 90.0)], 'ink', seed=2))
+    project.next_turn('third')
+    project.add_stroke(stroke_record([(20.0, 20.0), (80.0, 80.0)], 'fine', seed=3))
+
+    project.rewind_to_turn(2)
+    assert len(project.live()) == 1, 'turns two and three should be gone'
+    assert project.log[-1]['op'] == 'rewind', 'and the walk back is on the record'
+
+    # the turn markers survive as history even though the work they introduced is gone
+    assert [e['turn'] for e in project.log if e['op'] == 'turn'] == [1, 2, 3]
+
+
+def test_undoing_a_turn_that_did_nothing_is_not_an_error():
+    """A turn that only asked a question, or was corrected before it drew anything, has nothing to undo and saying so
+    by doing nothing is right -- raising would make the caller special-case it."""
+    project = Project(width=200, height=200)
+    project.next_turn('just thinking')
+    assert project.undo_last_turn() == []
+    assert project.live() == []
