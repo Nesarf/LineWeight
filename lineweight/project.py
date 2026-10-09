@@ -153,6 +153,113 @@ class Project:
         self.marks.append(mark)
         return mark
 
+    # ---- revising ---------------------------------------------------------------------------------------------
+    #
+    # **The hard rule, stated once here because every method below obeys it: an existing mark is never regenerated.**
+    # A change names a mark id and alters that mark. Nothing else in the project moves -- no ids are reassigned, no
+    # neighbours are rebuilt, no order is recomputed. That is the whole reason the project is made of marks rather
+    # than of layers, and it is what makes "change the third petal" a cheap operation instead of a redraw.
+    #
+    # It is also the one property a caller cannot check for itself by looking at the result: a rebuild that happened
+    # to produce the same picture would be indistinguishable from a local edit. So the tests assert it structurally --
+    # every other mark's serialised bytes, before and after, must be identical.
+
+    def _record(self, op: str, **fields) -> dict:
+        """Appends one entry to the operation log and returns it.
+
+        A plain append rather than a mutable history object: the log is read far more often than it is written, and
+        the simplest thing that preserves the sequence is the least likely to lose an entry.
+        """
+        entry = dict({'op': op, 'at': len(self.log)}, **fields)
+        self.log.append(entry)
+        return entry
+
+    def add_strokes(self, records: list[dict], stage: str = 'line', note: str = '',
+                    source: str = '') -> list[Mark]:
+        """Adds several strokes as one operation. Order within the batch is the order drawn."""
+        return [self.add_stroke(r, stage=stage, note=note, source=source) for r in records]
+
+    def add_fills(self, regions, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
+                  blend: str = 'normal', note: str = '', source: str = '') -> list[Mark]:
+        """Adds several fills as one operation -- the shape a bucket tool's result arrives in."""
+        return [self.add_fill(r, stage=stage, colour=colour, opacity=opacity, blend=blend,
+                              note=note, source=source) for r in regions]
+
+    def revise_mark(self, mark_id: str, appearance: dict | None = None, geometry: dict | None = None,
+                    stage: str | None = None, note: str | None = None) -> Mark:
+        """Changes one mark, in place, and touches nothing else.
+
+        **Identity is not revisable.** `id`, `kind` and `seq` are refused outright rather than ignored, because a
+        change to any of them is not a revision -- renaming is a different operation, and turning a stroke into a fill
+        or moving a mark in the drawing order would leave the id pointing at something the caller never asked for.
+        Refusing loudly beats accepting quietly and leaving a mark whose identity no longer means what it did.
+
+        A field that is not mentioned is left alone, so a caller can change a colour without restating the geometry:
+        passing a whole replacement for a field means replacing that field, and omitting it means not touching it.
+        """
+        mark = self.by_id(mark_id)
+        for structural in ('id', 'kind', 'seq'):
+            if appearance and structural in appearance:
+                raise ValueError('%r is not revisable: it is the mark\'s identity, not its appearance' % structural)
+            if geometry and structural in geometry:
+                raise ValueError('%r is not revisable: it is the mark\'s identity, not its geometry' % structural)
+        if stage is not None:
+            self._check_stage(stage)
+        before = {'appearance': dict(mark.appearance), 'geometry': dict(mark.geometry), 'stage': mark.stage}
+        if appearance:
+            mark.appearance.update(appearance)
+        if geometry:
+            mark.geometry.update(geometry)
+        if stage is not None:
+            mark.stage = stage
+        if note is not None:
+            mark.provenance['note'] = note
+        after = {'appearance': dict(mark.appearance), 'geometry': dict(mark.geometry), 'stage': mark.stage}
+        changed = sorted(k for k in after if before[k] != after[k])
+        self._record('revise', ids=[mark_id], changed=changed)
+        return mark
+
+    def supersede(self, mark_id: str, reason: str = '') -> Mark:
+        """Takes a mark out of the drawing **without removing it**.
+
+        A superseded mark stops rendering and stops being returned by the ordered accessors, but it stays in the file
+        with its geometry intact. The analysed recording drew 145,184 px of line and kept 29,110 -- drawing five times
+        what survives is ordinary practice, so an erased mark is history rather than garbage, and `restore` is the
+        reason to keep it.
+
+        Idempotent: superseding twice is one entry in the log, not two.
+        """
+        mark = self.by_id(mark_id)
+        if mark.state == SUPERSEDED:
+            return mark
+        mark.state = SUPERSEDED
+        self._record('supersede', ids=[mark_id], reason=reason)
+        return mark
+
+    def restore(self, mark_id: str) -> Mark:
+        """Puts a superseded mark back, at its original place in the drawing order.
+
+        Its `seq` was never touched, so restoring is exact: the mark returns to where it was rather than to the end.
+        """
+        mark = self.by_id(mark_id)
+        if mark.state == LIVE:
+            return mark
+        mark.state = LIVE
+        self._record('restore', ids=[mark_id])
+        return mark
+
+    def remove_mark(self, mark_id: str) -> Mark:
+        """Deletes a mark outright. The distinction from `supersede` is deliberate and the caller has to mean it.
+
+        **This is the one operation that cannot be undone from the file**, which is why it is not the default: the
+        log records that it happened, and records what was removed, but the mark itself is gone.
+        """
+        mark = self.by_id(mark_id)
+        self.marks.remove(mark)
+        self._record('remove', ids=[mark_id], kind=mark.kind, stage=mark.stage,
+                     geometry=mark.geometry, appearance=mark.appearance)
+        return mark
+
     # ---- reading --------------------------------------------------------------------------------------------
 
     def by_id(self, mark_id: str) -> Mark:

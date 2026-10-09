@@ -164,6 +164,165 @@ def test_a_version_1_file_is_rejected_rather_than_misread():
     assert 'version' in str(err.value).lower()
 
 
+# --- revising a mark: the hard rule, made structural -------------------------------------------------------------
+
+def snapshot(project) -> dict:
+    """Every mark's serialised bytes, keyed by id. The unit of comparison for "nothing else moved"."""
+    return {m.id: json.dumps(m.to_dict(), sort_keys=True) for m in project.marks}
+
+
+def test_revising_one_mark_changes_nothing_else():
+    """**The rule the whole format exists for, tested the only way that can catch a rebuild.** A rebuild that happened
+    to produce the same picture would look identical from the outside, so this compares every other mark's bytes
+    before and after. Anything that regenerates its neighbours fails here even if the drawing comes out the same."""
+    project = a_project_with_marks()
+    before = snapshot(project)
+    target = [m for m in project.marks if m.kind == 'fill'][1]
+
+    project.revise_mark(target.id, appearance={'fill': '#123456'})
+
+    after = snapshot(project)
+    moved = [k for k in before if before[k] != after[k]]
+    assert moved == [target.id], 'revising %s also touched %s' % (target.id, moved)
+    assert project.by_id(target.id).appearance['fill'] == '#123456'
+
+
+def test_a_mark_s_identity_is_not_revisable():
+    """`id`, `kind` and `seq` are refused loudly rather than ignored. Renaming is a different operation; turning a
+    stroke into a fill leaves the id pointing at something nobody asked for; and moving a mark in the drawing order
+    would change what covers what. Accepting any of them quietly is the failure mode -- the caller would get a mark
+    whose identity no longer means what it did."""
+    project = a_project_with_marks()
+    mark = project.marks[0]
+    for field, value in (('id', 'm9999'), ('kind', 'fill'), ('seq', 99)):
+        with pytest.raises(ValueError) as err:
+            project.revise_mark(mark.id, appearance={field: value})
+        assert field in str(err.value)
+        with pytest.raises(ValueError):
+            project.revise_mark(mark.id, geometry={field: value})
+    assert mark.id == 'm0001' and mark.kind == 'stroke' and mark.seq == 0
+
+
+def test_a_field_that_is_not_mentioned_is_not_touched():
+    """Changing a colour must not require restating the geometry. A merge-style update would make every revision a
+    full rewrite by accident, and the caller would have no way to ask for a partial one."""
+    project = a_project_with_marks()
+    mark = project.marks[0]
+    geometry = json.dumps(mark.geometry, sort_keys=True)
+    project.revise_mark(mark.id, appearance={'colour': '#00FF00'})
+    assert json.dumps(mark.geometry, sort_keys=True) == geometry
+    assert mark.appearance['colour'] == '#00FF00'
+
+
+def test_revising_an_unknown_id_is_an_error_not_a_silent_no_op():
+    project = a_project_with_marks()
+    with pytest.raises(KeyError):
+        project.revise_mark('m9999', appearance={'colour': '#000000'})
+
+
+def test_superseding_takes_a_mark_out_of_the_drawing_without_destroying_it():
+    """Erasing is ordinary practice -- the analysed recording drew five times the line it kept -- so a mark that was
+    painted over stops rendering but keeps its geometry, and the ordered accessors stop returning it."""
+    from lineweight.raster import render_marks
+
+    project = a_project_with_marks()
+    victim = [m for m in project.marks if m.kind == 'fill'][0]
+
+    # measure what it covers while it is still live -- afterwards `render_marks` will correctly skip it, so a
+    # check of "it would have rendered" has to be taken before the supersede, not after
+    before_layer = render_marks([victim.to_dict()], 500, 500, 0.5)
+    before_px = sum(1 for i in range(0, before_layer.width * before_layer.height * 4, 4)
+                    if before_layer.data[i + 3] > 0)
+    assert before_px > 0, 'the victim covers nothing, so this test would prove nothing'
+
+    geometry = json.dumps(victim.geometry, sort_keys=True)
+    others = {k: v for k, v in snapshot(project).items() if k != victim.id}
+
+    project.supersede(victim.id, reason='the contour moved')
+
+    assert victim.id not in [m.id for m in project.live()]
+    assert victim.id not in [m.id for m in project.upto('colour')]
+    assert victim.id in [m.id for m in project.marks], 'the mark must still be in the file'
+    assert json.dumps(victim.geometry, sort_keys=True) == geometry, 'superseding must not alter the geometry'
+    assert {k: v for k, v in snapshot(project).items() if k != victim.id} == others
+
+    # and it now renders to nothing, which is the point
+    after_layer = render_marks([victim.to_dict()], 500, 500, 0.5)
+    after_px = sum(1 for i in range(0, after_layer.width * after_layer.height * 4, 4)
+                   if after_layer.data[i + 3] > 0)
+    assert after_px == 0, 'a superseded mark must not render'
+
+
+def test_restoring_puts_a_mark_back_where_it_was_not_at_the_end():
+    """`seq` is never touched by supersede, so restore is exact. Appending to the end instead would silently change
+    what covers what -- a restored mark would jump to the front of the drawing."""
+    project = a_project_with_marks()
+    order = [m.id for m in project.live()]
+    middle = order[len(order) // 2]
+
+    project.supersede(middle)
+    assert [m.id for m in project.live()] == [i for i in order if i != middle]
+    project.restore(middle)
+    assert [m.id for m in project.live()] == order, 'the restored mark did not return to its place'
+
+
+def test_superseding_twice_is_one_entry_in_the_log():
+    """Idempotence matters because the operation arrives from a conversation: "remove that one" said twice must not
+    leave two entries, or the log stops being a record of what happened."""
+    project = a_project_with_marks()
+    mark = project.marks[0]
+    project.supersede(mark.id)
+    depth = len(project.log)
+    project.supersede(mark.id)
+    assert len(project.log) == depth
+    # and restoring a live mark is likewise a no-op
+    project.restore(project.marks[1].id)
+    assert len(project.log) == depth
+
+
+def test_removing_outright_is_a_different_operation_from_superseding():
+    """The caller has to mean it: this is the one operation that cannot be undone from the file, so it is not the
+    default, and the log keeps what was removed even though the mark itself is gone."""
+    project = a_project_with_marks()
+    removed = project.marks[0]
+    geometry = json.dumps(removed.geometry, sort_keys=True)
+    project.remove_mark(removed.id)
+
+    assert removed.id not in [m.id for m in project.marks]
+    with pytest.raises(KeyError):
+        project.by_id(removed.id)
+    entry = [e for e in project.log if e['op'] == 'remove'][-1]
+    assert entry['ids'] == [removed.id]
+    assert json.dumps(entry['geometry'], sort_keys=True) == geometry, 'the log should say what was lost'
+
+
+def test_every_revision_is_recorded_in_order():
+    """The log is what makes "the last thing you changed was wrong" answerable, which the stated use of this software
+    -- describing, then correcting, repeatedly -- depends on."""
+    project = a_project_with_marks()
+    a, b = project.marks[0], project.marks[1]
+    project.revise_mark(a.id, appearance={'colour': '#111111'})
+    project.supersede(b.id)
+    project.restore(b.id)
+    project.revise_mark(a.id, note='second pass')
+    project.remove_mark(b.id)
+
+    assert [e['op'] for e in project.log] == ['revise', 'supersede', 'restore', 'revise', 'remove']
+    assert [e['at'] for e in project.log] == list(range(5)), 'the log must keep its own order'
+    assert project.log[0]['ids'] == [a.id] and 'appearance' in project.log[0]['changed']
+
+
+def test_the_log_survives_a_round_trip(tmp_path):
+    project = a_project_with_marks()
+    project.revise_mark(project.marks[0].id, appearance={'colour': '#222222'})
+    project.supersede(project.marks[-1].id, reason='off the edge')
+    path = str(tmp_path / 'p.json')
+    save_project(project, path)
+    back = load_project(path)
+    assert back.log == project.log
+    assert [m.state for m in back.marks] == [m.state for m in project.marks]
+
+
 def test_seq_is_what_orders_a_render_not_the_list_position():
     """`seq` is the drawing order and it is authoritative; a mark's position in the list is incidental. Anything that
     reordered the list -- a sort by colour, a merge from two sources -- would otherwise change the picture, and the
