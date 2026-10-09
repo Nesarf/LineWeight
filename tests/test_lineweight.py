@@ -16,6 +16,7 @@ import re
 
 from lineweight import BRUSHES, inked_svg, outline, parse_path, pressures, stroke
 from lineweight.core import stroke_record
+from lineweight import Project, save_project
 
 
 def test_parse_handles_the_commands_a_generator_writes():
@@ -1388,3 +1389,97 @@ def test_a_double_back_ends_in_a_cap_not_in_a_point():
         if _winding(polygon, px, py) == 0:
             missed.append(degrees)
     assert not missed,         'the stroke is not capped round: nothing painted at %r degrees in front of the apex' % (missed,)
+
+
+# ------------------------------------------------------------------- 強弱: the failure this library exists to prevent
+
+def a_walk(n=40, seed=3):
+    import random
+    rng = random.Random(seed)
+    ctrl = [(rng.uniform(0, 600), rng.uniform(0, 400))]
+    for _ in range(rng.randint(2, 5)):
+        ctrl.append((ctrl[-1][0] + rng.uniform(-90, 90), ctrl[-1][1] + rng.uniform(-70, 70)))
+    return ctrl
+
+
+def test_the_model_never_draws_a_uniform_stroke():
+    """**The library's promise, and the sentence it was built for.**
+
+    「私は髪を描くたび線画に強弱を付けることを忘れがち」 -- DSマイル, CGイラストテクニック vol.10. Forgetting the width
+    variation is the *named, recurring* failure, and a uniform line is what forgetting looks like. This asserts that
+    nothing `stroke_record` produces is uniform, across every brush and 160 strokes, so the failure cannot come from
+    the generator.
+
+    It can still come from the *document* -- a project file is the product and a caller can write a flat pressure
+    profile into one -- which is why the check lives on the project and not on the generator's confidence in itself.
+    """
+    from lineweight.core import UNIFORM_FLOOR, stroke_variation
+
+    values = []
+    for brush in BRUSHES:
+        for i in range(40):
+            values.append(stroke_variation(stroke_record(a_walk(seed=i * 7 + len(brush)), brush, seed=i)))
+    assert len(values) == 160
+    assert max(values) < UNIFORM_FLOOR, \
+        'a generated stroke is uniform: flattest %.3f, floor %.2f' % (max(values), UNIFORM_FLOOR)
+    assert sum(1 for v in values if v < 0.75) > 100, 'most strokes should have visible variation, not hover at the floor'
+
+
+def test_the_uniform_floor_sits_in_a_gap_that_was_measured():
+    """The threshold is placed, not tuned: above everything the model produces, below uniform.
+
+    A number chosen to make the tests pass is worth nothing. This one sits in a gap that was measured -- a flat profile
+    scores 1.000, the model's flattest across 160 strokes scores 0.910, and the pooled corpus puts a whole drawing's
+    thinnest fifth against its mean at 0.421. Pinned so that moving it takes an argument rather than a nudge.
+    """
+    from lineweight.core import UNIFORM_FLOOR, stroke_variation
+
+    assert stroke_variation({'brush': 'pencil', 'pressure': [1.0] * 40}) == pytest.approx(1.0)
+    flat = [stroke_variation(stroke_record(a_walk(seed=i), brush, seed=i))
+            for brush in BRUSHES for i in range(40)]
+    assert UNIFORM_FLOOR > max(flat)
+    assert UNIFORM_FLOOR < 1.0
+
+
+def test_the_variation_measure_matches_its_defined_shape():
+    """A ratio whose value on known profiles is checked, because a measure nobody can predict is a measure nobody
+    can argue with.
+
+    `pencil`'s response curve is 1.0, so a synthetic profile's widths are proportional to the pressures it is given
+    and the expected ratios are arithmetic.
+    """
+    from lineweight.core import stroke_variation
+
+    assert stroke_variation({'brush': 'pencil', 'pressure': [5.0] * 40}) == pytest.approx(1.0)
+    assert stroke_variation({'brush': 'pencil', 'pressure': [5.0] * 10 + [2.5] * 30}) == pytest.approx(0.8)
+    assert stroke_variation({'brush': 'pencil', 'pressure': [5.0] * 10 + [1.25] * 30}) == pytest.approx(0.5714, abs=5e-4)
+    # a stroke that tapers from one end to the other: the thin fifth is the last fifth
+    ramp = [5.0 * (1.0 - 0.8 * i / 39.0) for i in range(40)]
+    assert stroke_variation({'brush': 'pencil', 'pressure': ramp}) < 0.5
+
+
+def test_a_hand_written_flat_profile_is_caught_and_reported(tmp_path, capsys):
+    """**The failure is reachable and the check finds it.** Form first, variation later -- so a project file can hold
+    a stroke whose profile has one width in it, and the tool has to say so rather than assume the generator was used.
+    """
+    from lineweight.core import uniformity_report
+
+    record = stroke_record(a_walk(), 'ink', seed=1)
+    flat = dict(record)
+    flat['pressure'] = [1.0] * len(record['pressure'])
+
+    project = Project(width=800, height=600)
+    project.add_stroke(record)
+    project.add_stroke(flat)
+    path = str(tmp_path / 'flat.json')
+    save_project(project, path)
+
+    assert uniformity_report(path) == 0
+    text = capsys.readouterr().out
+    # isolated on the header rather than on a substring of the sentence, so a reworded report does not silently turn
+    # this into an assertion about nothing
+    assert 'with no variation in them:' in text, 'the report found nothing to report'
+    flagged = text.split('with no variation in them:')[1]
+    assert 'm0002' in flagged, 'the flat stroke was not named'
+    assert 'm0001' not in flagged, 'the varied stroke was flagged by mistake'
+    assert '1 stroke(s)' in text

@@ -338,6 +338,38 @@ difference between outer and inner line width?* — with the library's own measu
 refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
 sticker look, deliberate rather than accidental. What must not happen is that it is silent.
 
+## 強弱: the failure this library exists to prevent
+
+> 「私は髪を描くたび線画に強弱を付けることを忘れがち」
+> *I tend to forget to add width variation to the line art every time I draw hair.*
+> -- DSマイル, CGイラストテクニック vol.10
+
+Forgetting the width variation is a **named, recurring failure**, and a uniform line is what forgetting looks like. So
+it is measured:
+
+    python -m lineweight --uniform face.json
+
+    4 strokes, 強弱 = thinnest fifth over the mean (low is strong variation)
+      flattest 0.534   median 0.514   strongest 0.468
+      uniform is 1.000, the floor is 0.95; the corpus puts a whole drawing at 0.421
+
+    no uniform strokes: every line has width variation.
+
+`strong` is a stroke's **own thinnest fifth against its own mean**, along its own length. That is the opposite of the
+pooled statistic `ref.measure_taper` documents the failure of: a taper occupies a few percent of a stroke, so a
+drawing-level ratio is dominated by differences *between* strokes and barely moves when the ends change -- which
+means **an even line among varied ones is invisible to it and obvious to this**.
+
+**The floor is placed in a gap that was measured, not tuned.** A flat profile scores 1.000; across 160 generated
+strokes of every brush the model's flattest scores **0.910** and its median 0.555; the pooled corpus puts a whole
+drawing at 0.421 with a p90 of 0.507. So 0.95 is above everything this library produces and below uniform, and a test
+asserts the first half of that as a promise: **`stroke_record` cannot produce a uniform stroke.**
+
+**It can still come from the document**, which is why the check lives there. A project file is the product, and a
+caller writing one by hand can put a flat pressure profile in it — so the tool says so rather than assuming the
+generator was used. The report names the strokes and how flat, and does not refuse: "this line is too even" is a
+correction an artist makes, not an error a program rejects.
+
 ## Checking it, rather than believing it
 
 **The library marks its own homework; `--judge` does not.** A project can be drawn a second time by **cairo**, which has

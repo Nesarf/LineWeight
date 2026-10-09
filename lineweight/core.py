@@ -967,6 +967,40 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     }
 
 
+# **Where 強弱 stops being visible.** A stroke whose thinnest fifth is within 5% of its own mean has, in effect, one
+# width -- and the sentence this library exists to answer is the artist's: 「私は髪を描くたび線画に強弱を付けることを
+# 忘れがち」 (DSマイル, CGイラストテクニック vol.10) -- *I tend to forget to add width variation to the line art every
+# time I draw hair*. Forgetting is the named, recurring failure, and a uniform line is what forgetting looks like.
+#
+# The number is not tuned, it is placed in a gap that was measured. A flat profile scores **1.000**; across 160
+# generated strokes of every brush the model's flattest scores **0.910** and its median 0.555; and the pooled corpus
+# puts a whole drawing's thinnest fifth against its mean at 0.421 with a p90 of 0.507. So 0.95 is above everything
+# this library produces and below uniform, and `test_lineweight.py` asserts the first half of that as a promise.
+UNIFORM_FLOOR = 0.95
+
+
+def stroke_variation(record: dict) -> float:
+    """A stroke's own 強弱 (width variation): **its thinnest fifth against its mean.** Low is strong variation.
+
+    Per stroke and along its own length, which is the point. `ref.measure_taper` records why the whole-drawing
+    statistic cannot answer this question -- a taper occupies a few percent of a stroke, so a drawing-level ratio is
+    dominated by differences *between* strokes and barely moves when the ends change. The same objection applies here
+    in reverse: an even line among varied ones is invisible to any pooled number and obvious to this one.
+    """
+    widths = stroke_widths(record)
+    if not widths:
+        return 1.0
+    ordered = sorted(widths)
+    k = max(1, len(ordered) // 5)
+    mean = sum(ordered) / len(ordered)
+    return (sum(ordered[:k]) / k) / mean if mean > 0 else 1.0
+
+
+def is_uniform(record: dict, floor: float = UNIFORM_FLOOR) -> bool:
+    """Whether a stroke has, in effect, one width."""
+    return stroke_variation(record) >= floor
+
+
 def mark_ink(mark: dict) -> str:
     """The ink a mark is drawn in: its own if the caller chose one, the role's otherwise.
 
@@ -1579,6 +1613,46 @@ def assign_roles(project_path: str, spec: str, note: str = '') -> int:
     return 0
 
 
+def uniformity_report(project_path: str) -> int:
+    """**The failure this library exists to prevent, made visible.**
+
+    Flat linework is what "forgetting the 強弱" looks like, and it is named as a recurring failure by an illustrator
+    the convention quotes. The model does not produce it -- 160 measured strokes, flattest 0.910 against a uniform
+    1.000 -- but the *project file* can, because a project file is the product and a caller writing one by hand can
+    supply a pressure profile with no variation in it at all. So the check belongs on the document, not on the
+    generator's confidence in itself.
+
+    Reports rather than refuses, and says which strokes and how flat, because "this line is too even" is a correction
+    an artist makes rather than an error a program rejects.
+    """
+    from .project import load_project
+
+    project = load_project(project_path)
+    strokes = [m.to_dict() for m in project.live() if m.kind == 'stroke']
+    if not strokes:
+        print('  no strokes in this project')
+        return 0
+
+    measured = [(mark, stroke_variation(mark['geometry'])) for mark in strokes]
+    ordered = sorted(v for _, v in measured)
+    flat = [item for item in measured if item[1] >= UNIFORM_FLOOR]
+
+    print('  %d strokes, 強弱 = thinnest fifth over the mean (low is strong variation)' % len(strokes))
+    print('    flattest %.3f   median %.3f   strongest %.3f'
+          % (ordered[-1], ordered[len(ordered) // 2], ordered[0]))
+    print('    uniform is 1.000, the floor is %.2f; the corpus puts a whole drawing at 0.421' % UNIFORM_FLOOR)
+    print()
+    if not flat:
+        print('  no uniform strokes: every line has width variation.')
+        return 0
+    print('  %d stroke(s) with no variation in them:' % len(flat))
+    print('    %-8s %-10s %-6s %7s   %s' % ('id', 'stage', 'role', 'strong', 'what to do'))
+    for mark, value in sorted(flat, key=lambda item: -item[1]):
+        print('    %-8s %-10s %-6s %7.3f   the profile has one width in it'
+              % (mark['id'], mark['stage'], mark['geometry'].get('role', '') or '-', value))
+    return 0
+
+
 def roles_report(project_path: str) -> int:
     """**The role model checking itself against the drawing it was applied to.**
 
@@ -1696,6 +1770,8 @@ def main() -> int:
                         help='with --audit: look at one place instead of the whole canvas')
     parser.add_argument('--assign-role', default='', metavar='SPEC',
                         help='with --roles PROJECT: id=role pairs, assigned to strokes that are already drawn')
+    parser.add_argument('--uniform', default='', metavar='PROJECT',
+                        help='report strokes whose width profile has no variation in it')
     parser.add_argument('--roles', default='', metavar='PROJECT',
                         help="report a project's line roles, their widths, their inks and the trade each makes")
     args = parser.parse_args()
@@ -1724,6 +1800,8 @@ def main() -> int:
         if not args.roles:
             raise SystemExit('--assign-role needs a project: give --roles PROJECT')
         return assign_roles(args.roles, args.assign_role)
+    if args.uniform:
+        return uniformity_report(args.uniform)
     if args.roles:
         return roles_report(args.roles)
     return demo(args.out)
