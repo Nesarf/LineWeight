@@ -414,3 +414,105 @@ component that survives the rules being masked.
 point is to use the rules for the crown and feet, report a perfect 6.00/5.00/4.00/3.00, and call it validated — which
 would be true and would prove nothing, because it would be checking that the rules agree with themselves. What is
 recorded instead is one working mechanism, one measured constant, and a failure whose cause is named.
+
+## The book read: method, and the rules that are checkable
+
+### How to read it, now that it is readable
+
+The scan's own text layer is unusable (see the toolchain note above), so the pages are rendered and read. Two methods,
+and **which one works depends on the page**:
+
+- **Prose pages OCR well.** Tesseract 5.5 with `jpn.traineddata` returns the body text and the labels cleanly on pages
+  like printed 59 and 66 — good enough to quote. All 178 pages are OCR'd to `E:\DaShaoHuo\cache\moe-ocr\`.
+- **Dense diagram pages do not.** The face chapter (printed 14–33) comes back as
+  `④眉毛の薦さは豪傭にょって翼ゎ墓箕萱` — the labels are scattered around figures and the line-art confuses the engine.
+  Those pages have to be **looked at**, two facing pages at a time, which is the unit the book is designed in.
+
+So: OCR for the prose chapters (頭身, バランス, シワ, ポーズ), eyes for the diagram chapters (顔, 手, 足).
+
+### The rules, and which of them a drawing can be checked against
+
+**This is the section that matters.** The initiative records construction knowledge as the binding constraint, and the
+value of having it written down is that each line becomes a statement a drawing can be measured against. The ones
+marked **checkable** are geometric relations between things a drawing already contains.
+
+#### Landmarks (printed 59, from the 6頭身 page)
+
+| rule | what it is |
+|---|---|
+| **足の付け根は身長の約半分の位置** | the crotch is at **half the total height** |
+| **手首は足の付け根の位置** | the wrist sits at **crotch level** |
+| **ひじは胸の長さの 1/2 の位置** | the elbow is at **half the chest span** |
+| **ひざは、足の付け根から足首までの長さの約半分の位置** | the knee is at **half the crotch-to-ankle span** |
+| 胸→腰 = 腰→足の付け根 | the waist is the **midpoint** of chest-to-crotch |
+| 骨組みや関節の構造はリアルな人間のものと同じ | the skeleton and joints are the real ones; only the proportions are deformed |
+
+**The half-height landmark moves with the ratio, and the book states where it lands each time** — which is the closest
+thing the chapter has to a corpus test:
+
+| ratio | what is at half the height | printed |
+|---|---|---|
+| 6頭身 | **足の付け根** — the crotch | 59 |
+| 5頭身 | 小学生高学年〜中学生; the head is slightly larger, and **the shoulders are drawn narrower to make the head look bigger** | 60 |
+| 4頭身 | **へそ・下腹部** — the navel, because the crotch at half makes the legs absurdly long | 62 |
+| 3頭身 | **へそ**, at almost exactly half | 64 |
+| 2頭身 | 赤ちゃん, or 超デフォルメ; the navel at about half the torso | 65 |
+
+**Checkable, and the crotch is not a silhouette feature.** The measurement was attempted and failed — the figures
+stand 内股 with their legs together, so no row separates into two clusters and the detector returns 1.000 on every
+page. Recorded because it saves the next attempt: **the crotch has to come from an interior line, not an outline.**
+
+#### Balance (printed 66–68, 72–74)
+
+| rule | checkable? |
+|---|---|
+| **重心線** is the **vertical from the chin to the ground**, and it must fall **between the feet** or the figure reads as falling | **yes** — chin x against the feet's x-range |
+| 頭・腰・かかとが重心の一直線 = **棒立ち** (stiff, drawn as the ✗ example) — the pose collapses | **yes** — three points collinear |
+| 腰を前に出し、頭・尻・かかとを重心の一直線に揃えると、体のラインが **S字** になる | partially |
+| 足を開いた立ちは **「A」**, 横向きは **S字カーブ**, つま先は軽く外に向く | **yes** — the letter shape of the leg pair |
+| **正中線** — the line through the middle of the body's surface; left and right are symmetric about it, which is what makes depth readable | **yes** — a symmetry axis |
+| 頭の中心軸と首の中心軸がずれていると、ずれて見える | **yes** — two axis directions |
+| 肩の幅が極端に狭く見える (アオリ) | **yes** |
+
+#### Pose (printed 52–53, 56)
+
+**基本は S字ライン** — the moe pose *is* an S in the spine: chest forward, waist **絞り込む** (pinched in), hips
+twisted (**ひねり**), limbs drawn **inward** (内股), hair used to hide the neck so the leg line reads longer, and the
+centre of gravity **between the feet**.
+
+#### Width, which is this library's subject (printed 81, 114, 117)
+
+Three rules here are about **line width rather than shape**, and each is a relation between two line sets:
+
+| rule | printed |
+|---|---|
+| **関節の部分では細み、腕自体の外側はふくらんでみを付けます** — at a joint the line thins; the limb's own outer side bulges | 81 |
+| **裸の体のラインより、外側に服の輪郭を描きます** — the garment's outline is drawn *outside* the nude line, and ぴっちり / ゆったり **is that distance** | 114 |
+| **肌部分の輪郭線よりも細く描くと、とても軽い感じになります** — for loose clothing, the fold lines are drawn **thinner than the skin's contour** | 117 |
+
+**The third is the one worth having**: it is a *width inequality between two named line roles* — folds thinner than
+the contour they lie on — and the role model already has the vocabulary for it. A fold drawn at `detail` weight over a
+skin contour at `silhouette` weight satisfies it by construction; a fold drawn heavier does not, and is the thing
+`--roles` would show.
+
+#### Line count versus fabric (printed 112, 114, 116, 117)
+
+薄手 = **many** folds radiating from **基点** (the armpit, the side of the abdomen) as 引っ張りシワ, each leading back
+to a volume apex. 厚手 = **fewer** folds, each with thickness, and no fine folds over the chest. ぴっちり (tight):
+folds wrap the breast and head toward the armpit. ふんわり／ダボダボ (loose): thin lines, フリル and レース drawn with
+fine strokes. **A count and a width, not a style.**
+
+#### Everything else, in one line each
+
+- **Hair (34–41)**: it is a wig on a mannequin's head — draw the head's shape first and put the volume on it
+  three-dimensionally as 「バナナの房」. 髪は女の命. Outgoing and introverted characters take different silhouettes.
+  Cat ears and kemonomimi are an emotion channel (ears prick up for joy, stand on end for anger or fear, droop for
+  sadness), and the human ears are hidden behind the hair.
+- **Arms and hands (79–87)**: **手は顔の次に表情の多い部位です**. The middle finger runs along the arm's axis; the wrist's
+  cross-section is an ellipse; fingers curve inward and do not line up straight; nails are vertical rectangles,
+  slightly pointed. And for moe: **筋肉を意識しすぎるとマッチョになるので、線を少なめに柔らかい曲線で**.
+- **Feet (88–99)**: **足は三角形が基本です**; the feet naturally point outward; at the knee the fold 食い込む; shoes and
+  socks to printed 99, with high heels being つま先立ち.
+- **Hips and chest (104–111)**: the buttock's shape changes with the seated pose; the bra's structure (hook, cups,
+  straps); and an underwear colour table — 白 清楚, 黒 大人っぽい, 赤 派手, ピンク 可愛らしい, 水色 爽やか.
+- **Character making (121)**: 意外性 — the unexpected trait — is listed as what makes a character.
