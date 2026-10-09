@@ -125,9 +125,17 @@ On the command line:
     python -m lineweight --psd draw.psd              # SAI: a layered PSD
     python -m lineweight --xfl draw.xfl --run        # Animate: write the XFL and open it
 
-**What is measured, and what is not.** Illustrator 28.5 runs a generated script from a command line and returns the
-drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator itself exported --
-including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in that build.
+**What is measured, and what is not.** Illustrator 28.5 runs a generated script from a command line in about twenty
+seconds and returns the drawing with its layers, fills and opacities intact, verified by reading back the SVG Illustrator
+itself exported -- including that `ExportType.SVG` is the working constant and `ExportType.SVGFORMAT` does not exist in
+that build.
+
+**It needs Illustrator's own first run to have been completed once.** A fresh installation, or one whose settings
+directory has been moved aside, will start, draw its menu bar, leave the workspace blank, ignore the script argument and
+report nothing -- from the outside that is indistinguishable from the script being rejected, and it is what a documented
+"restart to fix it" does not cure. Launching Illustrator by hand once, until its home screen appears, is what settles it;
+after that the command-line path works every time. Written down because an afternoon went into diagnosing the script
+generator for a fault that was in the application's first-run state.
 
 **SAI works, and it is the destination that took the longest to reach.** A generated PSD opens in SAI 1.2.6 with its
 canvas, its layer, its layer name, and its pixels -- verified by looking at the screen, because SAI has no scripting
