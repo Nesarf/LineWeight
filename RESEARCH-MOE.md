@@ -607,3 +607,62 @@ figures (6.45, 5.10, 4.38, 3.55, 3.21, 2.09 for 7, 6, 5, 4, 3, 2). The head-anch
 ratios exactly on held-out figures. And the whole thing is buildable: `lbpcascade_animeface` is MIT, the cascade
 needs OpenCV 4.x because **5.0 has no `objdetect` module at all**, and `cv2.imread` returns `None` on this corpus's
 CJK paths, so images must come in through `cv2.imdecode(np.fromfile(...))`.
+
+### The modern detector works; the figure's vertical extent is what cannot be found
+
+Following the search, the 2011 cascade was replaced. Everything below is installed **on `E:`** as asked.
+
+| what | where | size |
+|---|---|---|
+| `deepghs/anime_face_detection` `face_detect_v1.4_s` (ONNX) | `E:\DaShaoHuo\tools\animeface\` | 44.6 MB |
+| same, `_n` variant | same | 12.1 MB |
+| `lbpcascade_animeface.xml` (2011, kept for comparison) | same | 247 KB |
+| `onnxruntime` 1.31 · `opencv-python-headless` 4.14 | site-packages, already on `E:` | — |
+
+**ONNX rather than the PyTorch route**, deliberately: the alternative found in the same search was
+[hysts/anime-face-detector-yolov3](https://huggingface.co/hysts/anime-face-detector-yolov3), which needs torch —
+roughly 2.5 GB against onnxruntime's 50 MB — for a model that runs on CPU either way. The deepghs export is the same
+family of model for a fiftieth of the dependency.
+
+**It works, and it fixed the largest failure.** On printed 57 it returns **exactly six faces**, matching the six
+labelled figures. Across the same 120-sheet sample, **"no face detected" fell from 32 to 10**.
+
+**Two bugs, both worth keeping because both were silent.**
+
+- **The ONNX output is channels-first: `[1, 5, 8400]`, not `[1, 8400, 5]`.** Read the wrong way round, every image
+  returned four boxes at `x=0` with "confidences" of 70.4, 37.3, 22.5 and 11.4 — which are not scores at all but box
+  coordinates from the wrong axis. **The giveaway was that all five test pages gave byte-for-byte similar boxes while
+  the pictures differ.** Transposed, the scores come out 0–0.82 as they should.
+- **`cv2.imread` returns `None` on a path containing non-ASCII characters on Windows**, with only a warning on stderr
+  — and this corpus is entirely under `F:\素材\图\...`. Images have to come through
+  `cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)`.
+
+**The ONNX model returns the FACE; the 2011 cascade returns the HEAD.** The boxes differ by a constant: a 106×103
+face against a 132×132 head on the same figure. Measuring both detectors on the same 16 figures across five pages
+gives
+
+> **k = head ÷ face = 1.28** (median; mean 1.285, sd 0.075, range 1.146–1.424)
+
+**That spread is the method's error bar, and it is worth stating plainly**: ±10% on the head becomes roughly **±0.5
+頭身** at a ratio of 5. A corpus classified with this can say "about 5" and cannot say "5.0".
+
+**And the thing that still cannot be done.** The ratio is `figure span ÷ head`, and the figure's **span** is the one
+measurement that will not hold still:
+
+| span rule | what happens |
+|---|---|
+| head-anchored connected component of dilated ink | **exact where it works** — 5.00, 4.01, 2.86 against printed 5, 4, 3 — but the component **merges** across 43 of 120 sheets, bridging figure to weapon to neighbouring artwork |
+| longest ink run in a narrow band under the face | cannot merge by construction, and gives 5.10, 4.49, 2.74 on the same held-out pages — but **79 of 120 sheets fail**, because the run starts above the face |
+
+**And that second failure is a finding, not a tuning problem.** The rule I imposed was *"the head is the topmost part
+of the figure, so the run must start at the face"*. That is true of the book's figures, which are bare bodies on white
+paper. **It is false on a character sheet**, where a **halo** floats above the head and the character's name sits
+above that — so the run legitimately starts higher, and the rule rejects exactly the sheets where it would have been
+wrong to reject. Loosening it lets the span run into the halo and the text, which is where the implausible 6-to-9頭身
+tail comes from.
+
+**So ② is not finished, and the reason is now narrow and named.** The detector is solved. The face-to-head conversion
+is calibrated with a stated error. **What is missing is a figure segmenter** — something that decides which ink on the
+page belongs to the main character — and every span rule tried here is an attempt to avoid writing one. The corpus
+question is still unanswered, and the honest sample sizes are **31 of 120 under the strict rule** and **66 of 120
+under the loose one**, neither of which is the corpus.
