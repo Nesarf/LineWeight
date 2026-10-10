@@ -732,3 +732,51 @@ The corpus question is still open, but it is no longer an image-segmentation pro
 their bone proportions, their part decomposition, seven facial-expression skins each, and the halo as its own slot,
 are readable on this machine.** That is the game's own construction of the thing this library is trying to draw —
 which is what §`RESEARCH-MOE.md` has been assembling from a textbook, except that here it is exact and it is data.
+
+### ②, the rig route: the game's data does not contain the figure the question is about
+
+The rigs were the ground truth the picture-measuring could never have. They are readable, the toolchain works, and
+**they do not answer the question** — for a reason that is now settled rather than suspected.
+
+**The lobby rig is a bust.** `airi_home`'s atlas has `L_Leg_1`, `L_Leg_2`, `L_Leg_3`, `R_Leg_1`, `R_Leg_2`,
+`R_Leg_3` — and **`Shoe` 0, `Foot` 0, `Knee` 0**. There are **no feet**. The rig runs head → torso → skirt →
+upper leg and stops. So the 2.55 and 2.78 measured off it were not wrong arithmetic: **they are the ratio of a
+waist-up figure, because a waist-up figure is what the lobby art is.** BA's lobby is a character at a desk.
+
+The other Spine set is the battle sprite, and the one parsed first (`airi_spr`, 3 bones, 6 slots) is the **face and
+halo overlay** rather than a body at all — which is also where the seven expression regions live.
+
+**And the 3D models are not a full-body standing rig either.** `characters-airi_original` holds a real Unity
+character — `Avatar` 1, `SkinnedMeshRenderer` 3, `Mesh` 7, `Transform` 114, `Animator` 1 — but its three skinned
+meshes span **y −0.340 to +0.202, about 0.54 units total**, and the `Avatar`'s humanoid mapping is not exposed as the
+bone-name list that would make it readable. Nothing there states a head-to-body relationship either.
+
+**So the conclusion is that the figure does not exist in the game's data.** Blue Archive ships a **chibi** for the
+battle screen and a **bust** for the lobby. A full standing character at the *design* proportions — the figure every
+設定資料 sheet draws, and the figure this check is about — **exists in the art books and nowhere in the assets.** That
+is why the corpus question has to be answered by measuring the sheets, and it is worth having established rather than
+assumed: the obvious place to look for ground truth was searched, and it is empty for this quantity.
+
+#### What the rigs do give, and it is the more useful thing
+
+**A 174-slot, named, semantically-resolved decomposition of a moe character.** From `airi_home`'s region names:
+
+| group | slots |
+|---|---|
+| head and face | `Head`, `Face`, `Neck`, `Nose`, `Halo` |
+| hair, split by layer | **`F_Hair_01`–`11`** (front), **`B_Hair_01`–`07`** (back), `Hair_02`–`04`, `L_Hair_Tail_01`, `R_Hair_Tail_01`, and a separate **`F_Hair_Shadow_01`–`06`** |
+| eyes | `L_Eye_White` / `R_Eye_White`, `L_eye_01_1`–`3`, `L_Eyebrows_01`–`05` |
+| mouth | **`Mouse_01`–`10`** |
+| expression extras | `L_Face_Closed_01`–`04`, `Flush_02`, `L_Flush_01`, `Sweat_01` |
+| clothing | `Torso_1`–`2`, `Skirt_01`–`04`, `Collar_01`–`06`, `Ribbon_01`–`07`, `Ribbon_Shadows` |
+| limbs and hands | `L_UpperArm_01`, `L_ForeArm_01`, and a hand resolved **per finger and per segment** — `Index_1`–`3`, `Middle_1`–`3`, `Ring_1`–`3`, `Pinky_1`–`2`, `Thumb_1`–`3` |
+| props and effects | `Bag_1`, `Bag_2`, `Bag_Sling_1`–`2`, `HairPin`, `Icecream_01`–`05`, `FX_Light_01`, `FX_Light_03` |
+
+**That is the layer model this library has been trying to specify from a textbook**, and it comes from a studio that
+ships it: hair separated front from back *and* from its own cast shadow, a mouth with ten shapes, a hand with
+fourteen named finger segments, blush, sweat and light as their own slots, and the halo as a slot rather than paint.
+`RESEARCH-MOE.md` has been assembling exactly this list by reading a drawing manual; here it is as data, for **660
+characters**, with the bonus that skin variants mean each character carries **seven expression sets** already
+separated (`01_Normal` through `07_Pero`).
+
+Recorded as a research asset rather than as a step towards ②. For ② it is a dead end, and knowing that is the result.
