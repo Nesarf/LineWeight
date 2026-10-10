@@ -133,3 +133,78 @@ counts is contested.
 **For this project the useful reading is that the vocabulary is unstable**, so a module should not be named after a
 style word. `layers.py` speaks of tiers and draw classes and `cel.py` speaks of a step and a hardness; neither needs
 「平涂」to mean anything in particular, and that turns out to be the right call for a reason the source states.
+
+---
+
+## The dossier, and two errors verification caught in it
+
+A research subagent produced **`E:\~Hisagi~Nico~\refs\cel-shading-references.md`** -- 1470 lines, 41 verified sources,
+and the PDFs themselves in that directory (112 MB). Its headline findings, and the two places checking the arithmetic
+changed the answer.
+
+### The shadow boundary is drawn, and a studio says so
+
+**Studio Ghibli's own production diary for 『ゲド戦記』** (<https://www.ghibli.jp/ged_01/10log/000247.html>), entry
+「影と色との戦い」:
+
+> 「この影は、まず、**アニメーターが線画で描き分けます**。」
+> 「……キャラクターのどの部分が明るくて、どこが暗いのかを、**鉛筆の線によって描き分ける**のです。」
+
+with the instruction given as a sentence with a reason -- 「このシーンは、太陽が上から射しているので、鼻の下や、あごの下に、
+しっかり影を入れてください」 -- and the same page naming the range of shadow amount as a per-work decision:
+「「影無し」……から、「２段影」「３段影」……まであります」.
+
+**NAFCA** (日本アニメーター・演出協会), 「アニメータースキル検定 5・6級作画注意事項」, prescribes the medium:
+「*ハイライトは赤、影は青で描きましょう。」 The production term for that line is **色トレス**, and the shadow area is
+then **ウラヌリ** (back-painted) -- **which is why a cel shadow is a flat single-colour fill, and why the 0.5-1.5 px
+boundary measured here is the physical width of a pencil line rather than a tuned ramp.**
+
+**Five independent shader engines place the same shape in a texture the artist paints** -- UTS2's Position Map, UE's
+`DiffuseRampOffsetTexture`, MToon's `shadingShiftTexture`, MMD's painted `toon01`-`toon10`, SIGGRAPH's UV offset
+textures. So the division this project already had is the right one: **the caller supplies the shape, the library
+supplies the quantisation.**
+
+### Both measured constants are shipped defaults -- and my first reading of that was wrong
+
+`LIGHT_VALUE = 0.5` is Unity Toon Shader's `_BaseColor_Step`. Hardness 10 is `1 / Feather` at MToon's shipped
+`shadingToonyFactor = 0.9`.
+
+**The bridge between the two conventions, which the dossier gave and which is wrong as given:**
+
+```
+MToon:  linearstep(-1 + toony, 1 - toony, N.L)   ->   (hL - toony/2) / (1 - toony)   in half-Lambert hL
+Unity:  clamp( (hL - (Step - Feather)) / Feather, 0, 1 )
+
+=>  Feather = 1 - toony          Step = 1 - toony/2
+```
+
+The dossier wrote `Step = toony/2 + Feather/2`. **That expression is identically 0.5 for every `toony`**, which cannot
+match a ramp whose centre moves; checked over 8000 samples per setting it is off by up to 0.5, while the corrected
+pair agrees to 1e-16. **A derivation is not verified by being plausible.**
+
+**And checking it caught a second error, in this project's own code.** `cel.ramp`'s `at` is the *centre* of the
+transition while Unity's `Step` is its *upper end*, so reproducing Unity needs `at = Step - feather/2`. Using
+`at = Step` agreed at the corpus's feather by luck -- 0.05 of a band -- and diverged by up to 0.5 at a feather of 1.
+
+**Which leaves a claim that must not be made.** `Step = 0.5` is Unity's default and `hardness = 10` is MToon's, **and
+they are two different engines whose steps differ by 0.05 at that setting** -- MToon at `toony = 0.9` has
+`Step = 0.55`. The corpus's pair is **Unity's parameterisation carrying MToon's width**.
+**Two numbers from two specs is not one spec's default pair.**
+
+### Renamed, and given a step count
+
+**`hardness` appears in no shipped shader's parameter list** -- the industry names are Feather (Unity), Toony (MToon),
+Smoothness (Toon RP), Smooth (Blender), Width (MToon prose). `cel.ramp` now takes `feather`, with
+`hardness = 1 / feather` kept as the reading, because a library inventing its own name for a universal quantity makes
+its own numbers uncheckable against the engines it copies.
+
+**And a shadow may have no steps at all.** Ghibli names 影無し as an ordinary choice, so `cel.levels` counts shadow
+*bands* on that scale -- 0, 1, 2, 3 -- rather than tones. The first version took tones and normalised by `count - 1`,
+**which divided by zero at one tone** while validating only `count < 2`: it accepted a value whose own arithmetic it
+could not carry out.
+
+Two smaller things, recorded because they would otherwise be assumed: the **shadow ramp is linear and only the
+highlight takes a power** (UTS2 uses `pow(abs(spec), exp2(lerp(11, 1, _HighColor_Power)))` for specular and a clamped
+linear expression for the mask); and there is **no verifiable "light from upper-left at 45°" studio standard** -- what
+is documented is that the direction is fixed per cut, drawn as an arrow in the layout (Yonebayashi). UTS2's shipped
+offset is `_Offset_Y = 0.09, _Offset_X = -0.05`, i.e. steep and slightly left, not 45°.
