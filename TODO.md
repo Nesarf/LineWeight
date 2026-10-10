@@ -255,7 +255,15 @@ raster: brush.opacity * pressure**curve，逐 dab，然后合成
   - **它明写了 7 条可以拿来约束生成器的规则**：① **正好两条腿两条臂**（没有第三个挂点）；② **`Clavicle` 挂在 `Spine1` 上**，不在另一条臂上、也不在骨盆上；③ **`Thigh` 挂在 `Pelvis` 上**；④ **脊柱是单链** `Pelvis→Spine→Spine1`，躯干不能分叉；⑤ 每条肢体正好四节；⑥ **一只手三根指、每根两节**（`Finger0→01`/`Finger1→11`/`Finger2→21`）；⑦ **`Neck→Head` 出自 `Spine1`**，而头上 18 个脸骨 + 14 个头发骨全挂在 `Head` 下。
   - **另 79 个节点是「身上穿的」，不是身体**：**裙 32（八条独立的四节链！）**、脸 18、头发 14、臂 8、腿 8、武器与道具 8、躯干轴 6、手指 12、形变 2（`ForeArm Twist`）、缎带 2。
     - **裙是最大的单一组，而且是八条链不是一块** —— 把「裙」建模成一个形状的引擎表达不了这个；**rig 在说：那件衣服是八块独立摆动的片**，这正是它动起来像布的原因。
-  - **未做**：① 多个角色跑同一棵树（看哪些骨是 rig 家族的常量、哪些是逐角色的 —— 之前 8 个角色的**比例**已经统一到十分之一，**骨架可能也是**）；② **材质**（层次的另一半，不在这一个 bundle 里）；③ **2D 侧对照** —— Spine lobby rig 有 **174 个 slot** 和自己的骨骼树，**同样的身体 Biped 用 34 个节点描述、而 Spine 用 174 个 slot**，**且 Spine 的 slot 绘制顺序就是画师的层次，以数据形式写着**。
+  - **三步已依次做完**（详见 `RESEARCH-MOE.md`「all three steps」）：
+    - **① 材质 —— 「层次」在 3D 萌系资产里的所在。** 直接读 bundle（不走 AssetRipper 导出：它把 `ExportRootPath` 记住了，只吐模型文件）。**6 个材质 / 13 张贴图，而部件清单就是图层模型**：`Body`(+Mask)、`Face`(+Mask)、**`EyeMouth` 独立成材质**、`Hair`(+Mask+**Spec**)、`Eyebrow`（无贴图但有自己材质）、`Halo`、`Weapon`(+Mask)、`Icecream`(+Spec)。
+      - 而属性名直接点名了本库关心的层：**`_OutlineTint` / `_OutlineSolidColorTint` / `_OutlineZCorrection`**（描边逐材质、带 tint 与 z 校正）、`_AdjustiveShadow/_AdjustiveFaceShadow/_AdjustiveHairShadow`（阴影按部件分别调整）、`_CodeAddColor/_CodeMultiplyColor/_CodeAddRimColor`（颜色按部件编码）、`_DitherThreshold/_AlphaClip/_Cutoff`、`_MaskGSensitivity/_GrayBrightness`。
+      - **这就是 Library 里那条 MMD `EDGE` 标志的同一件事，而且多了两个旋钮。** **把「线」当成一次全局 pass 的绘图引擎，表达不了逐部件的描边 tint 与 z 校正** —— 而资产里是有的。
+    - **② 身体是常量，服装才是变量。** 14 个有 3D 模型的角色里，**13 个的身体骨骼集合完全相同：34 根、名字一个不差、含 12 根手指骨**（`chinatsu_original` 的包只有 1 个节点、没有 Biped）。**总节点从 102 到 526，而身体永远是 34。** 变化全在头发与裙：**Cherino 有 176 根裙骨**（Airi 32）。**所以「身体规格」是一份规格** —— 这跟之前「8 个角色的比例统一到十分之一」是同一现象高一层。
+    - **③ 2D rig 是 3D 结构的「压平」，而不是「削减」。** Spine lobby rig：**374 骨 / 174 slot**。**骨架对应关系是直接的**（`Hip→Spine_01_Root→Spine_02_Root` 对 `Pelvis→Spine→Spine1`；`Torso_1→Torso_11→Neck_Root→Neck→Head_Root→head` 对 `Spine1→Neck→Head`；腿部与臂部同样对得上）。
+      - **但 2D 在三个方向上比 3D 更细**：**手** —— Biped 是 **3 根指 × 2 节**，Spine 是 **5 根指（Thumb/Index/Middle/Ring/Pinky）× 3 节**，**2D rig 在解剖上比 3D 模型更细**，因为画出来的手大到五根指都要交代，而 SD 模型不用；**阴影是 slot** —— `Airi_Shadow`、`Handkerchief_Shadow`、`TreeShadow_01..21`、`F_Hair_Shadow_01..06`，**投影是它自己画出来的一个对象**，不是被投者的明暗结果；**绘制顺序就是层次，而且是按顺序存的** —— slot 0 往上：`BG_01 → SakuraTree → Flower_14..01 → Handkerchief_Shadow → Handkerchief → Airi_Shadow → TreeShadow → …`，即**背景 → 景物 → 这张画自己的投影 → 然后才轮到角色**。
+      - **对项目最有用的一条**：**3D rig 说的是身体「是什么」**（34 根骨、两臂两腿两手一条脊柱、**没有第三个肢体能挂的节点**）；**2D rig 说的是一张「由什么组成」**（174 个有序图层，含投影、表情叠加 `Sweat`/`FX_Light`/`Flush`、以及逐部件的描边，而这些在 3D 里都不作为节点存在）。**只有前者 → 身体正确但没穿衣服；只有后者 → 一堆图层却长出三条手臂。** 这个游戏为同一个角色同时发了这两半。
+  - **仍未做**：① 把身体规格写成 lineweight 能消费的形式（34 骨的拓扑 + 父子约束，作为生成时的硬约束）；② 更多角色的骨架与材质普查（现在只看了 14 个 / 1 个角色的材质）；③ 表情叠加层（`Sweat`/`FX_Light`/`Flush`）与 3D 侧 `_Code*` 颜色编码的对应。
 - [x] **Q版（chibi / SD）资料 —— 已查并成文**（详见 `RESEARCH-MOE.md`「Q版」一节）。
   - **它不是「把角色画小」，而是一个标准化的形状**：「**Q版變形是均一化、劃一化** —— 變成 Q 版後，性別、臉的大小、身高、體型、年齡的差別**全部消失**，**所有角色看起來都是差不多的尺寸**。6頭身的女孩和8頭身的大叔，都一樣用 2～3頭身來畫。」差异要靠**眼睛 / 髮型 / 服裝**并且**把特征放大**再放回去。
   - **可检查的比例**：**2頭身时身長の半分 = あご**（教科书印刷 65）；**身體和腳 = 1：1**（ClipStudio）；2–4頭身是常规范围；3頭身可以比 2頭身多带一点胸/腰/臀的曲线。

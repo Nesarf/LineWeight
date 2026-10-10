@@ -1262,3 +1262,101 @@ The next steps, in order of what they would settle:
   (`Hip → Spine_01_Root → Spine_02_Root → Torso_1 → Torso_11 → Neck_Root → Neck → Head_Root → head`). **Three slots
   describe the same body the Biped describes in 34 nodes** — and the Spine rig's *slot draw order* is the artist's
   layering, stated as data.
+
+### The body's structure, all three steps
+
+#### Step 1 — the materials: where "layer" lives in a 3D moe asset
+
+Read straight out of the bundle with UnityPy rather than through AssetRipper's export, because the export kept
+writing to a remembered `ExportRootPath` and produced only model files. The bundle answers the question directly.
+
+**Six materials, thirteen textures, and the part list is the layer model:**
+
+| material | texenvs | what its textures are |
+|---|---|---|
+| `Airi_Original_Body` | 2 | `Body`, `Body_Mask` |
+| `Airi_Original_Face` | 2 | `Face`, `Face_Mask` |
+| **`Airi_Original_EyeMouth`** | — | **`EyeMouth` as its own texture** |
+| `Airi_Original_Hair` | 4 | `Hair`, `Hair_Mask`, `Hair_Spec` |
+| `Airi_Original_Eyebrow` | 0 | its own material with no texture |
+| `Airi_Original_Halo` | 1 | `Halo` |
+| `Airi_Original_Weapon` | — | `Weapon`, `Weapon_Mask` |
+| `Airi_Original_Icecream` | — | `Icecream`, `Icecream_Spec` |
+
+**So the parts are: body, face, eyebrow, eye-and-mouth, hair, halo, weapon, prop** — each with its own material, its own
+mask, and where it matters its own specular.
+
+**And the properties name the layers this project cares about:**
+
+```
+_OutlineTint   _OutlineSolidColorTint   _OutlineZCorrection     the outline, per material
+_AdjustiveShadow   _AdjustiveFaceShadow   _AdjustiveHairShadow  shadow, adjusted per part
+_CodeAddColor   _CodeMultiplyColor   _CodeAddRimColor           colour, coded per part
+_DitherThreshold   _AlphaClip   _Cutoff   _Cull                 cel-style edges
+_MaskGSensitivity   _GrayBrightness                             what the mask channel means
+```
+
+**`_OutlineTint` and `_OutlineZCorrection` are the finding**: **linework is a first-class, per-material layer in the 3D
+asset**, with its own tint and its own depth correction. That is the MMD `EDGE` flag recorded on this machine
+(`pmd_inspect.py`: a PMD material slot carries diffuse + a toon-ramp index + an EDGE flag), and here it carries two
+more knobs. **A drawing engine that treats "the line" as one global pass cannot express per-part outline tint or
+per-part z-correction** — and the asset does.
+
+#### Step 2 — the body is a constant and the costume is the variable
+
+Over fourteen characters with a 3D model, the **body bone set is identical in thirteen of them: 34 bones, the same
+names, including the twelve finger bones.** One (`chinatsu_original`) has a single-node bundle and no Biped skeleton
+at all.
+
+| character | nodes | body | hair | skirt | identical |
+|---|---|---|---|---|---|
+| airi | 114 | **34** | 14 | 32 | YES |
+| ako | 118 | **34** | 18 | 24 | YES |
+| aru | 102 | **34** | 11 | 12 | YES |
+| asuna | 126 | **34** | 30 | 24 | YES |
+| azusa | 144 | **34** | 21 | 40 | YES |
+| atsuko | 183 | **34** | 11 | 35 | YES |
+| **cherino** | **526** | **34** | 20 | **176** | YES |
+| eimi | 169 | **34** | 15 | 41 | YES |
+
+**Total nodes run from 102 to 526 and the body is 34 every time.** All the variation is hair and skirt — and Cherino
+carries **176 skirt bones** against Airi's 32, which is a costume with five times the cloth.
+
+**So a body spec is *one* spec.** The per-character difference in this game is entirely in the layers worn on it, and
+the earlier finding that the 3D models' *proportions* are normalised to a tenth of a unit is the same phenomenon one
+level up.
+
+#### Step 3 — the 2D rig, and it is a flattening rather than a reduction
+
+The Spine lobby rig for the same character: **374 bones, 174 slots, 1 skin.**
+
+**The skeleton correspondence is direct**, which is the "understand the 2D from the 3D" part:
+
+| 3D Biped | 2D Spine |
+|---|---|
+| `Bip001 → Pelvis` | `root → All_Layer → PC_Layer → Hip` |
+| `Pelvis → Spine → Spine1` | `Hip → Spine_01_Root → Spine_02_Root` |
+| `Spine1 → Neck → Head` | `Torso_1 → Torso_11 → Neck_Root → Neck → Head_Root → head` |
+| `L/R Thigh → Calf → Foot → Toe0` | `Hip → L_Leg_1..3 / R_Leg_1..5` |
+| `L/R Clavicle → UpperArm → Forearm → Hand` | `L_UpperArm_01 / L_ForeArm_01 / L_Hand_1` |
+
+**And then the 2D rig diverges upward in three ways that matter:**
+
+1. **It has more hand than the 3D model.** The Biped has **three fingers of two segments**; the Spine rig has
+   **five — `Thumb`, `Index`, `Middle`, `Ring`, `Pinky` — of three segments each.** The 2D rig is *more anatomically
+   resolved* than the 3D one, because the drawing shows the hand at a size where all five matter and the SD model does
+   not.
+2. **Shadows are slots.** `Airi_Shadow`, `Handkerchief_Shadow`, `TreeShadow_01..21`, `F_Hair_Shadow_01..06` — **the
+   cast shadow is its own drawn object**, not a shade of the thing casting it. In the 3D asset a shadow is a shading
+   result; here it is a layer.
+3. **The draw order is the layering, and it is stored in order.** Slot 0 upward runs
+   `BG_01 → SakuraTree → Flower_14..01 → Handkerchief_Shadow → Handkerchief → Airi_Shadow → TreeShadow → …`, i.e.
+   **background, then scenery, then the painting's own cast shadows, and only then the character.** The 174 slots are
+   a stack, and the stack is the artist's decision written down.
+
+**The single most useful consequence for this project.** The 3D rig says what the body *is* — 34 bones, two arms, two
+legs, two hands, one spine, no node a third limb could hang from. The 2D rig says what a drawing of it *is made of* —
+174 ordered layers including shadows, expression overlays (`Sweat`, `FX_Light`, `Flush`) and per-part outline art,
+none of which exist as nodes in the 3D version. **A generator that has the first and not the second produces a
+correct body wearing nothing; a generator that has the second and not the first produces a pile of layers with three
+arms.** The two rigs are the two halves, and this game ships both for the same character.
