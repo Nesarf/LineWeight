@@ -374,3 +374,60 @@ needs an egress path first.
 18. Wang & Lian -- DeepVecFont
 19. Weber -- **AutoTrace**, 2002
 21. Zhang, Liu, Li, Wu et al.
+
+---
+
+## The two unread notes, read: visibility and temporal coherence
+
+Source: **SIGGRAPH 2005 course, *Line Drawings from 3D Models***, the *Stylization of Line Drawings* notes, sections 2
+and 4. Local copy `E:\DaShaoHuo\downloads\papers\sg05\` (`8-style.pdf`, extracted to `style.txt`).
+
+### Visibility: two answers, and one of them is numerically fragile
+
+**Appel's quantitative invisibility** counts the surfaces between a line point and the eye by casting rays, using a
+spatial data structure so that only the points where visibility *can* change need rays. The notes are blunt about it:
+*"these algorithms that analyze quantitative invisibility are **difficult to implement because they are sensitive to
+certain kinds of numerical instabilities**."*
+
+**Northrup's item buffer** replaces the ray with a picture: render the mesh and the lines together, **each primitive
+marked with an ID**, then walk the line and ask whether the expected ID is in the neighbourhood in that reference
+image. Image-precision rather than object-precision, and Kalnins used the same buffer for a second purpose.
+
+**What this says to a 2D library.** `lineweight` has no concept of occlusion at all -- a stroke is a stroke, and
+nothing knows that one is in front of another. That is not a defect in a drawing tool the way it is in a renderer:
+an artist drawing a character over a background draws the character over the background, and the *order* is what
+`layers.py` now carries. **But it is a real gap for anything generated**, because a generator that draws a far arm
+before a near one has produced a drawing no artist would make, and nothing here would notice. The item buffer's idea
+-- a reference image with IDs, consulted per point -- is the cheap version and would be the one to copy.
+
+### Temporal coherence: the note in `TODO.md` was wrong about this
+
+It said *"`seed` solves the same problem; Kalnins 2003 solves it by propagating the parameterisation between frames."*
+Reading the section, those are **not the same problem**.
+
+The notes state the failure and the fix precisely:
+
+> "Initially, we assign the stylization using the **natural arc-length parameterization** of the silhouettes. **This
+> intrinsic parameterization leads to coherence artifacts, such as 'popping' and 'swimming'.** To solve this problem we
+> **propagate parameterization information from frame to frame**. This allows us to explicitly assign stylization with
+> the goal of coherence."
+
+and the stylisation itself is recorded as **2D offsets perpendicular to the brush path**, applied to whatever the
+base path becomes in the next view.
+
+So:
+
+| | what it gives |
+|---|---|
+| **`seed`** | **reproducibility within one drawing.** The same record produces the same wobble, noise and grain every time it is rendered. |
+| **Kalnins' propagation** | **continuity across drawings.** The stylisation stays attached to the same place on the form as the form moves. |
+
+**A fixed seed does not give the second.** If the shape changes -- a different frame, a different pose -- the
+arc-length parameterisation changes with it, the wobble lands somewhere else, and the result **pops and swims**, which
+is exactly the artefact the notes are about. `seed` makes a still drawing stable; it cannot make two drawings agree.
+
+**And that is the honest position for this library rather than a defect to fix**: `lineweight` produces still
+drawings, and for one drawing a fixed seed is the whole of what is needed. **What changes is the claim.** The
+in-repo note asserted an equivalence that does not hold, and the correction is that `seed` covers the still case and
+the propagation problem is open for anything animated -- which is where the original brief's Animate bridge would
+have needed it.

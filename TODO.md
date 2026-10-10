@@ -186,7 +186,15 @@ SIGGRAPH 2005 课程给出的 per-stroke 规范，`stroke_record` 是它的子�
   - **默认是恒等，而且是逐位恒等**：`tooth 1 / scale 1 / direction 0 / bite 0` 完全复现旧的采样，所以 `Paper.at` 对它**特判**而不是「除以 1.0」——**一个「几乎等于旧行为」的默认值比一个完全等于的差**。
   - **两个振幅字段，因为它们回答两个问题**：`tooth` 缩放「介质显露多少」，`bite` 是「无论什么介质，纸面都咬掉多少」。第二个是**一个缺陷逼出来的**：纸原先只在笔刷声明 `grain > 0` 时生效，而 `ink` 的 grain 正好是 **0** —— 于是**四种不同的纸渲染出逐字节相同的文件**，这个特性对本库主要画的介质**完全无效**。是**把命令行跑四遍、拿到同样的字节数**才发现的。粗糙的纸会让装饱的钢笔也发抖。
   - 四个预设是**能看出差别的圆整数，不是测量值**，模块里明说了。
-- [ ] 同课程未读：*Visibility of lines in 3D*、*Temporal coherence for stylized lines*（`seed` 解决的是同一个问题，Kalnins 2003 用帧间参数化传播解决）。
+- [x] **同课程已读：*Visibility of lines in 3D* 与 *Temporal coherence for stylized lines*。** 分析见 `RESEARCH-VECTORIZATION.md`。
+  - **而这一读纠正了本行原来的断言。** 原文写「`seed` 解决的是同一个问题」—— **不是同一个问题**。
+    - **Appel 的 quantitative invisibility**：从线点向眼睛投射射线，只在「可见性可能变化」的地方投。讲义自己说它 *"difficult to implement because they are sensitive to certain kinds of numerical instabilities"*。
+    - **Northrup 的 item buffer**：不打射线，渲染一张「每个图元带 ID」的参考图，再沿线检查邻域里是不是期望的 ID。图像精度而非物体精度，Kalnins 也用了同一个缓冲区。
+    - **对 2D 库的意义**：`lineweight` 完全没有遮挡概念（一笔就是一笔）。**对绘图工具这不是缺陷**（画师自己按顺序画，而顺序现在由 `layers.py` 承载），**但对任何生成侧的东西是真缺口** —— 把远端的手臂画在近端之前，画出来的是没有画师会画的图，而这里没有任何东西会察觉。**item buffer 那个「带 ID 的参考图」是便宜的版本，也是该抄的那个。**
+  - **temporal coherence 是另一件事**：原文说「初期用**自然弧长参数化**分配风格化，**这种内蕴参数化导致 'popping' 与 'swimming'**；解决办法是**把参数化逐帧传播**」。而风格化本身记为**垂直于笔路径的 2D 偏移**，跟着基础路径走。
+    - **`seed` 给的是一张画之内的可复现；Kalnins 的传播给的是跨画之间的连续。**
+    - **固定 seed 给不了后者。** 形状一变（另一帧、另一个姿势），弧长参数化跟着变，抖动落到别处，结果就是 popping 和 swimming。**`seed` 让一张静止的画稳定，它无法让两张画一致。**
+    - **而这是本库的诚实立场，不是待修的缺陷**：`lineweight` 产出静止的画，对一张画而言固定 seed 就是全部所需。**变的是那句断言** —— 传播那条对任何动态的东西是开放的，也正是最初 brief 里 Animate 桥接会需要它的地方。
 
 ## 顺带发现的一条（未修，进 P4）
 
@@ -205,7 +213,15 @@ raster: brush.opacity * pressure**curve，逐 dab，然后合成
 ```
 
 **平板笔刷是「一笔一个印章」**，所以重叠的 dab 不该把笔画叠深 —— 按这个说法**错的是 raster 那一侧**。没在这里修：那是渲染改动，会移动语料表里每一个标定数。**但它意味着 `--render` 看到的不是 Illustrator 拿到的东西**，这一条得在 P4 里解决。
-- [ ] 同课程未读：*Visibility of lines in 3D*、*Temporal coherence for stylized lines*（`seed` 解决的是同一个问题，Kalnins 2003 用帧间参数化传播解决）。
+- [x] **同课程已读：*Visibility of lines in 3D* 与 *Temporal coherence for stylized lines*。** 分析见 `RESEARCH-VECTORIZATION.md`。
+  - **而这一读纠正了本行原来的断言。** 原文写「`seed` 解决的是同一个问题」—— **不是同一个问题**。
+    - **Appel 的 quantitative invisibility**：从线点向眼睛投射射线，只在「可见性可能变化」的地方投。讲义自己说它 *"difficult to implement because they are sensitive to certain kinds of numerical instabilities"*。
+    - **Northrup 的 item buffer**：不打射线，渲染一张「每个图元带 ID」的参考图，再沿线检查邻域里是不是期望的 ID。图像精度而非物体精度，Kalnins 也用了同一个缓冲区。
+    - **对 2D 库的意义**：`lineweight` 完全没有遮挡概念（一笔就是一笔）。**对绘图工具这不是缺陷**（画师自己按顺序画，而顺序现在由 `layers.py` 承载），**但对任何生成侧的东西是真缺口** —— 把远端的手臂画在近端之前，画出来的是没有画师会画的图，而这里没有任何东西会察觉。**item buffer 那个「带 ID 的参考图」是便宜的版本，也是该抄的那个。**
+  - **temporal coherence 是另一件事**：原文说「初期用**自然弧长参数化**分配风格化，**这种内蕴参数化导致 'popping' 与 'swimming'**；解决办法是**把参数化逐帧传播**」。而风格化本身记为**垂直于笔路径的 2D 偏移**，跟着基础路径走。
+    - **`seed` 给的是一张画之内的可复现；Kalnins 的传播给的是跨画之间的连续。**
+    - **固定 seed 给不了后者。** 形状一变（另一帧、另一个姿势），弧长参数化跟着变，抖动落到别处，结果就是 popping 和 swimming。**`seed` 让一张静止的画稳定，它无法让两张画一致。**
+    - **而这是本库的诚实立场，不是待修的缺陷**：`lineweight` 产出静止的画，对一张画而言固定 seed 就是全部所需。**变的是那句断言** —— 传播那条对任何动态的东西是开放的，也正是最初 brief 里 Animate 桥接会需要它的地方。
 - [ ] **背景**：`Hsu 94, Skeletal Strokes` 是这套模型的源头，而它 *"is now standard fare in commercial programs such as Adobe Illustrator"*。**lineweight 桥接到 Illustrator —— 下游应用比喂给它的库实现了更多这套模型。**
 
 ## P3 — 内容知识
