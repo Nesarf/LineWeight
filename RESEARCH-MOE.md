@@ -1360,3 +1360,82 @@ legs, two hands, one spine, no node a third limb could hang from. The 2D rig say
 none of which exist as nodes in the 3D version. **A generator that has the first and not the second produces a
 correct body wearing nothing; a generator that has the second and not the first produces a pile of layers with three
 arms.** The two rigs are the two halves, and this game ships both for the same character.
+
+### The census: 296 characters, and it corrected the spec
+
+Ran because one character is not a corpus. The asset set: **296 distinct 3D characters** (`characters-<name>` with a
+`meshes` bundle), **656 distinct 2D battle characters** (`spinecharacters-<name>_spr`), **349 lobby characters**
+(`spinelobbies-<name>_home`).
+
+#### What the census found, and it corrected the earlier claim
+
+**The body bone count is not constant.** It runs from **22 to 52**:
+
+```
+22 bones :   1          32 bones :   6   (no toes)
+34 bones : 154          36 bones :   5
+38 bones :  41  (4 fingers)             40 bones :   3
+42 bones :  74  (5 fingers)             52 bones :   1   (a different naming scheme)
+```
+
+**The earlier record said "thirteen of fourteen have the identical body bone set", and that was true of the fourteen
+it looked at** -- the named characters that happen to use the 34-bone rig. Across the whole corpus **that set covers
+154 of 286, 54%**, and **the first version of `body.py` would have rejected the other 132 as "inventing a joint"**
+because they carry a `Finger3` that the one character did not.
+
+**What is actually invariant is sharper.** With fingers and toes removed, **the body set is identical in every one of
+the 286**:
+
+```
+Bip001  Pelvis  Spine  Spine1  Neck  Head
+L/R Clavicle  UpperArm  Forearm  Hand
+L/R Thigh  Calf  Foot                                  <- twenty bones
+```
+
+**And exactly two things vary, and nothing else does:**
+
+| knob | values in the corpus | characters |
+|---|---|---|
+| fingers per hand | 0, 2, 3, 4, 5, 7 | 1, 1, 161, 46, 76, 1 (by finger-bone count) |
+| a toe per foot | 2 toes, or none | 274, 12 |
+
+#### Then the acceptance run rejected all 286, and every reason was the check's fault
+
+`verify_body.py` loads each character's real parent links and runs them through `structural_errors`. The first run
+gave **0 accepted, 286 rejected**, and reading the reasons found **four classes, all of them mine**:
+
+| count | what the check said | what it actually was |
+|---|---|---|
+| **223** | `Bip001 Xtra_eyeL is not a body joint` | **the face.** Face bones hang off `Head` and are not body joints |
+| **15** | `Pelvis has 6 children -- an extra limb` | **skirt bones.** The check counted every child, so eight four-segment skirt chains read as eight legs |
+| 19 | `Bip001 HeadNub is not a body joint` | a Biped head nub |
+| 9+ | `ForeTwist`, `Footsteps`, `Forearm_TW`, `Forearm_ctrl`, `Clavicle02` | twist and control bones the shipped rigs carry |
+
+**Neither a name-only nor a shape-only test separates a costume from a limb, and the census showed why.** Naming
+alone misses a third arm called something unexpected; *shape* alone reads a skirt as a leg, because **a skirt chain is
+as long as a limb** -- four segments, the same as a thigh-calf-foot-toe. So costume had to become a **vocabulary**
+taken from the census rather than from taste:
+
+```
+^bone_  ^Bip001_  Xtra_  eye  Twist  Nub  ctrl  Footstep  _TW$  _ik$  Clavicle0\d  Helper  Locator
+```
+
+**After the fixes: 281 accepted, 5 rejected, 10 skipped** -- and reading the 5, every one is genuine:
+
+* **4 are `Bip001 Tail`** -- a tail hanging off the pelvis where a thigh hangs. **That is exactly the class of error
+  this check exists for**, and the corpus contains real examples of it.
+* **1 is `Bip001 Head` attached to the root rather than to `Neck`** (`ch0144`) -- a genuine structural anomaly in
+  that character's rig, and the chain check catches it.
+* `ch0176` was rejected in an earlier pass and is not now: its extras are `Bip001_PH_L Thigh01` / `Bip001_PH_R Thigh01`
+  -- **physics helper bones**, which the `^Bip001_` prefix already covers.
+
+**And exactly one rejection out of the six was the spec being incomplete**: `ch0303` carries **`Bip001 Breast_L` and
+`Bip001 Breast_R` off `Spine1`**, so its chest reads as five children against a spec expecting three. They are now
+`OPTIONAL_ATTACHMENTS` -- optional because most characters do not have them, allowed because the census found them.
+
+#### What the census bought, stated plainly
+
+**The spec was written from one character and was wrong for half the corpus, and only running it over the corpus
+could have said so.** The three fixes -- costume as a vocabulary, additions allowed, breast bones optional -- all came
+out of reading rejection reasons rather than out of thinking harder about the design. `verify_body.py` is kept as the
+acceptance test, because the next change to the spec needs the same treatment.
