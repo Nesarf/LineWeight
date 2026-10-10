@@ -924,3 +924,72 @@ where the textbook's range even starts, and
 [Sketching Manga-Style Vol. 1](https://archive.org/download/SketchingMangaStyleVol.1SketchingToPlan/Sketching%20Manga-Style%20Vol.%201%20-%20Sketching%20to%20Plan.pdf)
 on archive.org has a section titled "how to miniaturize a normal-sized character" — the same source this project
 already takes its textbooks from.
+
+### Q版, continued: two more sources, and the rules that touch this library directly
+
+Followed both leads. One is a second ClipStudio article and the other is a whole book from archive.org — **184 pages
+with a text layer**, so it is searchable rather than needing the render-and-read treatment.
+
+#### [Sketching Manga-Style Vol. 1](https://archive.org/download/SketchingMangaStyleVol.1SketchingToPlan/Sketching%20Manga-Style%20Vol.%201%20-%20Sketching%20to%20Plan.pdf) has a chapter on it, and its notation differs
+
+> **Friendly Super-Deformed (Ultra-Stylized) Characters.** The proportioning introduced in this section, which
+> features **oversized heads**, produces the most loveable and manga-esque of character portrayals. The proportioning
+> ranges from approximately **a 1:2 head-to-body ratio to somewhere around a 1:5**, and the variations are virtually
+> infinite. — PDF page 137
+
+**`1:N head-to-body` is `N頭身`**, and the section is laid out as a comparison against a **1:8** realistic figure
+labelled **"Prototype"**, from which a **1:3.5** version and a **1:2** version are derived. **So the book's method is
+to draw the realistic figure first and deform it**, which is the same instruction the Japanese textbook gives for
+clothing (裸のラフを描いてから、その上に服を描けばバランスが取れます) applied one level up.
+
+**And the captions are width rules, not shape rules:**
+
+| figure | rule |
+|---|---|
+| **1:2** | the chibi's **arm is cylindrical from the shoulder to the wrist** |
+| **1:2** | the chibi's **leg has virtually the same width from the knee to the ankle** |
+| **1:3.5** | **Using Rounded Joints** |
+| both | "Realistic arm" and "Realistic leg" are drawn beside them for contrast — the SD version is defined partly by what the realistic one does and it does not |
+
+> **The chibi's limbs are specified as *cylinders* — constant width — where the realistic figure's taper.** That is the
+> exact quantity this library models: `stroke_variation` and `UNIFORM_FLOOR` exist to catch uniform line width, and
+> `RESEARCH-LINE-QUALITY.md` records 線が一定 (uniform line) as the named recurring failure of amateur work. **The
+> source is saying that for a chibi, uniform is correct** — so the uniformity check cannot be applied to Q版 linework
+> without knowing which it is looking at. A worthwhile thing to know before a drawing engine enforces it.
+
+Other rules from the same chapter, each of them checkable or encodable:
+
+- **Show chibi characters displaying emotion with their entire bodies** — the emotion budget moves from the face to
+  the pose, which is the chibi counterpart of ClipStudio's 情緒全走眼睛.
+- **The mouth projects outside of the face's outline** (p139, repeated on p141 as 完成時 also). The mouth is not
+  clipped to the head silhouette — a rule that would *fail* a naive "everything stays inside its part" check.
+- **When intending to draw only part of an arm and omit the remainder, use contours that taper at the end** — a limb
+  cut off by the frame is closed with a taper rather than a flat cap.
+- **Add hatching to areas of shadow, such as the inside of the sleeves** — hatching as the whole shading model at
+  this scale.
+- 眼睛的 layout 要**逐漸疊筆**做出圓滑的形狀，並且**轉動紙張**去畫順手的方向.
+
+#### The second ClipStudio article: [2頭身・1.5頭身](https://www.clipstudio.net/painting/archives/174586)
+
+| 頭身 | rule |
+|---|---|
+| **1.5** | head to body is **1 : 0.5** — **the head is larger than the body**. Thin body reads as a figurine or mascot; round and thick reads as a plush doll. There is almost no room for clothing or accessories, so they are deformed hard or omitted |
+| **2** | head to body is **1 : 1**, and **the body should read as the letter 「A」 or a trapezoid** |
+| **2.5** | longer limbs, so poses are free; **the ratio most used for merchandise** |
+
+And the same normalisation as the first article, stated with an example: **a 180 cm character and a 150 cm character
+both become 2頭身**, which is what gives a series its 統一感.
+
+#### The three sources disagree on the range, and the disagreement is informative
+
+| source | what it calls it | range |
+|---|---|---|
+| Japanese textbook, printed 57 | 萌えキャラクター | **2–6頭身** |
+| Japanese textbook, printed 65 | 2頭身 | 赤ちゃん, or 超デフォルメ |
+| ClipStudio, first article | Q版 / SD / 迷你 | **2–4頭身** |
+| ClipStudio, second article | Q版 | ~**2頭身**, and **1.5** as the plush extreme |
+| Sketching Manga-Style | Super-Deformed / Ultra-Stylized | **1:2 to ~1:5** |
+
+**The moe range and the SD range overlap at 2–4 and are not the same thing**, which matters for a corpus check: the
+head-body ratio alone cannot say which of the two a drawing is, because the same number means "a moe character" in one
+vocabulary and "a chibi" in the other.
