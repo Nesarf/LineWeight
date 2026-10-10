@@ -75,3 +75,61 @@ shape someone chose, not a shape a formula produced.
 * **No numeric standard for the shadow's darkness.** 50% is one illustrator's default in a tutorial.
 * **Whether the always-shadowed list holds in Japanese studio practice** as opposed to one author's teaching. It is
   quoted here as her statement, at her URL, and not promoted to a rule.
+
+---
+
+## 赛璐珞 as a term, and as a production decision
+
+Source: **赛璐珞(动画技法)**, 萌娘百科. <https://zh.moegirl.org.cn/赛璐珞(动画技法)> (retrieved from a saved copy;
+the live site is behind a JavaScript challenge and its API refuses unauthenticated calls).
+
+**Not an academic source, and the page says so about itself** -- 「萌娘百科不是严肃的学术网站……不保证准确性和严谨性」.
+It is used here for two things only: the **terminology**, which is a matter of usage rather than of fact, and one
+**production statement** that a technique article would not make.
+
+### 正片叠底 and 线性加深 -- a second source for the same two operations
+
+> 「赛璐珞画风的插图绘画通常会使用绘画软件中的图层效果「**正片叠底**」、「**线性加深**」等功能，以做到快速地涂出
+> 画面中的阴影部分，**也有部分画师坚持自己选色，而非图层效果直接叠加阴影上去**。」
+
+**That is the second independent statement that the shadow is a multiply** -- the CLIP STUDIO tutorial above says
+正片叠底 at 50% -- and it names a second operation this project does not have:
+
+| term | operation | in `lineweight` |
+|---|---|---|
+| 正片叠底 | multiply | `raster.blend(mode='multiply')`, and `cel.shadow_colour` |
+| **线性加深** | **linear burn** | **absent** |
+| 滤色 (from the CLIP STUDIO source) | screen | `raster.blend(mode='screen')` |
+
+**Linear burn is `a + b - 1`, and it is not the same as a multiply**: it darkens far more aggressively and clips to
+black, which is why a shadow that must read as a *body* rather than a *darkening* would use it. The project has
+`multiply`, `screen` and `overlay` and not this one, and **the absence is now recorded as a gap with a source behind
+it rather than as a possibility**.
+
+**And the same sentence carries the qualification that matters most**: 「也有部分画师坚持自己选色，而非图层效果直接叠加
+阴影上去」 -- *some illustrators insist on choosing the shadow colour themselves rather than having a layer effect
+apply it*. So the multiply is a **default workflow, not a definition**, and a library that offers only the layer
+effect and no way to set the colour directly would be implementing half of what this source describes.
+
+### The style exists for production reasons
+
+> 「动画采用这种画风，是出于对**效率和工作流程**的考量，**清晰分明的矢量线条有利于修改、填色和后续制作**，能最大幅度地
+> 节约人力成本。」
+
+**Which is the reason the rules in `RESEARCH-MOE.md` are as tight as they are.** A hard-edged shadow and a clear
+line are not an aesthetic first; they are what makes a frame *editable, fillable and re-usable downstream*, and the
+aesthetic followed from that. It is the same argument this project's own sources make about vector lines.
+
+### 平涂 is a technique and not a style
+
+> 「平涂原义仅是指手绘中**平稳均匀的涂色手法**，即平涂作为一种小手法无法决定最终呈现出的总体画面风格……**不应该
+> 称「平涂」「薄涂」等为一种画风**……随着时代变化，已经鲜少有相关的争议，而现在一般认为**平涂就指的是赛璐珞画风**。」
+
+**Two things at once**: the word originally named an *operation* (filling evenly), the article argues it should not
+name a *style*, and current usage has made it a synonym for 赛璐珞 anyway. Alongside it, 纯色画风 is described as a
+disputed neighbour -- line art filled flat with almost no modelling -- and the article is explicit that whether it
+counts is contested.
+
+**For this project the useful reading is that the vocabulary is unstable**, so a module should not be named after a
+style word. `layers.py` speaks of tiers and draw classes and `cel.py` speaks of a step and a hardness; neither needs
+「平涂」to mean anything in particular, and that turns out to be the right call for a reason the source states.
