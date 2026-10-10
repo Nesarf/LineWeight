@@ -180,3 +180,95 @@ def test_the_shadow_ramp_is_linear_and_only_the_highlight_takes_a_power():
     f = 0.4
     a, b, c = (cel.ramp(x, feather=f) for x in (0.35, 0.45, 0.55))
     assert (a - b) == pytest.approx(b - c, abs=1e-9), (a, b, c)
+
+
+# ------------------------------------------------------------------------------------------------------------
+# The shape is an INPUT. These hold the library to painting what it is given and to NOT computing a boundary.
+
+def test_a_palette_is_the_productions_colour_specification():
+    """通常色 then the shade colours -- Unity's official Japanese manual names exactly this stack, 「通常色」,
+    「1影色」, 「2影色」, and calls an authored shadow 固定影."""
+    p = cel.Palette(lit=(230, 210, 190), shades=[(180, 170, 200), (140, 135, 175)])
+    assert p.steps == 2
+    assert p.colour_for(0) == (230, 210, 190)
+    assert p.colour_for(1) == (180, 170, 200)
+    assert p.colour_for(2) == (140, 135, 175)
+    with pytest.raises(ValueError):
+        p.colour_for(3)
+    # 影無し is a palette with no shades, which Ghibli names as an ordinary choice
+    assert cel.Palette(lit=(200, 200, 200)).steps == 0
+    with pytest.raises(ValueError):
+        cel.Palette(lit=(200, 200, 200), shades=[(1, 1, 1)] * 5)
+
+
+def test_a_shadow_region_is_used_verbatim():
+    """**The point of the class.** The library's job is to paint what it is given; a boundary is an artistic
+    decision the sources place with the animator and the colour designer rather than with the renderer."""
+    drawn = [(10.0, 10.0), (90.0, 14.0), (86.0, 60.0), (12.0, 55.0)]
+    s = cel.Shadow(region=drawn, step=1)
+    assert s.moved() == drawn, 'no offset means the region is untouched'
+    assert s.is_closed()
+    assert not cel.Shadow(region=[(0, 0), (1, 1)]).is_closed()
+
+
+def test_the_offset_is_a_translation_and_is_documented_as_one():
+    """**Not a light model.** The sources say the light direction is fixed per cut and recorded, and that it *moves*
+    the boundary; none says how far. A translation is the only motion this library can make without inventing a
+    shape, and a caller who wants the light to matter passes a different region."""
+    s = cel.Shadow(region=[(0, 0), (10, 0), (10, 10)], offset=(5.0, -2.5))
+    assert s.moved() == [(5.0, -2.5), (15.0, -2.5), (15.0, 7.5)]
+    # and the original is not disturbed
+    assert s.region == [(0, 0), (10, 0), (10, 10)]
+
+
+def test_there_is_no_shadow_computed_from_a_light_vector():
+    """**A negative test, and the most important one in this file.**
+
+    Studio Ghibli's production diary says the shadow 「まず、アニメーターが線画で描き分けます」 -- first drawn by the
+    animator as line art -- and NAFCA prescribes the medium (影 in blue coloured pencil, the line production calls
+    色トレス). Five shader engines put the shape in a texture the artist paints. **No source describes a geometric
+    silhouette-offset algorithm for a character's terminator**; that construction is documented for cast and ground
+    shadows, which are a different thing.
+
+    So the library must not have one. This test exists so that adding one is a deliberate act that breaks a test
+    rather than a plausible-looking helper someone adds on the way past.
+    """
+    for forbidden in ('shadow_from_light', 'terminator_from_light', 'shadow_region_from'):
+        assert not hasattr(cel, forbidden), '%s would be a shape no source describes' % forbidden
+
+
+def test_painting_an_authored_shadow_uses_the_palette_and_can_be_overridden():
+    """The colour comes from the part's specification rather than from a formula over the lit colour -- which is how
+    the production does it, and why 影色 can be a cool blue against a warm base rather than a darkened version of it.
+
+    **And it can be overridden**, for the case the sources name explicitly: 「也有部分画师坚持自己选色，而非图层效果
+    直接叠加阴影上去」. A library offering only the derived colour would implement half of what they describe.
+    """
+    from lineweight import raster
+    p = cel.Palette(lit=(230, 210, 190), shades=[(180, 170, 200)])
+    region = [(20.0, 20.0), (120.0, 20.0), (120.0, 90.0), (20.0, 90.0)]
+    s = cel.Shadow(region=region, step=1)
+
+    layer = raster.Layer(160, 130)
+    touched = cel.paint_shadow(layer, s, p)
+    assert touched > 5000, touched
+    # **a pixel inside the region, not (0, 0)** -- the region starts at (20, 20) and the first version of this test
+    # read the corner, which is outside it and black, and would have passed for any colour the fill used
+    inside = (50 * 160 + 60) * 4
+    outside = (5 * 160 + 5) * 4
+    # **`list()` matters**: `layer.data` is a `bytearray`, so a slice of it is a `bytearray` and comparing one to a
+    # list is False however the bytes read. The first version of this test compared the two and failed on a fill that
+    # was correct.
+    assert list(layer.data[inside:inside + 3]) == [180, 170, 200], 'the palette 1影色'
+    assert layer.data[outside + 3] == 0, 'outside the region must be untouched'
+
+    other = raster.Layer(160, 130)
+    cel.paint_shadow(other, s, p, colour=(10, 20, 30))
+    assert list(other.data[inside:inside + 3]) == [10, 20, 30], 'an explicit colour must win'
+
+
+def test_a_shadow_region_with_too_few_points_is_refused():
+    from lineweight import raster
+    with pytest.raises(ValueError) as caught:
+        cel.paint_shadow(raster.Layer(20, 20), cel.Shadow(region=[(0, 0), (5, 5)]), cel.Palette(lit=(1, 2, 3)))
+    assert 'three points' in str(caught.value)

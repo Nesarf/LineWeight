@@ -73,7 +73,7 @@ What *does* vary per material, and is therefore real: **`_OutlineTint`, 144 dist
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 #: Where the lit-to-shadow step sits: the mode of `_LightValue` over the corpus, and Unity Toon Shader's shipped
 #: `_BaseColor_Step`. It is Unity's number rather than MToon's -- see the module docstring for the derivation.
@@ -218,3 +218,99 @@ def shadow_colour(base: tuple[int, int, int], weight: float, strength: float = S
     factor = 1.0 - weight * (1.0 / max(1.0, strength)) * 5.0
     factor = max(0.0, min(1.0, factor))
     return tuple(int(max(0, min(255, round(c * factor)))) for c in base)
+
+
+# --------------------------------------------------------------------------------------------------------------
+# The shape is an INPUT. Everything below exists so a caller can hand this library a boundary someone drew.
+#
+# **Why an input and not a computation, stated once and with sources.** Studio Ghibli's production diary for
+# 『ゲド戦記』: 「この影は、まず、アニメーターが線画で描き分けます」 -- *this shadow is first drawn out by the
+# animator as line art* -- and the medium is prescribed by NAFCA's animator certification, 影 in blue coloured pencil,
+# the line production calls 色トレス. J.C.STAFF's 仕上げ department page describes the same hand-off: a 色指定表 that
+# names the colour "for each character part and each shadow", and a scan step that separates the 実線 from the
+# 色トレス線. Five shader engines put the same shape in a texture the artist paints. **Nothing in that chain computes
+# the boundary, and no source describes a geometric silhouette-offset algorithm for it** -- that construction is
+# documented for cast and ground shadows, which are a different thing and are handled by perspective.
+#
+# So there is deliberately **no `shadow_from_light()` here.** A function that produced a boundary from a light vector
+# would be a shape no source describes and no measurement in this project supports, and it would be the second time
+# this module invented a formula where the art had a decision.
+# --------------------------------------------------------------------------------------------------------------
+
+
+@dataclass
+class Palette:
+    """A part's colours, in the production's own shape: **通常色 and then the shade colours.**
+
+    Unity's official Japanese manual names exactly this stack -- 「通常色」, 「1影色」, 「2影色」 -- and calls an
+    authored shadow 固定影, "fixed shadow". The number of shades is the step count, so a palette with one shade is
+    a 1段影 figure and one with none is 影無し.
+    """
+
+    lit: tuple[int, int, int]
+    shades: list = field(default_factory=list)
+
+    def __post_init__(self):
+        if len(self.shades) > max(SHADOW_STEPS):
+            raise ValueError('%d shades is more than this art uses (%s); the steps are bands of shadow, not tones'
+                             % (len(self.shades), ', '.join(str(n) for n in SHADOW_STEPS)))
+
+    @property
+    def steps(self) -> int:
+        return len(self.shades)
+
+    def colour_for(self, step: int) -> tuple[int, int, int]:
+        """Step 0 is the lit colour; 1 is 1影色, 2 is 2影色, and so on."""
+        if step <= 0:
+            return self.lit
+        if step > len(self.shades):
+            raise ValueError('this palette has %d shade(s); asked for shadow step %d' % (len(self.shades), step))
+        return self.shades[step - 1]
+
+
+@dataclass
+class Shadow:
+    """**A shadow someone drew**, as a closed region, plus which band it belongs to.
+
+    The region is used **verbatim**. This is the point of the class: the library's job is to paint what it is given,
+    and a boundary is an artistic decision the sources place with the animator and the colour designer rather than
+    with the renderer.
+
+    `offset` is a translation and is documented as one -- **not a light model**. The sources say the light direction
+    is fixed per cut and recorded (Ghibli's 作打ち meeting, Yonebayashi's arrow on the layout) and that it *moves* the
+    boundary; none of them says how far, and a translation is the only motion this library can make without inventing
+    a shape. A caller who wants the light to matter passes a different region.
+    """
+
+    region: list = field(default_factory=list)
+    step: int = 1
+    offset: tuple[float, float] = (0.0, 0.0)
+
+    def moved(self) -> list:
+        """The region translated by `offset`. A translation, and nothing is inferred from it."""
+        dx, dy = self.offset
+        return [(x + dx, y + dy) for x, y in self.region]
+
+    def is_closed(self) -> bool:
+        return len(self.region) >= 3
+
+
+def paint_shadow(layer, shadow: 'Shadow', palette: 'Palette', colour: tuple[int, int, int] | None = None) -> int:
+    """Fills an authored shadow region with its band's colour. Returns the pixels touched.
+
+    **`palette.colour_for(shadow.step)` by default**, so the colour comes from the part's specification rather than
+    from a formula over the lit colour -- which is how the production does it and is also why 影色 can be a cool blue
+    against a warm base rather than a darkened version of it.
+
+    Passing `colour` overrides that, for the case the sources name explicitly: 「也有部分画师坚持自己选色，而非图层效果
+    直接叠加阴影上去」 -- some illustrators insist on choosing the shadow colour themselves. **A library that offered
+    only the derived colour would be implementing half of what the sources describe.**
+    """
+    from . import raster
+    if not shadow.is_closed():
+        raise ValueError('a shadow region needs at least three points, got %d' % len(shadow.region))
+    fill = colour if colour is not None else palette.colour_for(shadow.step)
+    before = layer.data[3::4]
+    raster.fill_polygon(layer, shadow.moved(), fill, 1.0)
+    after = layer.data[3::4]
+    return sum(1 for a, b in zip(before, after) if a != b)
