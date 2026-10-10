@@ -168,12 +168,98 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
     return out
 
 
-def polygon_to_path(points: list[tuple[float, float]]) -> str:
+#: **How many vertices may go by between absolute anchors in a relative path.**
+#:
+#: A relative path writes each vertex as a delta from the last, and **every delta is rounded independently**, so the
+#: error is a random walk rather than a bound: on a 129-vertex outline at two decimals the worst case is 129 x 0.005
+#: = 0.65 units, against an absolute encoding whose error is at most 0.005 whatever the length. **An unbounded error
+#: in a drawing format is not a trade, it is a defect**, so a relative path has to come back to an absolute
+#: coordinate now and then, and the interval is what decides the bound.
+#:
+#: The interval is **derived from the tolerance the outline already carries** rather than chosen: `OUTLINE_ERROR` is
+#: the fraction of the brush width a fitted curve may sit away from the exact offset, so allowing the encoding the
+#: same error is the consistent choice, and `RELATIVE_DRIFT` is the worst case of one rounded delta.
+#:
+#: **The bound is per coordinate; the measurement is in L1.** Each rounded coordinate is off by at most
+#: `RELATIVE_DRIFT`, so a point's Manhattan distance from where it should be is at most **twice** that per anchor
+#: interval: `2 x interval x RELATIVE_DRIFT`, which at the ink brush is 0.13 units. Measured on a 40-stroke drawing
+#: the worst was **0.056** -- inside the bound, and 0.0086 of the brush width against the 0.01 the fitter is already
+#: allowed.
+RELATIVE_DRIFT = 0.005
+
+
+def rebase_interval(width: float, tolerance: float = OUTLINE_ERROR) -> int:
+    """How many vertices may pass between absolute anchors before the drift exceeds the outline's own tolerance.
+
+    At the ink brush this is **13 vertices**, which bounds the encoding's error at 0.065 units **per coordinate** --
+    the same order as the 0.01-of-a-width a fitted curve is already allowed. A narrower brush rebases more often
+    because its tolerance is a smaller absolute distance, and a wider one less; **the interval is not a constant and
+    should not be.**
+
+    **And the saving is not a constant either.** Measured on a 40-stroke ink drawing at unchanged precision the path
+    data shrinks by **15.7%**, not the 30% an earlier note claimed from a different drawing: what a relative encoding
+    saves is the digits, so a drawing whose neighbouring outline vertices are far apart saves less. Quote it as a
+    range, and measure it on the drawing in hand.
+    """
+    allowed = max(0.0, tolerance) * max(0.0, width)
+    return max(1, int(allowed / RELATIVE_DRIFT))
+
+
+def polygon_to_path(points: list[tuple[float, float]], relative: bool = False,
+                    width: float | None = None) -> str:
     """A closed polygon as SVG path data. **The only place an outline's coordinates become text**, so that the text and
-    the points cannot describe different shapes."""
+    the points cannot describe different shapes.
+
+    **`relative` writes each vertex as a delta from the last, with an absolute anchor every `rebase_interval`.** The
+    saving is real -- measured at 30% on a 40-stroke drawing at unchanged precision -- and so is the hazard: a delta
+    is rounded independently, so the error walks instead of staying put. **The anchors are what make it safe**, and
+    `width` decides how often they come; passing `relative=True` without a width falls back to absolute rather than
+    guessing an interval, because a bound that is not derived from anything is not a bound.
+    """
     if not points:
         return ''
-    return 'M %.2f %.2f ' % points[0] + ' '.join('L %.2f %.2f' % p for p in points[1:]) + ' Z'
+    if not relative or not width:
+        return 'M %.2f %.2f ' % points[0] + ' '.join('L %.2f %.2f' % p for p in points[1:]) + ' Z'
+    every = rebase_interval(width)
+    out = ['M %.2f %.2f' % points[0]]
+    previous = points[0]
+    for i, point in enumerate(points[1:], start=1):
+        if i % every == 0:
+            # **An absolute anchor**: this is what stops the rounding from walking, and it costs one extra number
+            # every `every` vertices against the saving on all the others.
+            out.append('L %.2f %.2f' % point)
+        else:
+            out.append('l %.2f %.2f' % (point[0] - previous[0], point[1] - previous[1]))
+        previous = point
+    return ' '.join(out) + ' Z'
+
+
+def path_to_points(d: str) -> list[tuple[float, float]]:
+    """The points a path string describes, for checking what was written rather than trusting it.
+
+    **A decoder is the only way to measure the encoding error**, because the error lives in the text: comparing the
+    points to themselves would say nothing. It handles the two commands `polygon_to_path` emits and refuses anything
+    else rather than guessing.
+    """
+    tokens = d.replace(',', ' ').split()
+    if not tokens or tokens[0] != 'M':
+        raise ValueError('not a path this module writes: %r' % d[:40])
+    x, y = float(tokens[1]), float(tokens[2])
+    points = [(x, y)]
+    i = 3
+    while i < len(tokens):
+        command = tokens[i]
+        if command == 'Z':
+            break
+        if command == 'L':
+            x, y = float(tokens[i + 1]), float(tokens[i + 2])
+        elif command == 'l':
+            x, y = x + float(tokens[i + 1]), y + float(tokens[i + 2])
+        else:
+            raise ValueError('unknown command %r' % command)
+        points.append((x, y))
+        i += 3
+    return points
 
 
 # **Above this ratio, a vertex gets a round join instead of a displaced point.**

@@ -1509,3 +1509,54 @@ def test_a_hand_written_flat_profile_is_caught_and_reported(tmp_path, capsys):
     assert 'm0002' in flagged, 'the flat stroke was not named'
     assert 'm0001' not in flagged, 'the varied stroke was flagged by mistake'
     assert '1 stroke(s)' in text
+
+
+def test_a_relative_path_carries_an_interval_derived_from_the_tolerance():
+    """**An unbounded error in a drawing format is not a trade, it is a defect.** A relative path rounds every delta
+    independently, so its error walks: on a 129-vertex outline at two decimals the worst case is 0.65 units against
+    an absolute encoding's 0.005 whatever the length. The anchors are what bound it, and the interval comes from the
+    tolerance the outline already carries rather than from taste."""
+    from lineweight.core import OUTLINE_ERROR, rebase_interval
+    assert rebase_interval(6.5) == 13, rebase_interval(6.5)
+    # a narrower brush tolerates a smaller absolute error, so it anchors more often
+    assert rebase_interval(1.0) < rebase_interval(6.5) < rebase_interval(40.0)
+    assert rebase_interval(6.5, tolerance=OUTLINE_ERROR) == 13
+    assert rebase_interval(0.0) == 1, 'a zero-width brush must still terminate'
+
+
+def test_the_relative_path_is_the_same_shape_and_smaller():
+    """The same points, written two ways, decoded back and compared -- **the only way to measure an encoding error is
+    to decode it**, because the error lives in the text and comparing the points to themselves says nothing."""
+    from lineweight.core import polygon_to_path, path_to_points
+    pts = [(10.0 + i * 1.234567, 20.0 + (i % 5) * 2.345678) for i in range(129)]
+    absolute = polygon_to_path(pts)
+    relative = polygon_to_path(pts, relative=True, width=6.5)
+
+    assert len(relative) < len(absolute), 'the relative form must actually be smaller'
+    for text, name in ((absolute, 'absolute'), (relative, 'relative')):
+        back = path_to_points(text)
+        assert len(back) == len(pts), name
+        worst = max(abs(p[0] - q[0]) + abs(p[1] - q[1]) for p, q in zip(pts, back))
+        # **the bound is 2 x interval x 0.005**, because each coordinate rounds independently
+        assert worst <= 2 * 13 * 0.005 + 1e-9, '%s drifted %.4f' % (name, worst)
+
+
+def test_the_relative_encoding_is_off_unless_asked_for():
+    """**Every project file and every test written before this exists is byte-for-byte what it was.** The relative
+    form is opt-in, and asking for it without a width falls back to absolute rather than guessing an interval --
+    a bound that is not derived from anything is not a bound."""
+    from lineweight.core import polygon_to_path
+    pts = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    assert polygon_to_path(pts) == polygon_to_path(pts, relative=False)
+    assert 'l ' not in polygon_to_path(pts)
+    assert polygon_to_path(pts, relative=True) == polygon_to_path(pts), 'no width, no interval, no relative form'
+    assert 'l ' in polygon_to_path(pts, relative=True, width=6.5)
+
+
+def test_the_decoder_refuses_what_it_does_not_understand():
+    from lineweight.core import path_to_points
+    import pytest
+    with pytest.raises(ValueError):
+        path_to_points('Q 1 2 3 4 Z')
+    with pytest.raises(ValueError):
+        path_to_points('nonsense')
