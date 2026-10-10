@@ -50,8 +50,11 @@ def test_a_body_with_nowhere_to_be_drawn_is_refused():
 def test_a_declared_figure_makes_every_mark_name_its_layer():
     p = Project()
     p.set_figure(figure.standard())
-    mark = p.add_stroke(a_record(), layer='body')
-    assert mark.layer == 'body'
+    # **The layer names are the drawing's own vocabulary, not the materials':** a material is `hair`, a drawing has
+    # `back_hair` and `front_hair` drawn at opposite ends of the stack. The tests said `body` until the standard
+    # figure started being built from the census, and then they were naming a layer that no longer exists.
+    mark = p.add_stroke(a_record(), layer='torso')
+    assert mark.layer == 'torso'
     with pytest.raises(ValueError) as caught:
         p.add_stroke(a_record())
     assert 'must name its layer' in str(caught.value)
@@ -71,15 +74,15 @@ def test_a_project_with_no_figure_still_draws_the_way_it_always_did():
 def test_the_figure_and_the_layers_survive_a_round_trip(tmp_path):
     p = Project()
     p.set_figure(figure.standard())
-    p.add_stroke(a_record(), layer='body')
-    p.add_stroke(a_record(), layer='hair')
+    p.add_stroke(a_record(), layer='torso')
+    p.add_stroke(a_record(), layer='front_hair')
     path = str(tmp_path / 'p.json')
     save_project(p, path)
     back = load_project(path)
     assert back.figure is not None
     assert back.figure.name == 'standard'
     assert back.figure.layer_names() == p.figure.layer_names()
-    assert [m.layer for m in back.marks] == ['body', 'hair']
+    assert [m.layer for m in back.marks] == ['torso', 'front_hair']
 
 
 def test_the_error_report_says_which_limb_kind_is_wrong():
@@ -104,7 +107,7 @@ def test_the_limb_counts_summarise_the_body():
 def test_what_the_drawing_actually_used_is_reported():
     p = Project()
     p.set_figure(figure.standard())
-    p.add_stroke(a_record(), layer='body')
-    p.add_stroke(a_record(), layer='body')
-    p.add_stroke(a_record(), layer='hair')
-    assert p.layers_in_use() == {'body': 2, 'hair': 1}
+    p.add_stroke(a_record(), layer='torso')
+    p.add_stroke(a_record(), layer='torso')
+    p.add_stroke(a_record(), layer='front_hair')
+    assert p.layers_in_use() == {'torso': 2, 'front_hair': 1}

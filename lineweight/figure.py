@@ -84,19 +84,33 @@ class Figure:
         return f
 
 
+#: Which tier each draw class belongs to, for the coarse check. The **order** comes from the rigs; the tier is the
+#: grouping the earlier hand-written rule used, kept because it is what `SHADOW_BEFORE_CASTER` and the tier check
+#: speak in.
+TIER_OF_CLASS: dict[str, str] = {
+    'background': 'background', 'scenery': 'scenery', 'shadow': 'cast_shadow',
+    'overlay': 'overlay',
+}
+
+
 def standard() -> Figure:
     """The reference figure a generator would start from and vary.
 
-    The body is the rig's own 34-bone variant, which is the commonest in the corpus (154 of 286). The layers are a
-    small stack that satisfies the tier order and gives every part an outline -- the shape the art itself uses, since
-    `_OutlineTint` is on 99% of characters.
+    **Both halves come from the corpus rather than from taste.** The body is the rig's own 34-bone variant, the
+    commonest in the census at 154 of 286. The layers are the twenty draw classes **topologically sorted from the 99
+    order constraints nine lobby rigs agree on**, each carrying the tier its class belongs to, and each character part
+    getting an outline because `_OutlineTint` is on 99% of the cast.
+
+    What that produces is the art's own stack: background, scenery, cast shadow, the halo *behind* the character,
+    back hair, head, arms, legs, skirt, torso, collar, prop, hand, neck, eyes, face, mouth, front hair, eyebrows,
+    overlays.
     """
+    from .layers import standard_order
     f = Figure(joints=dict(_body.JOINT_PARENT), name='standard')
-    f.layers.add('background', 'background')
-    f.layers.add('scenery', 'scenery')
-    for part in ('body', 'face', 'eye_mouth', 'eyebrow', 'hair'):
-        f.layers.add(part, 'character', part=part)
-        f.layers.add('%s.outline' % part, 'character')
+    for cls in standard_order():
+        # **`part` carries the draw class**, because the order is a fact about draw classes; `PART_OF_CLASS` gives the
+        # material when that is what is being asked about.
+        f.layers.add(cls, TIER_OF_CLASS.get(cls, 'character'), part=cls, outline=True)
     return f
 
 
