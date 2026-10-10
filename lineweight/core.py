@@ -1807,6 +1807,10 @@ def main() -> int:
                         help='validate a proposed body: a JSON object of joint -> parent, against the rig')
     parser.add_argument('--check-layers', default='', metavar='FILE',
                         help='validate a proposed layer stack: a JSON list of {name, tier, part, casts_for}')
+    parser.add_argument('--check-figure', default='', metavar='FILE',
+                        help='validate a whole figure -- a JSON object of {joints, layers} -- before drawing on it')
+    parser.add_argument('--standard-figure', default='', metavar='FILE',
+                        help='write the reference figure to FILE, as a starting point to vary')
     parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
     parser.add_argument('--render', default='', metavar='PROJECT',
                         help='render a project file to an image; combine with --stage or --upto')
@@ -1852,6 +1856,26 @@ def main() -> int:
         return check_report(args.check, scale=args.scale)
     if args.log:
         return log_report(args.log, rewind_to=args.rewind)
+    if args.standard_figure:
+        import json as _json
+        from .figure import standard
+        with open(args.standard_figure, 'w', encoding='utf-8', newline=chr(10)) as handle:
+            _json.dump(standard().to_dict(), handle, indent=1)
+            handle.write(chr(10))
+        print('%s: the reference figure -- %d joints, %d layers'
+              % (args.standard_figure, len(standard().joints), len(standard().layers.layers)))
+        return 0
+
+    if args.check_figure:
+        # **The generation path's gate, from the command line.** A figure either could exist or it could not, and the
+        # answer is a list of reasons rather than a rendering that is subtly wrong.
+        import json
+        from .figure import Figure, describe
+        raw = json.load(open(args.check_figure, encoding='utf-8'))
+        fig = Figure.from_dict(raw)
+        print(describe(fig))
+        return 1 if fig.errors() else 0
+
     if args.check_body:
         # **The check exists so a generator can be held to it.** A described body either has the rig's topology or
         # it does not, and "three arms" is a fact about a parent map rather than about a picture.

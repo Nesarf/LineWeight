@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass, field
 
 from . import roles
+from .figure import Figure
 
 # The common staging, as a starting point a project may replace. Order is meaningful: it is the order the passes run.
 #
@@ -142,17 +143,21 @@ class Mark:
     appearance: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)
     state: str = LIVE
+    # **Which layer of the figure this mark belongs to.** Empty when the project declares no figure, and required once
+    # it does -- see `Project.set_figure`. A drawing whose marks do not say which layer they are is a pile of marks.
+    layer: str = ''
 
     def to_dict(self) -> dict:
         return {'id': self.id, 'kind': self.kind, 'stage': self.stage, 'seq': self.seq,
                 'geometry': self.geometry, 'appearance': self.appearance,
-                'provenance': self.provenance, 'state': self.state}
+                'provenance': self.provenance, 'state': self.state, 'layer': self.layer}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Mark':
         return cls(id=d['id'], kind=d['kind'], stage=d['stage'], seq=d['seq'],
                    geometry=d.get('geometry', {}), appearance=d.get('appearance', {}),
-                   provenance=d.get('provenance', {}), state=d.get('state', LIVE))
+                   provenance=d.get('provenance', {}), state=d.get('state', LIVE),
+                   layer=d.get('layer', ''))
 
 
 @dataclass
@@ -186,6 +191,43 @@ class Project:
     # a turn can. Every mark and every log entry carries the turn that produced it, which is what makes "undo what I
     # just asked for" a single operation rather than a search.
     turn: int = 0
+    # **What this drawing is a drawing OF.** None means nothing has been described, which is the state every project
+    # file written before this existed is in, and it stays legal. Once a figure is declared, it is validated and every
+    # mark must name one of its layers -- which is the whole point: **a body that cannot exist cannot be drawn on.**
+    figure: 'object' = None
+
+    # ---- the figure -----------------------------------------------------------------------------------------
+
+    def set_figure(self, figure) -> None:
+        """Declare what is being drawn, and **refuse it if it could not exist.**
+
+        The refusal is the feature. A generator that produces three arms has no representation in which that is wrong;
+        here it has one, in the parent relation, and the drawing does not start.
+        """
+        problems = figure.errors()
+        if problems:
+            raise ValueError('the figure has %d problem(s) and cannot be drawn on: %s'
+                             % (len(problems), '; '.join(problems)))
+        self.figure = figure
+        self._record('figure', name=figure.name, joints=len(figure.joints), layers=len(figure.layers.layers))
+
+    def _check_layer(self, layer: str) -> None:
+        if self.figure is None:
+            return
+        if not layer:
+            raise ValueError('a figure is declared, so every mark must name its layer (have %s)'
+                             % ', '.join(sorted(self.figure.layer_names())))
+        if layer not in self.figure.layer_names():
+            raise ValueError('no such layer: %r (the figure has %s)'
+                             % (layer, ', '.join(sorted(self.figure.layer_names()))))
+
+    def layers_in_use(self) -> dict:
+        """Marks per layer -- what the drawing actually used, against what the figure declared."""
+        counts = {}
+        for m in self.marks:
+            if m.state == LIVE:
+                counts[m.layer] = counts.get(m.layer, 0) + 1
+        return counts
 
     # ---- adding ---------------------------------------------------------------------------------------------
 
@@ -197,7 +239,7 @@ class Project:
             raise ValueError('no such stage: %r (have %s)' % (stage, ', '.join(self.stage_names())))
 
     def add_stroke(self, record: dict, stage: str = 'line', note: str = '', source: str = '',
-                   commit: bool | None = None) -> Mark:
+                   commit: bool | None = None, layer: str = '') -> Mark:
         """A stroke_record becomes a mark. Geometry comes from the record; nothing is copied out of it.
 
         **`commit=True` by default, and that default is the considered one.** Drawing programs put an auto-confirm on
@@ -206,9 +248,10 @@ class Project:
         `commit=False` and then `commit()` or `begin()`, and that is where the gate pays for itself.
         """
         self._check_stage(stage)
+        self._check_layer(layer)
         commit = (not self.incremental) if commit is None else commit
         self.counter = _highest_id(self) + 1
-        mark = Mark(id='m%04d' % self.counter, kind='stroke', stage=stage, seq=len(self.marks),
+        mark = Mark(id='m%04d' % self.counter, kind='stroke', stage=stage, seq=len(self.marks), layer=layer,
                     geometry={'centre': record['centre'], 'control': record.get('control', []),
                               'pressure': record['pressure'], 'brush': record['brush'],
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
@@ -642,7 +685,8 @@ class Project:
                 'log': self.log,
                 'counter': self.counter,
                 'incremental': self.incremental,
-                'turn': self.turn}
+                'turn': self.turn,
+                'figure': self.figure.to_dict() if self.figure is not None else None}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Project':
@@ -657,7 +701,8 @@ class Project:
                    log=d.get('log', []),
                    counter=int(d.get('counter', 0)),
                    incremental=bool(d.get('incremental', False)),
-                   turn=int(d.get('turn', 0)))
+                   turn=int(d.get('turn', 0)),
+                   figure=Figure.from_dict(d['figure']) if d.get('figure') else None)
 
 
 def save_project(project: Project, path: str) -> None:

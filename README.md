@@ -338,6 +338,42 @@ difference between outer and inner line width?* — with the library's own measu
 refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
 sticker look, deliberate rather than accidental. What must not happen is that it is silent.
 
+## A figure, and the gate before drawing
+
+**The path this exists for: describe a body, check it, and only then draw.** A generator that produces three arms has
+no representation in which that is wrong -- it has marks, and no statement of what the thing was supposed to be. A
+`Figure` is that statement, and `Project.set_figure` refuses one that could not exist.
+
+    python -m lineweight --standard-figure figure.json     # write the reference figure to vary
+    python -m lineweight --check-figure figure.json        # validate before drawing on it
+
+```
+figure 'standard'
+   body: 34 joints -- arm 8, axis 4, finger 12, head 2, leg 6, toe 2
+   layers: 12 in 3 tiers, parts body, eye_mouth, eyebrow, face, hair
+   no problems: this figure may be drawn on
+
+figure 'three arms'
+   body: 35 joints -- arm 9, ...
+   2 problem(s):
+      Bip001 Spine1 has 4 children, a body has 3 -- an extra limb (...)
+      branching counts [4, 3, 3, 3], a body has [3, 3, 3, 3]
+```
+
+In code, the refusal is the feature:
+
+```python
+project.set_figure(figure.standard())     # raises if the figure could not exist
+project.add_stroke(record, layer='body')  # every mark names its layer
+```
+
+**Once a figure is declared, a mark's layer is required** and must be one the figure declares -- a drawing whose marks
+do not say which layer they are is a pile of marks. `project.layers_in_use()` then reports what the drawing actually
+used, against what the figure declared.
+
+**A project with no figure is unaffected**, which matters because every project file written before this existed is
+one, and `version: 2` still loads.
+
 ## The body, and the layers
 
 Two facts a drawing can be held to, both read off the rigs Blue Archive ships for the same character rather than
