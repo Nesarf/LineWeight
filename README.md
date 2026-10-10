@@ -583,6 +583,30 @@ measuring those describes the widths of nothing, and pooling them would move the
 to do with drawing. What that material would need is a different measurement -- corner radii, border weights, a palette
 -- which is a different question from this one.
 
+## Where the research is
+
+**This file is the how-to; the research documents are the evidence.** Every number this library uses came from one of
+them, and each states its own sample size and what it could not establish.
+
+| document | what it holds |
+|---|---|
+| `RESEARCH-MOE.md` | **moe construction** -- the textbook's method, the head-body ratio, hair and folds, and the rig censuses: 296 character skeletons, 292 material sets, 63 lobby rigs. The largest of these and the origin of `body.py`, `layers.py` and `figure.py` |
+| `RESEARCH-CEL.md` | **cel shading** -- the shadow boundary as an authored line (Ghibli, NAFCA, J.C.STAFF), the ramp parameters from three shipped shaders, and the measurement of 332 cel illustrations against a 229-work control |
+| `RESEARCH-LINE-QUALITY.md` | line quality for Japanese-style linework: taper, 強弱, the pen models |
+| `RESEARCH-OUTLINE.md` | prior art on stroke-to-outline |
+| `RESEARCH-VECTORIZATION.md` | raster to vector, and why pinholes are a published open problem rather than this project's bug |
+| `RESEARCH-SCENERY.md` | scenery and architecture |
+| `RESEARCH-SVG-TOOLS.md` | SVG optimisers, and why SVGO is not used |
+| `RESEARCH-SOURCES.md` | where the source material is and how to reach it |
+| `DESIGN-PROJECT.md` | what the product is: a **drawing project file**, not an image |
+| `DRAWING-PROCEDURE.md` | the procedure derived from a drawing video |
+| `PSD-REPORT.md` | how the PSD writer works and every fault found in it |
+| `TODO.md` | what is open, and the corrections that closed the rest |
+
+**The discipline they share, stated once**: a number is quoted with its sample, a claim is checked against an
+independent artefact, and **an error found along the way is written down rather than removed**. `RESEARCH-MOE.md`
+opens with a section saying so; `TODO.md` ends with the list.
+
 ## Licence
 
 MIT — see `LICENSE`.

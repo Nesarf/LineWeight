@@ -4,8 +4,13 @@
 
 ## Start here
 
-**This document is a notebook: it runs in the order the work happened, and later sections correct earlier ones.** It
-is worth reading in order if you want the reasoning. If you want to *use* what came out of it, this is the entry.
+**`README.md` is the how-to; this document is the evidence.** Its 「Where the research is」 section indexes every
+research document in the repository and says what each is for, and its body carries the calls and the command line
+for the things below. What follows here is **what was measured, how large the sample was, and what remains unknown**
+-- the part a how-to has no room for.
+
+**This document is a notebook**: it runs in the order the work happened, and later sections correct earlier ones. It
+is worth reading in order if you want the reasoning, and the corrections are as much a part of it as the findings.
 
 ### Three things a drawing can be held to
 
@@ -18,39 +23,6 @@ attached.**
 | `lineweight/body.py` | the body's topology, and a check for a figure that could not exist | **296** character rigs |
 | `lineweight/layers.py` | the drawing's layers, their order, and the outline as a per-part attribute | **63** lobby rigs, **292** material sets |
 | `lineweight/figure.py` | the two together, validated **before anything is drawn** | those two |
-
-### Using them
-
-```python
-from lineweight import body, layers, figure
-
-# a body, checked by name and by shape
-body.structural_errors(joints)      # the right parents, complete chains, no invented core bones
-body.arity_errors(list(joints.items()))   # the tree's shape, **without using any name**
-
-# the layers, and the order the rigs agree on
-layers.layer_errors(stack)          # tier order, outline attribute, no part split across tiers
-layers.order_errors(stack)          # the measured pairs, each with its sample and rate
-layers.ORDER_EVIDENCE[('eye', 'eyebrow')]     # -> (55, 1.0)
-
-# and the gate
-project.set_figure(figure.standard())         # raises if the figure could not exist, stores nothing
-project.add_stroke(record, layer='torso')     # every mark names a layer the figure declares
-project.layers_in_use()                       # what the drawing used against what was declared
-```
-
-From the command line:
-
-```
-python -m lineweight --standard-figure figure.json    # the reference figure, to vary
-python -m lineweight --check-figure    figure.json    # validate before drawing on it
-python -m lineweight --check-body      body.json
-python -m lineweight --check-layers    layers.json
-```
-
-`figure.standard()` is the reference: the 34-bone body variant the census found in **154 of 286** characters, and the
-twenty-one draw classes in the order the rigs imply. **Vary it, do not rebuild it** -- and the two checks below are
-what tell you whether the variation is still a drawing of a person.
 
 ### What is known, and how well
 
