@@ -1165,3 +1165,100 @@ so because the payload held **16 MPEG-2 sequence headers in its first 8 MB** —
 that stream, not a pattern found by searching. That is the difference between this and the gzip claim recorded above,
 which was wrong. **The two are worth reading together**: the same file, the same round, one reading right and one
 wrong, and the thing that separates them is where the evidence was looked for.
+
+## The body's structure, read off the game's own rigs
+
+The question this serves, stated by the user: generators produce wrong limb counts and wrong layering — hands and feet
+in the wrong place, poses that do not hold together, **three or more limbs** — and the suspicion is that this is a
+failure of *fundamental* body understanding rather than of rendering: a 2D body not understood as coming from a 3D
+one, or the artist's construction not understood at all.
+
+**Limb count is a topology property and layering is a draw-order property, and a rig states both explicitly.** So
+this is a study of the two rigs the game ships, not of any picture.
+
+### The route, and the Library had it
+
+The 3D route is **AssetRipper 2.0.0** (`E:\DaShaoHuo\tools\AssetRipper_2.0.0\AssetRipper.GUI.Free.exe` — the Library
+record calls it "the 3D-model route" and notes it has **no batch mode**). It is driven headless over its own HTTP API,
+which is fully published at `/openapi.json`:
+
+```
+POST /LoadFile               form: path=<file>          loads and processes a bundle
+POST /Export/UnityProject    form: path=<dir>           writes a Unity project
+POST /Export/PrimaryContent  form: path=<dir>           writes assets loose
+GET  /Assets/Model.glb?Path=                            one model as GLB
+```
+
+**Note the content type**: `application/x-www-form-urlencoded`, and a multipart post gets a bare **415** with the
+message *"The path must be included in the request"* — which is not about the path at all.
+
+**One bundle is enough to prove the route.** Loading `assets-_mx-characters-airi_original-*-meshes` and exporting
+gives a real Unity project (`ProjectVersion.txt` = **2021.3.56f2**, matching the bundles) with eleven assets, and the
+files are **plain YAML** — `Airi_Original_Mesh.prefab` is 113 named GameObjects and 113 Transforms.
+
+### The skeleton, which is the actual finding
+
+Parsing the prefab's `m_Father` links gives the whole tree. **113 nodes, and the body axis plus limbs is only 34 of
+them:**
+
+```
+Bip001                                    root
+  Bip001 Pelvis
+    Bip001 L Thigh → L Calf → L Foot → L Toe0        4 segments
+    Bip001 R Thigh → R Calf → R Foot → R Toe0        4 segments
+    Bip001 Spine
+      Bip001 Spine1
+        Bip001 L Clavicle → L UpperArm → L Forearm → L Hand → 3 fingers × 2 segments
+        Bip001 R Clavicle → R UpperArm → R Forearm → R Hand → 3 fingers × 2 segments
+        Bip001 Neck
+          Bip001 Head
+```
+
+Seven things this states outright, and each is a constraint a generator can be held to:
+
+1. **Exactly two legs and exactly two arms.** There is no node from which a third could hang.
+2. **`Clavicle` hangs off `Spine1`, not off the other arm and not off the pelvis.** An arm cannot attach anywhere else.
+3. **`Thigh` hangs off `Pelvis`.** Legs cannot attach to the spine.
+4. **The spine is a single chain** — `Pelvis → Spine → Spine1` — so the torso cannot branch.
+5. **Each limb is a chain of exactly four**, thigh→calf→foot→toe and clavicle→upperarm→forearm→hand.
+6. **A hand has three fingers of two segments each** (`Finger0→01`, `Finger1→11`, `Finger2→21`), so its structure is
+   countable rather than open-ended.
+7. **`Neck → Head` comes off `Spine1`**, and everything on the head — 18 face bones, 14 hair bones — hangs off `Head`.
+
+**And the other 79 nodes are what the body wears, not the body.** By part class:
+
+| part class | nodes | |
+|---|---|---|
+| **skirt** | **32** | **eight independent chains of four** — `skirtF00→03`, `skirtF_L_*`, `skirtF_R_*`, `skirtB*`, `skirtB_L_*`, `skirtB_R_*`, `skirtL*`, `skirtR*` |
+| face | 18 | `eye_L/R`, `bone_eye_D_L/R_01..02`, `Xtra_eye*`, `Xtra_eyeblow*` |
+| hair | 14 | `bone_hair_F_*` (front), `bone_hair_B_L/R_*` (back), `bone_hair_L/R_*` |
+| arm | 8 | |
+| leg | 8 | |
+| weapon + props | 8 | `Bip001_Weapon`, `_Weapon_Acc`, `bone_magazine`, `fire_01/02`, `bone_Icecream` |
+| body axis | 6 | |
+| fingers | 12 | |
+| deform | 2 | `bone L/R ForeArm Twist` |
+| ribbon | 2 | `bone_Ribbon_L/R` |
+| root | 1 | `bone_root` |
+
+**The skirt is the single largest group and it is eight chains, not one.** A drawing engine that models "a skirt" as
+one shape cannot represent this; the rig is saying the garment is eight separately-swinging panels, which is exactly
+what makes it move like cloth.
+
+### What is still open
+
+**This is one character and one rig family.** Airi's skeleton is the reference Biped plus this game's additions, and
+the additions are what a generator would most need (hair split front/back, eight skirt chains, per-finger segments).
+The next steps, in order of what they would settle:
+
+- **The same tree for several characters**, to see which bones are the rig family's constant and which are per-character
+  (the earlier 3D measurement over eight characters already showed the *proportions* are normalised to a tenth of a
+  unit, so the skeleton may be too).
+- **The materials**, which are the other half of layering and are not in this bundle. The MMD precedent is directly
+  relevant and already recorded on this machine: a PMD material slot carries **diffuse + a toon-ramp index + an EDGE
+  flag**, i.e. *the cel-shading outline is a per-material layer*, and for Miku **17 materials with only one textured
+  and `edge=1` on the large body materials**. That is what "layer" means in a 3D moe asset.
+- **The 2D side**, which is the point of the comparison: the Spine lobby rig has **174 slots** and its own bone tree
+  (`Hip → Spine_01_Root → Spine_02_Root → Torso_1 → Torso_11 → Neck_Root → Neck → Head_Root → head`). **Three slots
+  describe the same body the Biped describes in 34 nodes** — and the Spine rig's *slot draw order* is the artist's
+  layering, stated as data.

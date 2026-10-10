@@ -239,6 +239,23 @@ raster: brush.opacity * pressure**curve，逐 dab，然后合成
   - **不牢的部分**：① **标定曲线顶端是噪声** —— 7頭身 raw 7.233、6頭身 raw 7.341，**顺序反了**（1.4% 的差），所以顶端两点不可分；② **半身/全身这条切线是对答案的过滤**，`raw ≥ 5.0` 是我定的；③ 19 张没测出来；④ 1.28 来自五页 16 个人体，够用但不大。
   - 代码 `E:\DaShaoHuo	oolsnimeface\`（`detect.py` / `ratio_measure.py` / `corpus_run.py` / `rig_measure.js`），结果 `E:\DaShaoHuo\cachea-ratio.json`。
   - **原有备注（保留）**：2–6 是硬边界，但**这份材料比计划设想的难，而且原因值得记**。
+- [x] **人体结构、层次及其变化 —— 已开工，第一条结论已拿到**（详见 `RESEARCH-MOE.md`「The body's structure」一节）。
+  - **议题（用户定）**：生成式 AI 生图经常出手脚姿势与层次错误、甚至**3 条以上肢体**，根因疑为**对人体根本性认知不足** —— 没有从 3D 人体出发去理解 2D 人体，或不懂画师作画逻辑。**肢体数量是拓扑性质，层次是绘制顺序性质，而 rig 把两者都显式写着。**
+  - **路线：Library 里已经有**。「本机的 unity 在 mega 上有记录」—— 查到 **`AssetRipper 2.0.0`**（`E:\DaShaoHuo	ools\AssetRipper_2.0.0\AssetRipper.GUI.Free.exe`，Library 记录直接称其为 **the 3D-model route**，并注明**没有批处理模式**）。它 **headless 起 HTTP API，且 `/openapi.json` 全公开**：`POST /LoadFile`、`POST /Export/UnityProject`、`POST /Export/PrimaryContent`、`GET /Assets/Model.glb?Path=`。
+    - **一个坑**：要 `application/x-www-form-urlencoded`；用 multipart 会得到**光秃秃的 415**，配一句 *"The path must be included in the request."* —— **而那句话跟 path 根本无关**。
+    - **另一个库内先例**：`tool-pmd-inspect-py` —— 本机已有一个 **MMD PMD 角色只读解析器**，其结论与本议题直接相关：**材质槽带 diffuse + toon ramp 索引 + EDGE 标志（= 赛璐璐描边是逐材质的图层）**；初音ミク **17 个材质只有 1 个带贴图，大块身体材质 edge=1**。
+  - **已拿到的东西**：导出成真正的 Unity 工程（`ProjectVersion` = **2021.3.56f2**，与 BA 的 bundle 一致），**文件是明文 YAML**。解析 `Airi_Original_Mesh.prefab` 的 `m_Father` 得到**完整骨架树（113 节点）**，而**躯干轴 + 四肢只占 34 个**：
+    ```
+    Bip001 → Pelvis
+       L/R Thigh → Calf → Foot → Toe0                    每条腿 4 节
+       Spine → Spine1
+          L/R Clavicle → UpperArm → Forearm → Hand → 3指×2节
+          Neck → Head
+    ```
+  - **它明写了 7 条可以拿来约束生成器的规则**：① **正好两条腿两条臂**（没有第三个挂点）；② **`Clavicle` 挂在 `Spine1` 上**，不在另一条臂上、也不在骨盆上；③ **`Thigh` 挂在 `Pelvis` 上**；④ **脊柱是单链** `Pelvis→Spine→Spine1`，躯干不能分叉；⑤ 每条肢体正好四节；⑥ **一只手三根指、每根两节**（`Finger0→01`/`Finger1→11`/`Finger2→21`）；⑦ **`Neck→Head` 出自 `Spine1`**，而头上 18 个脸骨 + 14 个头发骨全挂在 `Head` 下。
+  - **另 79 个节点是「身上穿的」，不是身体**：**裙 32（八条独立的四节链！）**、脸 18、头发 14、臂 8、腿 8、武器与道具 8、躯干轴 6、手指 12、形变 2（`ForeArm Twist`）、缎带 2。
+    - **裙是最大的单一组，而且是八条链不是一块** —— 把「裙」建模成一个形状的引擎表达不了这个；**rig 在说：那件衣服是八块独立摆动的片**，这正是它动起来像布的原因。
+  - **未做**：① 多个角色跑同一棵树（看哪些骨是 rig 家族的常量、哪些是逐角色的 —— 之前 8 个角色的**比例**已经统一到十分之一，**骨架可能也是**）；② **材质**（层次的另一半，不在这一个 bundle 里）；③ **2D 侧对照** —— Spine lobby rig 有 **174 个 slot** 和自己的骨骼树，**同样的身体 Biped 用 34 个节点描述、而 Spine 用 174 个 slot**，**且 Spine 的 slot 绘制顺序就是画师的层次，以数据形式写着**。
 - [x] **Q版（chibi / SD）资料 —— 已查并成文**（详见 `RESEARCH-MOE.md`「Q版」一节）。
   - **它不是「把角色画小」，而是一个标准化的形状**：「**Q版變形是均一化、劃一化** —— 變成 Q 版後，性別、臉的大小、身高、體型、年齡的差別**全部消失**，**所有角色看起來都是差不多的尺寸**。6頭身的女孩和8頭身的大叔，都一樣用 2～3頭身來畫。」差异要靠**眼睛 / 髮型 / 服裝**并且**把特征放大**再放回去。
   - **可检查的比例**：**2頭身时身長の半分 = あご**（教科书印刷 65）；**身體和腳 = 1：1**（ClipStudio）；2–4頭身是常规范围；3頭身可以比 2頭身多带一点胸/腰/臀的曲线。
