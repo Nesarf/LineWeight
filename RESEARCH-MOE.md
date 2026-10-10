@@ -68,6 +68,15 @@ pose*.
 **The outline is an attribute, not a layer.** The 2D rigs contain no `*_Outline` slot and the 3D assets have
 `_OutlineTex` = 0 across the whole corpus; the line is what a part is *drawn with*.
 
+**And a correction, because a presence count is not a value.** The materials census found `_AdjustiveFaceShadow` on
+279 of 292 characters and `_AdjustiveHairShadow` on 281, and this section first said *shadow is per-part in this art,
+and the asset says so through how it is parameterised*. **Reading the values instead of the keys: every one of them is
+0.0**, and `_CodeAddColor`, `_CodeMultiplyColor` and `_CodeAddRimColor` are the identity on all 460 materials, and
+`_OutlineZCorrection` is zero in 239 of 243. **The capability is per-part; the value is zero.** What does vary is
+`_OutlineTint` -- 144 distinct values, mostly greys between 0.31 and 0.6 -- so the line's darkness really is per part.
+The same shape as the error already recorded here about a field the renderer ignores being a comment: **declared is
+not used.**
+
 **The parts, counted over 292 characters**: `Body` 285, **`EyeMouth` 282**, `Hair` 281, `Eyebrow` 280, `Face` 279,
 **`Halo` 219**, `Weapon` 208. **The eyes and mouth are their own material in 97% of the cast** -- a face is not one
 layer, in either representation.

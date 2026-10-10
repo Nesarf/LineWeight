@@ -15,6 +15,7 @@ that carry the result into a drawing application.
 `lineweight.raster.Layer` rather than being shadowed here -- two different things under one name is how a caller ends
 up passing the wrong one to something that will not complain.
 """
+from . import cel
 from .core import (BRUSHES, Region, from_record, inked_svg, load_strokes, outline, parse_path, parse_transform,
                     pressures, region_fill, save_strokes, stroke, stroke_record, weld_endpoints)
 
