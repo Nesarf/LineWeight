@@ -24,24 +24,68 @@ what cannot is left out rather than filled in with a plausible number.
 from dataclasses import dataclass, field
 
 from . import body as _body
-from .layers import Stack, layer_errors, PARTS, TIERS
+from .cel import Palette, SHADOW_STEPS
+from .layers import Stack, layer_errors, PARTS, PART_OF_CLASS, TIERS
 
 
 @dataclass
 class Figure:
-    """A body and a layer stack, and the errors in either."""
+    """A body, a layer stack, and the colour specification for its parts.
+
+    **The three belong together because the production hands them over together.** J.C.STAFF's 仕上げ department
+    describes a 色指定表 that names the colour *"for each character part and each shadow"*, and Ghibli's diary
+    describes the animator drawing the boundary and the colour designer specifying what goes inside it. So a figure
+    is not just a skeleton and an order: it is also **which colour each of its parts is, and how many bands of shadow
+    the work is drawn in**.
+
+    **The shadow REGIONS are not here, and that is deliberate.** A region belongs to one drawing of the figure -- a
+    pose, a light direction, a cut -- while the palette and the step count belong to the character. Ghibli's own diary
+    says the amount of shadow 「作品によって様々」, varies by work, and the 色指定表 is per character. So `Shadow`
+    lives with whatever is being drawn and `Palette` lives here.
+    """
     joints: dict = field(default_factory=dict)
     layers: Stack = field(default_factory=Stack)
     name: str = ''
+    #: The 色指定表: one `Palette` per material part, keyed by the part names `layers.PARTS` defines.
+    palettes: dict = field(default_factory=dict)
+    #: How many bands of shadow this work is drawn in. **0 is 影無し**, an ordinary production choice.
+    shadow_steps: int = 1
 
     #: A figure's body is only checked when one is declared, so an empty `Figure` is legal and means "nothing described
     #: yet" rather than "a body with no bones".
     def has_body(self) -> bool:
         return bool(self.joints)
 
+    def palette_for(self, part: str) -> Palette | None:
+        return self.palettes.get(part)
+
+    def palette_for_class(self, draw_class: str) -> Palette | None:
+        """The palette governing a draw layer, looked up through the class-to-material mapping.
+
+        A drawing has twenty draw classes and a colour specification has eight parts -- `back_hair` and `front_hair`
+        are one material, `eye` and `mouth` are another -- so a layer's colour is its part's, not its own.
+        """
+        part = PART_OF_CLASS.get(draw_class)
+        return self.palettes.get(part) if part else None
+
     def errors(self) -> list[str]:
         """Everything wrong, body first. **Empty is the only state in which a figure may be drawn on.**"""
         problems = []
+        if self.shadow_steps not in SHADOW_STEPS:
+            problems.append('shadow_steps must be one of %s, got %r -- 0 is 影無し, an ordinary choice'
+                            % (', '.join(str(n) for n in SHADOW_STEPS), self.shadow_steps))
+        for part, palette in sorted(self.palettes.items()):
+            if part not in PARTS:
+                problems.append('%r is not a part; the vocabulary is %s' % (part, ', '.join(PARTS)))
+                continue
+            # **The step count is a property of the work and the palette is a property of the part, so the two
+            # have to agree.** A figure drawn in two bands whose face carries one shade would leave the second band
+            # with nothing to paint, and that is checkable here rather than at the first missing colour.
+            if palette.steps != self.shadow_steps:
+                problems.append('the %s has %d shade(s) and the figure is drawn in %d band(s)'
+                                % (part, palette.steps, self.shadow_steps))
+            if self.shadow_steps == 0 and palette.steps:
+                problems.append('the %s has shades but the figure is 影無し' % part)
         if self.joints:
             problems.extend(_body.structural_errors(self.joints))
             problems.extend(_body.arity_errors(list(self.joints.items())))
@@ -72,15 +116,22 @@ class Figure:
         return {
             'name': self.name,
             'joints': dict(sorted(self.joints.items())),
-            'layers': [{'name': l.name, 'tier': l.tier, 'part': l.part, 'casts_for': l.casts_for}
-                       for l in self.layers.layers],
+            'layers': [{'name': l.name, 'tier': l.tier, 'part': l.part, 'casts_for': l.casts_for,
+                        'outline': l.outline} for l in self.layers.layers],
+            'shadow_steps': self.shadow_steps,
+            'palettes': {part: {'lit': list(p.lit), 'shades': [list(s) for s in p.shades]}
+                         for part, p in sorted(self.palettes.items())},
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Figure':
-        f = cls(joints=dict(d.get('joints', {})), name=d.get('name', ''))
+        f = cls(joints=dict(d.get('joints', {})), name=d.get('name', ''),
+                shadow_steps=int(d.get('shadow_steps', 1)))
         for row in d.get('layers', []):
-            f.layers.add(row['name'], row['tier'], row.get('part', ''), row.get('casts_for', ''))
+            f.layers.add(row['name'], row['tier'], row.get('part', ''), row.get('casts_for', ''),
+                         row.get('outline', True))
+        for part, p in (d.get('palettes') or {}).items():
+            f.palettes[part] = Palette(lit=tuple(p['lit']), shades=[tuple(s) for s in p.get('shades', [])])
         return f
 
 
@@ -117,6 +168,13 @@ def describe(figure: Figure) -> str:
     lines.append('   layers: %d in %d tiers, parts %s'
                  % (len(figure.layers.layers), len({l.tier for l in figure.layers.layers}),
                     ', '.join(sorted(figure.parts())) or 'none'))
+    lines.append('   shadow: %s' % ('影無し (no shadow)' if figure.shadow_steps == 0
+                                    else '%d band(s)' % figure.shadow_steps))
+    if figure.palettes:
+        lines.append('   palette: %s' % ', '.join('%s %d shade(s)' % (p, v.steps)
+                                                  for p, v in sorted(figure.palettes.items())))
+    else:
+        lines.append('   palette: not specified')
     problems = figure.errors()
     if problems:
         lines.append('   %d problem(s):' % len(problems))

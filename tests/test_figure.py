@@ -111,3 +111,79 @@ def test_what_the_drawing_actually_used_is_reported():
     p.add_stroke(a_record(), layer='torso')
     p.add_stroke(a_record(), layer='front_hair')
     assert p.layers_in_use() == {'torso': 2, 'front_hair': 1}
+
+
+# ------------------------------------------------------------------------------------------------------------
+# The figure carries the colour specification, because the production hands the three over together.
+
+def test_a_figure_carries_the_colour_specification_for_its_parts():
+    """J.C.STAFF's 仕上げ department describes a 色指定表 naming the colour *"for each character part and each
+    shadow"*, and Ghibli's diary has the animator draw the boundary and the colour designer specify what goes inside
+    it. So the specification belongs to the character, not to the drawing."""
+    from lineweight import cel
+    f = figure.standard()
+    assert f.palettes == {}, 'nothing is specified until someone specifies it'
+    assert f.shadow_steps == 1
+    f.palettes['face'] = cel.Palette(lit=(240, 225, 215), shades=[(190, 180, 205)])
+    assert f.errors() == [], f.errors()
+
+
+def test_the_step_count_is_the_works_and_the_shades_are_the_parts_and_they_must_agree():
+    """**The check that makes the two worth having together.** A figure drawn in two bands whose face carries one
+    shade would leave the second band with nothing to paint, and that is caught here rather than at the first missing
+    colour."""
+    from lineweight import cel
+    f = figure.standard()
+    f.palettes['face'] = cel.Palette(lit=(240, 225, 215), shades=[(190, 180, 205)])
+    f.shadow_steps = 2
+    problems = f.errors()
+    assert any('the face has 1 shade(s) and the figure is drawn in 2 band(s)' in p for p in problems), problems
+
+
+def test_a_shadowless_work_and_a_part_with_shades_are_inconsistent():
+    """影無し is an ordinary production choice, so declaring it is legal -- and a palette with shades under it is
+    then a contradiction rather than a preference."""
+    from lineweight import cel
+    f = figure.standard()
+    f.shadow_steps = 0
+    f.palettes['face'] = cel.Palette(lit=(240, 225, 215), shades=[(190, 180, 205)])
+    problems = f.errors()
+    assert any('has shades but the figure is 影無し' in p for p in problems), problems
+
+    bare = figure.standard()
+    bare.shadow_steps = 0
+    bare.palettes['face'] = cel.Palette(lit=(240, 225, 215))
+    assert bare.errors() == [], bare.errors()
+
+
+def test_a_part_outside_the_vocabulary_is_refused():
+    from lineweight import cel
+    f = figure.standard()
+    f.palettes['tail'] = cel.Palette(lit=(1, 2, 3))
+    assert any('is not a part' in p for p in f.errors()), f.errors()
+
+
+def test_the_palette_is_looked_up_through_the_class_to_material_mapping():
+    """**A drawing has twenty-one draw classes and a colour specification has eight parts.** `back_hair` and
+    `front_hair` are one material, `eye` and `mouth` are another -- so a layer's colour is its part's, not its own,
+    and asking for one by draw class has to go through the mapping."""
+    from lineweight import cel
+    f = figure.standard()
+    f.palettes['hair'] = cel.Palette(lit=(200, 180, 160), shades=[(150, 140, 165)])
+    assert f.palette_for_class('back_hair') is f.palettes['hair']
+    assert f.palette_for_class('front_hair') is f.palettes['hair']
+    assert f.palette_for_class('torso') is None, 'the body has no palette in this figure'
+    assert f.palette_for_class('scenery') is None, 'a scene element belongs to no part'
+
+
+def test_the_specification_survives_a_round_trip():
+    from lineweight import cel
+    f = figure.standard()
+    f.shadow_steps = 2
+    f.palettes['face'] = cel.Palette(lit=(240, 225, 215), shades=[(190, 180, 205), (150, 145, 170)])
+    f.palettes['hair'] = cel.Palette(lit=(200, 180, 160), shades=[(150, 140, 165), (110, 105, 130)])
+    back = figure.Figure.from_dict(f.to_dict())
+    assert back.shadow_steps == 2
+    assert sorted(back.palettes) == ['face', 'hair']
+    assert back.palettes['face'].colour_for(2) == (150, 145, 170)
+    assert back.errors() == [], back.errors()

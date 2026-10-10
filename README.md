@@ -408,6 +408,21 @@ generator with the first and not the second produces a correct body wearing noth
 first, a pile of layers with three arms.** This game ships both halves for the same character, and so does this
 library now.
 
+**And a figure also carries its colour specification**, because the production hands the three over together:
+J.C.STAFF's 仕上げ department describes a 色指定表 naming the colour *"for each character part and each shadow"*.
+
+```python
+from lineweight import cel
+figure.palettes['face'] = cel.Palette(lit=(240, 225, 215), shades=[(190, 180, 205)])   # 通常色 / 1影色
+figure.shadow_steps = 1        # 0 is 影無し, an ordinary production choice
+figure.errors()                # the band count and the shade counts have to agree
+```
+
+**The shadow REGIONS are not on the figure and that is deliberate.** A region belongs to one drawing -- a pose, a
+light direction, a cut -- while the palette and the band count belong to the character. Ghibli's diary says the
+amount of shadow 「作品によって様々」, varies by work, and the 色指定表 is per character. So `cel.Shadow` travels
+with whatever is being drawn and `cel.Palette` lives on the figure.
+
 ## The surface
 
 `grain` on a brush says how much a medium **shows** the tooth. A `Paper` says what the tooth **is** — without it,
