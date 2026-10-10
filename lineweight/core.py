@@ -1803,6 +1803,10 @@ def main() -> int:
     parser.add_argument('--scale', type=float, default=1.0, help='with --psd: pixels per drawing unit')
     parser.add_argument('--paper', default='', metavar='NAME',
                         help='with --render: the surface to draw on, e.g. smooth, drawing, rough, canvas')
+    parser.add_argument('--check-body', default='', metavar='FILE',
+                        help='validate a proposed body: a JSON object of joint -> parent, against the rig')
+    parser.add_argument('--check-layers', default='', metavar='FILE',
+                        help='validate a proposed layer stack: a JSON list of {name, tier, part, casts_for}')
     parser.add_argument('--xfl', default='', metavar='XFL', help='write the demo sheet as XFL for Animate')
     parser.add_argument('--render', default='', metavar='PROJECT',
                         help='render a project file to an image; combine with --stage or --upto')
@@ -1848,6 +1852,38 @@ def main() -> int:
         return check_report(args.check, scale=args.scale)
     if args.log:
         return log_report(args.log, rewind_to=args.rewind)
+    if args.check_body:
+        # **The check exists so a generator can be held to it.** A described body either has the rig's topology or
+        # it does not, and "three arms" is a fact about a parent map rather than about a picture.
+        import json
+        from .body import structural_errors, arity_errors, JOINT_PARENT
+        joints = json.load(open(args.check_body, encoding='utf-8'))
+        problems = structural_errors(joints) + arity_errors(list(joints.items()))
+        if not problems:
+            print('%s: the body matches the rig -- %d joints, two arms, two legs, one spine'
+                  % (args.check_body, len(joints)))
+            return 0
+        print('%s: %d problem(s)' % (args.check_body, len(problems)))
+        for p in problems:
+            print('   ' + p)
+        return 1
+
+    if args.check_layers:
+        import json
+        from .layers import Stack, layer_errors
+        raw = json.load(open(args.check_layers, encoding='utf-8'))
+        stack = Stack()
+        for row in raw:
+            stack.add(row['name'], row['tier'], row.get('part', ''), row.get('casts_for', ''))
+        problems = layer_errors(stack)
+        if not problems:
+            print('%s: the layer stack is ordered like the rig -- %d layers' % (args.check_layers, len(stack.layers)))
+            return 0
+        print('%s: %d problem(s)' % (args.check_layers, len(problems)))
+        for p in problems:
+            print('   ' + p)
+        return 1
+
     if args.audit:
         return audit_report(args.audit, out=args.out, stage=args.stage, upto=args.upto,
                             pixels=args.pixels, zoom=args.zoom)

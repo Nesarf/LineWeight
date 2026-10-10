@@ -338,6 +338,40 @@ difference between outer and inner line width?* — with the library's own measu
 refuses**, because putting every stroke in `silhouette` is a real choice: the convention names it as the chibi and
 sticker look, deliberate rather than accidental. What must not happen is that it is silent.
 
+## The body, and the layers
+
+Two facts a drawing can be held to, both read off the rigs Blue Archive ships for the same character rather than
+guessed at.
+
+**The body is a constant.** Across fourteen characters with a 3D model, **thirteen have the identical body bone set
+-- 34 names, including twelve finger bones** -- while total node count runs from 102 to 526. So the body is one spec
+and the per-character difference is the costume worn on it. `lineweight/body.py` carries that table and two checks:
+
+    python -m lineweight --check-body body.json
+    # body.json is a JSON object of joint -> parent
+
+- **by name**: the right parents, complete chains, no invented joints, no cycles, and a limb count that is wrong in
+  **either** direction at the pelvis, chest and hand;
+- **without names at all**, which is the one that works on something a generator produced: `arity_profile` compares
+  the *shape* of the tree. **The reference branches 3/3/3 at pelvis, chest and hand** — a fourth child at the chest is
+  a third arm, whatever the joints are called.
+
+**The layers are ordered, and the order is stored.** The 2D rig is **174 slots and Spine keeps them in draw order**:
+`BG → SakuraTree → Flower → Handkerchief_Shadow → Handkerchief → Airi_Shadow → TreeShadow → …`, i.e. background,
+scenery, the painting's own cast shadows, and only then the character. And the 3D asset gives every part its own
+`_OutlineTint` and `_Adjustive…Shadow`, so outline and shadow are properties of the part.
+
+    python -m lineweight --check-layers layers.json
+    # layers.json is a JSON list of {name, tier, part, casts_for}
+
+It catches a tier out of order, **a cast shadow drawn after the thing casting it** (measured: the shadow is the lower
+slot), a part with no outline layer, and a part split across two tiers.
+
+**Which half was missing.** The 3D rig says what a body *is*; the 2D rig says what a drawing is *made of*. **A
+generator with the first and not the second produces a correct body wearing nothing; with the second and not the
+first, a pile of layers with three arms.** This game ships both halves for the same character, and so does this
+library now.
+
 ## The surface
 
 `grain` on a brush says how much a medium **shows** the tooth. A `Paper` says what the tooth **is** — without it,
