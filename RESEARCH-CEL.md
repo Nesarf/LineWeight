@@ -208,3 +208,35 @@ highlight takes a power** (UTS2 uses `pow(abs(spec), exp2(lerp(11, 1, _HighColor
 linear expression for the mask); and there is **no verifiable "light from upper-left at 45°" studio standard** -- what
 is documented is that the direction is fixed per cut, drawn as an arrow in the layout (Yonebayashi). UTS2's shipped
 offset is `_Offset_Y = 0.09, _Offset_X = -0.05`, i.e. steep and slightly left, not 45°.
+
+---
+
+## The page's images, and the route that worked
+
+The wiki is behind a JavaScript challenge and its API refuses unauthenticated calls, but **the image host is not**:
+`storage.moegirl.org.cn` answers a plain proxied request. So the list came from the saved page and the bytes came from
+the host -- neither a browser nor cache archaeology was needed.
+
+**109 images referenced; 104 retrieved (79 MB)** into `E:\DaShaoHuo\downloads\moegirl-cel-images\` with a
+`manifest.json` carrying each one's size, format and digest:
+
+| | count | how |
+|---|---|---|
+| the article's worked examples | **47** | resolved from `File:` page names |
+| artist avatars | **57** | direct host URLs |
+
+**The `File:` ones needed one idea.** Those are wiki pages, so fetching them returns HTML. But **MediaWiki hashes the
+filename into the storage path** -- `md5(name)[0] / md5(name)[0:2] / name` -- and the rule was **verified against a
+known-good URL before being used for the other 46**. The alternative was parsing 47 pages for a `src` attribute, and
+the hash is both simpler and checkable.
+
+**Two of my own mistakes on the way, both caught by counting:**
+
+* naming the file after the URL's last segment **made all 62 avatars overwrite each other**, because every avatar URL
+  ends in `latest.png`. It left exactly one file and the count said so; the account id is the segment before it.
+* a filter that kept URLs containing `/File:` and then excluded names *starting with* `File:` -- which is all of them,
+  since the last path segment **is** `File:NAME`. It reported zero entries and downloaded nothing.
+
+Also worth recording as a real negative: **Chrome's HTTP cache holds 106 images for the session but cannot be
+attributed.** The entry bodies carry no URL and the index is a binary format, so the images are there and unusable
+without a mapping. That is why the host route matters even when a browser already has the page open.
