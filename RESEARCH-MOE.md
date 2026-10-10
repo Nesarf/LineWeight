@@ -1058,3 +1058,61 @@ the initiative began from 「使用2.5D画法且美术实现很没审美」 — 
 that models from 3D SD assets while the drawing wants 6頭身 reference art will produce exactly that mismatch**, and
 the two systems above are what there is to reconcile. It also means the SD rules are not a curiosity here: they are
 half of what this game actually looks like.
+
+## 学園アイドルマスター: what is readable, and one error made while finding out
+
+The Harumi workspace holds a second game's research area, `E:\~Harumi~Desuwa~\gakuen-idolmaster\`, and it is a
+different shape from the Blue Archive one: the APKs and the on-device tree were analysed and **deleted** (the README
+says why — 2.3 GB freed, and all of it re-obtainable from the phone in under a minute), but an **8.7 GB `backup/`**
+and an 84 MB `analysis/` were kept, and the backup turns out to be the game's **downloaded content cache**.
+
+### The cache, and what is in it
+
+`backup/extracted/f/Octo/v1/400/` — **13,820 files, 8.6 GB**, content-addressed: each path is a hex-encoded asset id
+(`523633` → `R63`, `413130303330` → `A10030`) plus an MD5. Magic census over all of it:
+
+| magic | files | size | what it is | readable? |
+|---|---|---|---|---|
+| **`CRID`** | 603 | **4.9 GB** | **CRIWARE USM** — `@SFV` video + `@SFA` audio in the same container | **yes — not encrypted** |
+| `@UTF` | 491 | 80 MB | CRI Atom **cue sheets (ACB)** | via CRI's own library |
+| `AFS2` | 88 | 275 MB | CRI Atom **wave banks (AWB)** | via CRI's own library |
+| mp3 (`ID3`) | 128 | 234 MB | music | yes |
+| **`UnityFS`** | **72** | **253 MB** | **the game's actual Unity asset bundles** | **yes** |
+| *unknown, high entropy* | **~6,900** | **~2.9 GB** | **not identified** | **no** |
+
+**The USM video is unencrypted, and that was checked rather than assumed**: the payload contains **16 MPEG-2 sequence
+headers (`00 00 01 B3`) in the first 8 MB**, so the video stream is plain MPEG and the container only needs a demux.
+That matters because 4.9 GB of this cache is those 603 files, and they are the game's 3D music videos and cutscenes.
+
+**The UnityFS bundles need one setting, and the value came from the APK.** UnityPy refuses them with *"No valid Unity
+version found"*; `data.unity3d`'s own header gives the answer — **`6000.0.77f1`, i.e. Unity 6** — and with
+`UnityPy.config.FALLBACK_UNITY_VERSION` set, all 72 read. Their contents are effects, stage props, UI, VideoClip
+references, and **mob character textures** (`t_mob_school0-normal-0000_bdy_def`,
+`t_mob_female0-normal-0000_bdy_def`). **No idol character meshes and no 1,812-Sprite character art** — the APK's
+`datapack.unity3d`, censused at **1,184,216 objects**, is **almost entirely UI** (252,545 RectTransform, 175,936
+CanvasRenderer, only 434 Texture2D and no character Mesh at all).
+
+### The error, recorded because it is the same one this project keeps meeting
+
+**I concluded from a two-byte magic that ~6,900 unidentified files were gzip, and that was wrong.** The reasoning was:
+`\x1f\x8b` appears in each of the 413 unidentified files over 2 MB. But **the pattern was searched for anywhere in
+2 MB, not at a defined offset, and in high-entropy data a two-byte pattern is expected to occur about 32 times by
+chance.** Decompressing from the first hit returned **zero bytes**, which is what a chance match gives. The files have
+**not** been identified; all that is established is that their heads are high entropy, i.e. **encrypted or behind a
+custom container**.
+
+This is the same shape as the round where a dotted-rule detector read the page heading as part of the figure: *a
+pattern found by search rather than at a defined offset, treated as evidence.* Recorded with the numbers so the next
+attempt starts from "unknown, high entropy" rather than from "it is gzip".
+
+### Where this leaves the two games
+
+| | 2D | 3D | containers |
+|---|---|---|---|
+| **Blue Archive** | **Spine rigs, 660 characters**, lobby bust + battle chibi, 174-slot decomposition | **Biped models, SD ~3頭身**, measured | UnityFS, not encrypted |
+| **学園アイドルマスター** | not found — the APK is UI only | not found in the cache | UnityFS (Unity 6) readable; **USM video readable**; **~2.9 GB unidentified** |
+
+**The genuinely new asset here is the video**: 603 unencrypted USM files, which are the game's 3D performance and story
+footage. For this project that is the interesting half — `RESEARCH-MOE.md` and the video line both care about how a
+moe character *moves*, and until now the only motion reference on this machine was the three videos in the video
+line's own backlog.
