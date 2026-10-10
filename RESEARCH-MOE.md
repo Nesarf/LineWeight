@@ -76,7 +76,7 @@ layer, in either representation.
 
 * **Any joint position.** The rigs give topology; a position would be invented, so there are none in `body.py`.
 * **The order among the floating classes.** Named in `layers` rather than given a position.
-* **Why the renderer disagrees with itself on 37% of marks** (P4, still open).
+* **Why the renderer disagreed with itself on 37% of marks** -- resolved; the export's formula was invented and one stroke's dabs were accumulating. What remains is the stamp model's own spacing-to-coverage coupling, about 22%, which is inherent.
 * **Anything about 学園アイドルマスター** -- paused by instruction, results kept in the section below.
 
 ### Where the evidence and the tools are

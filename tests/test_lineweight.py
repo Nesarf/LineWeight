@@ -411,7 +411,33 @@ def test_grain_belongs_to_the_paper_and_not_to_the_stroke():
 
     smooth, rough = sigma(0.0), sigma(0.7)
     BRUSHES['ink']['grain'] = 0.0
-    assert rough > smooth * 1.5, 'grain did not roughen the line: %.1f -> %.1f' % (smooth, rough)
+    # **The variance ratio is a proxy, and it was calibrated against a compositor that no longer exists.** Under the
+    # old source-over accumulation a pixel's alpha was a blend of every dab that covered it, which added variance on
+    # top of the grain's own; the deposit is now one stamp per stroke, so the grain is a clean single multiplication
+    # and the ratio fell to 1.28. Keeping the 1.5 threshold would have been keeping a number about a different
+    # renderer. What the docstring actually names is *where the tooth lands*, and that is measurable directly.
+    assert rough > smooth, 'grain did not roughen the line: %.1f -> %.1f' % (smooth, rough)
+
+    BRUSHES['ink']['grain'] = 0.7
+    grained = stroke_layer(record, 420, 160, 1.0)
+    BRUSHES['ink']['grain'] = 0.0
+    plain = stroke_layer(record, 420, 160, 1.0)
+    xs = list(range(*core))
+    paper = [grain_at(float(x), 80.0, 0) for x in xs]
+
+    def correlation(a, b):
+        ma, mb = statistics.fmean(a), statistics.fmean(b)
+        num = sum((x - ma) * (y - mb) for x, y in zip(a, b))
+        den = (sum((x - ma) ** 2 for x in a) * sum((y - mb) ** 2 for y in b)) ** 0.5
+        return num / den if den else 0.0
+
+    alpha = [grained.data[(80 * 420 + x) * 4 + 3] for x in xs]
+    flat = [plain.data[(80 * 420 + x) * 4 + 3] for x in xs]
+    # **The paper did not move, so the tooth must land where the paper says it does.** This is the property the test
+    # is named for and it holds far more tightly than a variance ratio ever did.
+    assert correlation(alpha, paper) > 0.5, 'the tooth does not follow the paper: %+.3f' % correlation(alpha, paper)
+    assert abs(correlation(flat, paper)) < 0.2, 'a smooth surface shows tooth structure: %+.3f' % correlation(flat, paper)
+    BRUSHES['ink']['grain'] = 0.0
 
     # and the tooth is a function of *where*, not of how the stroke got there -- which is now true by construction,
     # because the sample is the absolute pixel. What this can assert is the statistical effect, since a pixel's

@@ -51,8 +51,13 @@ def test_absent_profiles_are_exactly_the_old_behaviour():
     brush = BRUSHES['ink']
     expected = [brush['width'] * (p ** brush['curve']) for p in record['pressure']]
     assert stroke_widths(record) == pytest.approx(expected)
-    mean_p = sum(record['pressure']) / len(record['pressure'])
-    assert record_opacity(record) == pytest.approx(brush['opacity'] * (0.55 + 0.45 * mean_p))
+    # **Not the old closed form.** It used to be `opacity * (0.55 + 0.45 * mean_pressure)`, an expression with
+    # nothing behind it: at zero pressure it still returned 55% of the brush's opacity, and measured against the
+    # render it was 1.6x to 2.3x too dark. It is now total ink over outline area, and what this test is named for is
+    # that the number does not come from the profiles.
+    absent = record_opacity(record)
+    assert 0.0 < absent < brush['opacity']
+    assert record_opacity(dict(record, width_profile=[], alpha_profile=[])) == pytest.approx(absent)
     assert not collapses_alpha(record)
 
 
@@ -130,8 +135,13 @@ def test_the_brush_opacity_is_still_the_medium():
     record = stroke_record([(20, 60), (90, 30), (160, 80)], 'wash', seed=3)
     full = dict(record, alpha_profile=[1.0] * len(record['pressure']))
     assert BRUSHES['wash']['opacity'] < 0.5
-    # the exact statement: a full profile times the medium's opacity is the medium's opacity
-    assert record_opacity(full) == pytest.approx(BRUSHES['wash']['opacity'])
+    # **The medium is still a factor, stated as a ratio rather than as an absolute.** A full profile used to export at
+    # exactly the brush's opacity; it now exports at the mean of what the renderer lays down, which is the brush's
+    # opacity reduced by the stamp's own soft edge and taper. What must not change is that the profile *scales* the
+    # medium rather than replacing it, and that is what this reads.
+    assert record_opacity(full) > record_opacity(record)
+    assert record_opacity(full) < BRUSHES['wash']['opacity']
+    assert record_opacity(full) / record_opacity(record) > 1.5
     ink, _ = ink_and_shape(a_layer(full))
     plain, _ = ink_and_shape(a_layer(record))
     assert ink > plain, 'the profile should raise a wash toward its medium opacity'
@@ -154,16 +164,18 @@ def test_a_varying_alpha_is_collapsed_by_the_vector_export_and_that_is_detectabl
 
     fading = dict(record, alpha_profile=[1.0 - 0.8 * i / (n - 1) for i in range(n)])
     assert collapses_alpha(fading)
-    # the mean of the profile, times the medium's opacity -- ink's is 1.0 so the profile's mean is the whole story
-    assert record_opacity(fading) == pytest.approx(sum(fading['alpha_profile']) / n)
-    # the mean is what a flat profile of the same average would give -- the export is not wrong, it is lossy
-    flat = dict(record, alpha_profile=[record_opacity(fading)] * n)
-    assert record_opacity(flat) == pytest.approx(record_opacity(fading))
+    # **Monotone in the profile**, which is the property the collapse rests on: a fade must export lighter than a
+    # full profile, and darker than a heavy fade. The absolute value is the render's own mean and is asserted where it
+    # belongs -- in `test_the_vector_export_carries_what_the_render_produces`.
+    assert record_opacity(fading) < record_opacity(dict(record, alpha_profile=[1.0] * n))
+    assert record_opacity(fading) > record_opacity(dict(record, alpha_profile=[0.2] * n))
+    # the export is lossy rather than wrong: two profiles with the same shape give the same single number
+    same = dict(record, alpha_profile=list(fading['alpha_profile']))
+    assert record_opacity(same) == pytest.approx(record_opacity(fading))
 
     # a constant profile is not a loss and must not be reported as one
     constant = dict(record, alpha_profile=[0.5] * n)
     assert not collapses_alpha(constant)
-    assert record_opacity(constant) == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------------------- through the document
@@ -186,3 +198,53 @@ def test_both_profiles_survive_the_project_file(tmp_path):
     assert len(profiled.geometry['alpha_profile']) == n
     assert collapses_alpha(profiled.geometry)
     assert stroke_widths(profiled.geometry) == pytest.approx([4.0] * n)
+
+
+def test_the_vector_export_carries_what_the_render_produces():
+    """**P4, and the number the whole argument was about.** `record_opacity` exists so a vector export can carry one
+    number for a stroke; the render places individual dabs. They disagreed by a ratio of 1.61 to 1.95 depending on the
+    brush -- so no constant correction existed, and the two were modelling different things.
+
+    **The comparison is total ink, not a mean over pixels**, and that is a correction this test needed. A mean over
+    the covered pixels is *not a property of the record*: with the smallest brush the covered count moved by 36%
+    between two canvas offsets, because a one-pixel radius sampled on a pixel grid depends on where the dab centres
+    fall -- `fine` measured 0.5028 in one frame and 0.6030 in another for the same stroke. A sum of coverage is an
+    integral and an area is exact, so ink over area is stable and is what the export carries.
+    """
+    import math
+
+    from lineweight.raster import PAPERS, stroke_layer
+    from lineweight.core import record_opacity, stroke_record
+
+    # **How closely the two can agree, measured rather than chosen.** The limit is the rasteriser sampling a
+    # soft-edged stamp on a pixel grid: at the three wider brushes this holds to 0.1%, and at `fine` -- a two-pixel
+    # width, a one-pixel radius -- the same stroke's total ink moved 13% between two canvas offsets. That is the
+    # accuracy of the renderer at that size, not a second model of the brush, and it is where the bound comes from.
+    TOLERANCE = {'fine': 0.15, 'ink': 0.03, 'pencil': 0.03, 'wash': 0.03}
+    for brush in ('fine', 'ink', 'pencil', 'wash'):
+        for points in ([(60 + i * 7.0, 200 + 60 * math.sin(i / 6.0)) for i in range(40)],
+                       [(40 + i * 9.0, 300.0) for i in range(35)]):
+            record = stroke_record(points, brush, seed=5)
+            outline = core_outline(record)
+            area = polygon_area(outline)
+            layer = stroke_layer(record, 500, 500, paper=PAPERS['default'])
+            data = layer.data
+            ink = 0.0
+            for i in range(3, len(data), 4):
+                ink += data[i] / 255.0
+            # the export's number, applied to the stroke's own area, must carry the render's total ink
+            assert record_opacity(record) * area == pytest.approx(ink, rel=TOLERANCE[brush]), (
+                '%s carried %.1f of ink against the rendered %.1f'
+                % (brush, record_opacity(record) * area, ink))
+
+
+def core_outline(record):
+    from lineweight.core import outline_polygon
+    return outline_polygon(record)
+
+
+def polygon_area(points):
+    total = 0.0
+    for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
+        total += x1 * y2 - x2 * y1
+    return abs(total) / 2.0

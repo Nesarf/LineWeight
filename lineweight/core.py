@@ -1076,25 +1076,59 @@ def from_record(record: dict) -> tuple[str, float]:
 def record_opacity(record: dict) -> float:
     """The one opacity a *vector* export can carry for a stroke.
 
-    **A profile, reduced to its mean, because that is all SVG has.** A filled path takes one `fill-opacity`; there is
-    no way to vary it along a curve, any more than there is a way to vary the width -- which is why the width becomes
-    an outline and this cannot become anything. So a record with an `alpha_profile` exports at its mean here, and the
-    profile itself survives only in the raster and PSD paths, where each dab is placed individually.
+    **A profile reduced to a single number, because that is all SVG has.** A filled path takes one `fill-opacity`;
+    there is no way to vary it along a curve, any more than there is a way to vary the width -- which is why the width
+    becomes an outline and this cannot become anything. Stated rather than silent: a caller who wrote a fade into a
+    record and got a flat export back would otherwise have no way to tell that from a fade too subtle to see, and
+    `collapses_alpha` is the detectable form.
 
-    Stated rather than silent: a caller who wrote a fade into a record and got a flat export back would otherwise have
-    no way to tell that from a fade that was too subtle to see. `collapses_alpha` is the detectable form.
+    **The number is total ink over outline area**, and getting to that took three wrong versions:
+
+    1. The first returned the bare mean of an `alpha_profile`, so a wash with a full profile exported at 1.0 while it
+       rendered at 0.35.
+    2. The second added the brush's opacity and kept a second, invented formula for the no-profile case --
+       `opacity * (0.55 + 0.45 * mean_pressure)`. **Nothing derives that 0.55 and it bottoms out there**, so a stroke
+       drawn at *zero* pressure still exported at 55% of the brush's opacity. Measured against the render it was
+       **1.6x to 2.3x too dark** across the four brushes.
+    3. The third measured the mean alpha over the pixels the deposit covers, and **it was not a property of the
+       record**: with the smallest brush the count of covered pixels moved by 36% between two canvas offsets, because
+       a 1-pixel radius sampled on a pixel grid depends on where the dab centres fall. `fine` measured 0.5028 in one
+       frame and 0.6030 in another for the same stroke.
+
+    **Ink over area is what survives that**, because a sum of coverage is an integral and an area is exact: it is the
+    alpha at which filling the stroke's own outline carries the same total ink as the renderer's dabs. Measured at
+    three sub-pixel offsets, the three wider brushes hold to 0.2% and `fine` to a few per cent -- and that residual is
+    the rasteriser's accuracy at a two-pixel width, not a second model of the brush.
+
+    **It rasterises, which is why the import is local.** `raster` imports `core`, so `core` cannot import it at the
+    top; and the alternative -- a closed form for the mean of overlapping soft-edged stamps under a taper -- is that
+    second model again, which is what went wrong twice above.
     """
-    brush = BRUSHES[record['brush']]
-    profile = record.get('alpha_profile')
-    if profile:
-        # **The brush's opacity is the medium and still applies**, exactly as it does per dab in `raster.stroke_layer`.
-        # The first version of this returned the bare mean of the profile, so a wash with a full profile exported at
-        # 1.0 while it rendered at 0.35 -- two renderers of one record disagreeing, which is the failure this project
-        # keeps meeting and a test caught within the minute.
-        return brush['opacity'] * (sum(float(a) for a in profile) / len(profile))
-    ps = [float(p) for p in record['pressure']]
-    mean_p = sum(ps) / len(ps) if ps else 1.0
-    return brush['opacity'] * (0.55 + 0.45 * mean_p)
+    from . import raster
+    points = outline_polygon(record)
+    if len(points) < 3:
+        return 0.0
+    area = 0.0
+    for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
+        area += x1 * y2 - x2 * y1
+    area = abs(area) / 2.0
+    if area <= 0:
+        return 0.0
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    margin = 2.0
+    left, top = min(xs) - margin, min(ys) - margin
+    width = int(math.ceil(max(xs) - left + margin)) + 1
+    height = int(math.ceil(max(ys) - top + margin)) + 1
+    shifted = dict(record)
+    shifted['centre'] = [(x - left, y - top) for x, y in record['centre']]
+    # **The identity paper**, so what is measured is the deposit and not a surface.
+    layer = raster.stroke_layer(shifted, width, height, paper=raster.PAPERS['default'])
+    data = layer.data
+    ink = 0.0
+    for i in range(3, len(data), 4):
+        ink += data[i] / 255.0
+    return min(1.0, ink / area)
 
 
 def collapses_alpha(record: dict) -> bool:
