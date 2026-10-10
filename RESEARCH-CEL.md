@@ -240,3 +240,57 @@ the hash is both simpler and checkable.
 Also worth recording as a real negative: **Chrome's HTTP cache holds 106 images for the session but cannot be
 attributed.** The entry bodies carry no URL and the index is a binary format, so the images are there and unusable
 without a mapping. That is why the host route matters even when a browser already has the page open.
+
+---
+
+## The boundary width in real cel illustrations, with a calibrated instrument and a control
+
+**332 works tagged アニメ塗り / セルシェーディング**, and **229 tagged 厚塗り** as the control that decides whether the
+instrument measures the art or the file format. Both from pixiv: the public search endpoint needs no session, and the
+thumbnail path is the full path with a size prefix stripped, so `_master1200` is reachable with a Referer.
+
+### The instrument had to be calibrated first, and the first version was wrong
+
+It measures how many pixels a **colour** boundary takes to cross -- colour and not luminance, because a shadow
+boundary is a change of hue and two colours can differ a lot there while barely differing in brightness.
+
+**The first version measured the wrong thing.** It walked outward from the gradient's peak while the *per-pixel*
+difference stayed above a fraction of that peak -- **which measures the derivative, not the step.** On a wide ramp
+each pixel's difference is small, so the walk stopped almost at once: calibration read a true one-pixel edge as 2 and
+a painted 20-pixel ramp as **2 as well**. Measuring the colour's own crossing of the plateau-to-plateau range instead
+gives 1, 3, 7 and 17 for painted widths of 0, 2, 6 and 20 px.
+
+**And the JPEG floor is measured rather than assumed.** A synthetic hard edge reads **1.0 px as a PNG and 5.0 after
+JPEG at quality 95**, 6.0 at 85, 7.5 at 50. **So on these files "hard" means "at the floor", and nothing below 5 px
+can be resolved at all.**
+
+### The numbers
+
+| | n | median transition | p25 | p75 |
+|---|---|---|---|---|
+| **アニメ塗り** (cel) | 332 | **7.0 px** | 5.0 | 9.0 |
+| **厚塗り** (thick paint) | 229 | **9.0 px** | 7.0 | 11.0 |
+
+Images by their median width, cel corpus: **33% at or below the 5 px floor**, 32% at 6-8, 29% at 9-12, 5% above 12.
+
+### What this does and does not establish
+
+**The instrument separates the two corpora** -- 7 against 9, and the quartiles do not overlap much -- **so it is
+measuring the art and not only the compression.**
+
+**But the separation is 2 px and the floor is 5 px.** The difference is real and it sits on a pedestal more than twice
+its size. **At web resolution a cel boundary and a thick-paint one are within 2 px of each other**, which is beneath
+what a viewer resolves at that size; the honest statement is that the measurement supports *the cel boundary is at or
+just above the compression floor* and **not** that it has a precise width.
+
+**And it measures every strong colour boundary, not the shadow boundary** -- line art, highlights, a character against
+a background and a frame are all in the same distribution. Separating them needs a classifier this project does not
+have.
+
+**What it does settle** is the thing the interface was built on: a cel shadow's boundary is a **step**, the corpus's
+median sits 2 px above a floor imposed by JPEG, and a third of the edges are *at* that floor. So `cel.ramp`'s hard
+default is right and `FEATHER`'s job is to be small -- which is what the measured 0.1 already is.
+
+**The files are copyrighted artwork kept locally for measurement only**, in
+`E:\DaShaoHuo\downloads\pixiv-cel\` and `pixiv-thick\`, under the same rule this project applies to the game assets
+and the book scans. Nothing from either directory is committed.
