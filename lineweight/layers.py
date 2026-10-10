@@ -178,66 +178,96 @@ def layer_errors(stack: 'Stack') -> list[str]:
     return problems
 
 
-#: **The draw order the rigs agree on, and what they do not.** Sixty lobby rigs were dumped in slot order and every
-#: draw class compared with every other; these are the pairs that came out the same way in **every rig that saw both
-#: members**.
+#: **The draw order, as the pairs that hold, with the evidence for each.**
 #:
-#: **Sixty rigs, not nine, and the number matters.** The first version of this table was built from nine rigs and had
-#: 99 pairs in it. Run against sixty, **66 of those 99 were contradicted** -- including most of the `shadow` family,
-#: which turned out not to be a class at all: `Handkerchief_Shadow` sits at slot 17 and `F_Hair_Shadow_06` at 124, so
-#: grouping them made the class contradict itself. A `*_Shadow` slot now takes the class of what it shadows, and the
-#: relation *a shadow precedes its caster* is checked separately.
+#: Sixty-three lobby rigs were dumped in slot order, every draw class compared with every other, and a pair is kept
+#: only if it **co-occurred in at least ten rigs and went the same way in at least ninety per cent of them**. The rate
+#: and the sample are kept in `ORDER_EVIDENCE` rather than thrown away, because the numbers are the whole claim.
 #:
-#: The rows worth reading, now that only the survivors are here: **`background`, `scenery` and `halo` come before the
-#: character's parts** -- the halo is drawn *behind* the character, the same halo that inflated every bounding box
-#: attempted earlier. **`back_hair` before `front_hair`**, which is why hair is two layers. **`eye` before `face`
-#: before `eyebrow`**. And **`mouth` before `overlay`**.
+#: **How this table got here is worth more than the table.** It was first built from nine rigs as "the pairs that are
+#: the same in every rig that saw both" and held 99. Widened to sixty with a better classifier, the determined set
+#: fell to 73 and then **collapsed to two**. The pairs had not been determined; they had been **unobserved** -- a weak
+#: classifier meant most classes rarely co-occurred, so a handful of pairs were "seen" in a handful of rigs and the
+#: rest never met at all. **The binary test was the trap**, and a rate with a minimum sample is what replaced it.
+#:
+#: What survives reads like the art: **`scenery` before everything, `halo` before the character** -- the halo is drawn
+#: behind, the same halo that inflated every bounding box attempted earlier -- **`torso` and `neck` before the face**,
+#: **`eye` before `face` before `eyebrow`**, and the arms, legs and hair all before the eyebrow.
 ORDER_CONSTRAINTS: tuple[tuple[str, str], ...] = (
-    ('back_hair', 'front_hair'), ('back_hair', 'overlay'), ('background', 'arm'),
-    ('background', 'back_hair'), ('background', 'collar'), ('background', 'eye'),
-    ('background', 'eyebrow'), ('background', 'face'), ('background', 'front_hair'),
-    ('background', 'halo'), ('background', 'hand'), ('background', 'head'),
-    ('background', 'leg'), ('background', 'neck'), ('background', 'overlay'),
-    ('background', 'prop'), ('background', 'skirt'), ('background', 'torso'),
-    ('collar', 'eyebrow'), ('collar', 'mouth'), ('eye', 'eyebrow'),
-    ('eye', 'face'), ('halo', 'back_hair'), ('halo', 'collar'),
-    ('halo', 'eyebrow'), ('halo', 'face'), ('halo', 'front_hair'),
-    ('halo', 'hand'), ('halo', 'head'), ('halo', 'mouth'),
-    ('halo', 'neck'), ('halo', 'overlay'), ('halo', 'skirt'),
-    ('head', 'eyebrow'), ('head', 'face'), ('head', 'mouth'),
-    ('leg', 'front_hair'), ('mouth', 'overlay'), ('neck', 'eyebrow'),
-    ('neck', 'face'), ('other', 'arm'), ('other', 'eye'),
-    ('other', 'eyebrow'), ('other', 'face'), ('other', 'front_hair'),
-    ('other', 'hand'), ('other', 'head'), ('other', 'leg'),
-    ('other', 'mouth'), ('other', 'neck'), ('other', 'prop'),
-    ('other', 'skirt'), ('other', 'torso'), ('prop', 'head'),
-    ('prop', 'mouth'), ('scenery', 'back_hair'), ('scenery', 'collar'),
-    ('scenery', 'eyebrow'), ('scenery', 'face'), ('scenery', 'front_hair'),
-    ('scenery', 'halo'), ('scenery', 'hand'), ('scenery', 'head'),
-    ('scenery', 'mouth'), ('scenery', 'neck'), ('scenery', 'overlay'),
-    ('scenery', 'skirt'), ('skirt', 'eyebrow'), ('skirt', 'face'),
-    ('skirt', 'front_hair'), ('skirt', 'head'), ('skirt', 'mouth'),
-    ('torso', 'eyebrow'),
+    ('eye', 'eyebrow'), ('neck', 'eyebrow'), ('scenery', 'hand'),
+    ('halo', 'eyebrow'), ('back_hair', 'eyebrow'), ('halo', 'front_hair'),
+    ('scenery', 'front_hair'), ('back_hair', 'front_hair'), ('scenery', 'eye'),
+    ('scenery', 'halo'), ('scenery', 'arm'), ('halo', 'mouth'),
+    ('scenery', 'mouth'), ('scenery', 'neck'), ('scenery', 'face'),
+    ('scenery', 'head'), ('scenery', 'hair'), ('scenery', 'eyebrow'),
+    ('torso', 'eyebrow'), ('scenery', 'prop'), ('scenery', 'back_hair'),
+    ('scenery', 'torso'), ('torso', 'eye'), ('halo', 'neck'),
+    ('neck', 'eye'), ('scenery', 'overlay'), ('eye', 'face'),
+    ('torso', 'face'), ('neck', 'mouth'), ('torso', 'front_hair'),
+    ('neck', 'face'), ('face', 'eyebrow'), ('hair', 'eyebrow'),
+    ('back_hair', 'mouth'), ('halo', 'eye'), ('torso', 'mouth'),
+    ('halo', 'face'), ('scenery', 'leg'), ('head', 'mouth'),
+    ('neck', 'front_hair'), ('eye', 'mouth'), ('halo', 'head'),
+    ('arm', 'eyebrow'), ('head', 'eyebrow'), ('halo', 'arm'),
+    ('leg', 'eyebrow'),
 )
 
-#: **The classes the rigs only ever place late: each has determined predecessors and no determined successor.**
-#:
-#: This is the shape of what the corpus does not decide, and it is more precise than saying their position is
-#: unknown. Nothing is determined to come *after* an arm, a hand, a face, an eyebrow, the front hair or an overlay --
-#: so **their order among themselves is exactly the part that depends on the pose**: whether a hand is in front of a
-#: face, whether the front hair covers an eye, where the arms hang, what the overlays sit on.
-#:
-#: A draw order is partly a property of the character and partly a property of the drawing, and this list is which
-#: half is which.
-FLOATING: tuple[str, ...] = ('arm', 'eyebrow', 'face', 'front_hair', 'hand', 'overlay')
+#: The sample and the agreement rate behind each constraint: `(rigs that saw both, fraction that agreed)`.
+ORDER_EVIDENCE: dict[tuple[str, str], tuple[int, float]] = {
+    ('eye', 'eyebrow'): (55, 1.00), ('neck', 'eyebrow'): (53, 1.00),
+    ('scenery', 'hand'): (57, 0.98), ('halo', 'eyebrow'): (55, 0.98),
+    ('back_hair', 'eyebrow'): (44, 0.98), ('halo', 'front_hair'): (38, 0.97),
+    ('scenery', 'front_hair'): (38, 0.97), ('back_hair', 'front_hair'): (35, 0.97),
+    ('scenery', 'eye'): (61, 0.97), ('scenery', 'halo'): (61, 0.97),
+    ('scenery', 'arm'): (60, 0.97), ('halo', 'mouth'): (59, 0.97),
+    ('scenery', 'mouth'): (59, 0.97), ('scenery', 'neck'): (59, 0.97),
+    ('scenery', 'face'): (58, 0.97), ('scenery', 'head'): (58, 0.97),
+    ('scenery', 'hair'): (57, 0.96), ('scenery', 'eyebrow'): (55, 0.96),
+    ('torso', 'eyebrow'): (55, 0.96), ('scenery', 'prop'): (52, 0.96),
+    ('scenery', 'back_hair'): (48, 0.96), ('scenery', 'torso'): (61, 0.95),
+    ('torso', 'eye'): (61, 0.95), ('halo', 'neck'): (59, 0.95),
+    ('neck', 'eye'): (59, 0.95), ('scenery', 'overlay'): (59, 0.95),
+    ('eye', 'face'): (58, 0.95), ('torso', 'face'): (58, 0.95),
+    ('neck', 'mouth'): (57, 0.95), ('torso', 'front_hair'): (38, 0.95),
+    ('neck', 'face'): (56, 0.95), ('face', 'eyebrow'): (54, 0.94),
+    ('hair', 'eyebrow'): (51, 0.94), ('back_hair', 'mouth'): (47, 0.94),
+    ('halo', 'eye'): (61, 0.93), ('torso', 'mouth'): (59, 0.93),
+    ('halo', 'face'): (58, 0.93), ('scenery', 'leg'): (43, 0.93),
+    ('head', 'mouth'): (56, 0.93), ('neck', 'front_hair'): (37, 0.92),
+    ('eye', 'mouth'): (59, 0.92), ('halo', 'head'): (58, 0.91),
+    ('arm', 'eyebrow'): (55, 0.91), ('head', 'eyebrow'): (53, 0.91),
+    ('halo', 'arm'): (60, 0.90), ('leg', 'eyebrow'): (40, 0.90),
+}
 
-#: **The classes the rigs only ever place early** -- determined predecessors and no determined predecessor of their
-#: own. Everything else in a drawing sits above these, which is what makes them a floor rather than a layer.
-ANCHORED_BELOW: tuple[str, ...] = ('background', 'scenery')
+#: **How much a pair has to agree before it counts.** Stated rather than buried in the generator, because it is a
+#: judgement and a reader is entitled to disagree with it and re-derive from the raw counts.
+MIN_RIGS = 10
+MIN_RATE = 0.90
+
+
+#: **The drawing's own vocabulary, which is finer than the material's.** A material is `hair`; a drawing has
+#: `back_hair` and `front_hair`, drawn at opposite ends of the stack. A material is `face`; a drawing has `face`,
+#: `eye`, `mouth` and `eyebrow`. **The two vocabularies sit at different levels on purpose** -- eight materials
+#: against 174 slots -- and `Layer.part` takes one of these, because it is the draw order that is being checked.
+DRAW_CLASSES: tuple[str, ...] = (
+    'background', 'scenery', 'shadow', 'halo', 'back_hair', 'hair', 'head', 'torso', 'arm', 'leg', 'skirt',
+    'collar', 'hand', 'prop', 'neck', 'eye', 'face', 'mouth', 'front_hair', 'eyebrow', 'overlay',
+)
+
+#: Which tier each draw class belongs to. The **order** comes from the rigs; the tier is the coarse grouping the
+#: tier check speaks in, and `standard_order` seeds it in as constraints so a derived order satisfies both.
+TIER_OF_CLASS: dict[str, str] = {
+    'background': 'background', 'scenery': 'scenery', 'shadow': 'cast_shadow', 'overlay': 'overlay',
+}
 
 
 def order_errors(stack: 'Stack') -> list[str]:
-    """A proposed stack against the order the rigs agree on."""
+    """A proposed stack against the order the rigs agree on.
+
+    Compares each layer's **draw class**, not its tier and not its material: the tiers are a coarse grouping and the
+    materials are the other vocabulary, while the constraints are between draw classes. Every wrong pair is named
+    with both its layers, so the report says what to swap rather than that something is wrong with the order.
+    """
     problems = []
     index = {}
     for i, layer in enumerate(stack.layers):
@@ -247,23 +277,6 @@ def order_errors(stack: 'Stack') -> list[str]:
         if before in index and after in index and index[before] > index[after]:
             problems.append('%s is drawn after %s, and the rigs draw it before' % (before, after))
     return problems
-
-
-#: **The drawing's own vocabulary, which is finer than the material's.** A material is `hair`; a drawing has
-#: `back_hair` and `front_hair`, drawn at opposite ends of the stack. A material is `face`; a drawing has `face`,
-#: `eye`, `mouth` and `eyebrow`. **The two vocabularies sit at different levels on purpose** -- eight materials
-#: against 174 slots -- and `Layer.part` takes one of these, because it is the draw order that is being checked.
-DRAW_CLASSES: tuple[str, ...] = (
-    'background', 'scenery', 'shadow', 'halo', 'back_hair', 'head', 'torso', 'arm', 'leg', 'skirt',
-    'collar', 'hand', 'prop', 'neck', 'eye', 'face', 'mouth', 'front_hair', 'eyebrow', 'overlay',
-)
-
-
-#: Which tier each draw class belongs to. The **order** comes from the rigs; the tier is the coarse grouping the
-#: tier check speaks in, and `standard_order` seeds it in as constraints so that a derived order satisfies both.
-TIER_OF_CLASS: dict[str, str] = {
-    'background': 'background', 'scenery': 'scenery', 'shadow': 'cast_shadow', 'overlay': 'overlay',
-}
 
 
 def standard_order() -> list[str]:

@@ -1559,3 +1559,55 @@ and `unsatisfiable()` returns nothing.
 predecessor among the measured pairs, so the greedy placed it *before* `front_hair` and `eyebrow`. The tier rule --
 overlays after everything -- is now seeded into the sort as constraints of its own, so a derived order obeys both
 sources.
+
+### The classifier, and the binary test was the trap
+
+78.1% of slots were unclassified, and the reasons were plain once listed: **lowercase** (`neck`, `nose`, `face`,
+`hair_01`, `L_arm_01`, `mouse_01`), **no separator** (`fronthair`, `backhair_`), **event and scene families**
+(`E_buil`, `E_Xmas`, `Intro_curtain`, `S_Street`), **food and liquid props** (`soup`, `oil`, `water`, `drop`),
+accessories (`bracelet`, `button_*`, `clothes_*`) and wings and tails. Normalising first and matching families without
+anchoring on case or separator took it to **14.1%**. Three names remain genuinely unplaceable -- `->`, `L_`, `R_` --
+and they are left as `other` rather than forced somewhere.
+
+**Then the improvement broke the table, which is the finding.**
+
+```
+classifier v1 (78% unclassified)  ->   73 pairs "determined", 232 contested
+classifier v3 (14% unclassified)  ->    2 pairs "determined", 302 contested
+```
+
+**The better the classification, the fewer pairs were determined**, and the reason is that the 73 had not been
+determined at all -- they had been **unobserved**. A weak classifier means most classes rarely co-occur, so a handful
+of pairs were "seen" in a handful of rigs and agreed by luck while the rest never met. **The test -- "the same in
+every rig that saw both" -- was the trap**, because a pair seen twice and agreeing twice passes it.
+
+**What replaced it is a rate with a minimum sample**: a pair counts only if it co-occurred in **ten or more rigs** and
+went the same way in **ninety per cent or more of them**. That gives **52 pairs**, and both numbers are kept in
+`ORDER_EVIDENCE` rather than discarded, because the numbers are the whole claim.
+
+What survives reads like the art:
+
+| pair | rigs | agreement |
+|---|---|---|
+| `eye` before `eyebrow` | 55 | **100%** |
+| `scenery` before `back_hair` | 48 | 96% |
+| `torso` before `eye` | 61 | 95% |
+| `halo` before `neck` | 59 | 95% |
+| `neck` before `eye` | 59 | 95% |
+| `eye` before `face` | 58 | 95% |
+| `face` before `eyebrow` | 54 | 94% |
+| `halo` before `eye` | 61 | 93% |
+
+**`scenery` first, `halo` behind the character, `torso` and `neck` before the face, `eye` before `face` before
+`eyebrow`, and the arms, legs and hair all before the eyebrow.**
+
+#### And one more of my own errors, of a kind worth naming
+
+**`other` is a failure bucket, not a class.** It appeared in six of the fifty-two pairs, and leaving those in was not
+harmless: the sort could never place anything that had to come *after* `other`, so **`eyebrow` -- which had `other`
+and `hair` among its predecessors -- was pushed to the very end, past the overlays.** A derived order that satisfies
+every constraint and puts the eyebrows on top of everything is exactly the kind of thing a check exists to catch, and
+it was caught by the tier rule disagreeing with it. `hair` was a real class the vocabulary was missing and is now in
+`DRAW_CLASSES`; `other` is not a class and the constraints involving it are dropped.
+
+**A bucket in a constraint set is a constraint on nothing.**

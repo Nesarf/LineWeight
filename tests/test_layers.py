@@ -130,17 +130,18 @@ def test_moving_a_layer_breaks_specific_constraints_and_names_them():
     assert layers.order_errors(f.layers) == []
     f.layers.layers.append(f.layers.layers.pop(4))          # back_hair to the very top
     problems = layers.order_errors(f.layers)
-    # **The expectation follows the constraint set, and the set changed.** Rebuilt from 60 rigs instead of 9, the
-    # `back_hair` relations are just these two -- the earlier set's `back_hair before head` did not survive the wider
-    # data. A test asserting five violations here was asserting the old table.
-    assert problems == ['back_hair is drawn after front_hair, and the rigs draw it before',
-                        'back_hair is drawn after overlay, and the rigs draw it before'], problems
+    # **The expectation follows the constraint set, and the set has been rebuilt twice.** It was 99 pairs from nine
+    # rigs, then 73, and now the pairs that co-occurred in ten or more rigs and agreed in ninety per cent of them. A
+    # test asserting particular violations here is asserting the table, so it asserts the shape instead: something is
+    # caught, and the message names both layers.
+    assert problems, 'moving the back hair to the top broke nothing'
+    assert all('back_hair' in p and 'the rigs draw it before' in p for p in problems), problems
 
 
 def test_the_draw_vocabulary_is_finer_than_the_material_one():
-    """Eight materials against twenty draw classes, and the mapping between them is data rather than a guess."""
+    """Eight materials against twenty-one draw classes, and the mapping between them is data rather than a guess."""
     assert len(layers.PARTS) == 8
-    assert len(layers.DRAW_CLASSES) == 20
+    assert len(layers.DRAW_CLASSES) == 21
     assert layers.PART_OF_CLASS['back_hair'] == 'hair'
     assert layers.PART_OF_CLASS['front_hair'] == 'hair'
     assert layers.PART_OF_CLASS['eye'] == 'eye_mouth'
@@ -148,33 +149,50 @@ def test_the_draw_vocabulary_is_finer_than_the_material_one():
     assert layers.PART_OF_CLASS['torso'] == 'body'
 
 
-def test_the_constraint_set_came_from_sixty_rigs_and_says_what_it_could_not_determine():
-    """**The widening is the finding.** The table was first built from nine rigs and held 99 pairs; run against sixty,
-    **66 of those 99 were contradicted**, most of them in the `shadow` family -- which was not a class at all but a
-    *relation*, with `Handkerchief_Shadow` at slot 17 and `F_Hair_Shadow_06` at 124.
-
-    What is left is what every rig agrees on, and the classes with no determined relation are named rather than given
-    a made-up position: **whether a hand is in front of a face, whether the front hair covers an eye and where the
-    arms hang all depend on the pose.**"""
-    assert len(layers.ORDER_CONSTRAINTS) == 73, len(layers.ORDER_CONSTRAINTS)
-    # **The shape of what is not decided, which is sharper than "unknown".** These six are only ever the *later*
-    # element of a determined pair: each has determined predecessors and no determined successor, so their order
-    # among themselves is free -- and that is exactly the pose-dependent part.
-    earlier = {a for a, _ in layers.ORDER_CONSTRAINTS}
-    later = {b for _, b in layers.ORDER_CONSTRAINTS}
-    assert set(layers.FLOATING) <= later
-    assert not (set(layers.FLOATING) & earlier), set(layers.FLOATING) & earlier
-    # and these are the floor: only ever earlier
-    assert set(layers.ANCHORED_BELOW) <= earlier
-    assert not (set(layers.ANCHORED_BELOW) & later), set(layers.ANCHORED_BELOW) & later
-    # a shadow is not a class any more -- it takes the class of what it shadows
-    assert 'shadow' not in earlier and 'shadow' not in later
+def test_every_constraint_carries_its_sample_and_its_rate():
+    """**The numbers are the claim.** A pair is kept only if it co-occurred in ten or more rigs and went the same way
+    in ninety per cent of them, and both numbers are in the data rather than in a comment."""
+    for pair in layers.ORDER_CONSTRAINTS:
+        rigs, rate = layers.ORDER_EVIDENCE[pair]
+        assert rigs >= layers.MIN_RIGS, pair
+        assert rate >= layers.MIN_RATE, pair
+    assert len(layers.ORDER_CONSTRAINTS) == 46
 
 
-def test_one_total_order_satisfies_all_of_them():
+def test_the_failure_bucket_is_not_a_class():
+    """**`other` is the classifier's failure bucket, not a kind of thing**, so nothing may be constrained against it.
+    It appeared in six of the fifty-two majority pairs, and those six were dropped.
+
+    **And leaving an unknown class in the set is not harmless**: the sort could never place anything that had to come
+    after it, so `eyebrow` -- which had `other` and `hair` among its predecessors -- was pushed to the very end, past
+    the overlays. `hair` was a real class the vocabulary was missing and is now in `DRAW_CLASSES`; `other` is not."""
+    sides = {c for pair in layers.ORDER_CONSTRAINTS for c in pair}
+    assert 'other' not in sides
+    assert sides <= set(layers.DRAW_CLASSES), sorted(sides - set(layers.DRAW_CLASSES))
+
+
+def test_one_total_order_satisfies_all_of_them_and_puts_the_overlays_last():
     """`unsatisfiable()` is worth having even when it returns nothing: an earlier version of the sort raised
     `ValueError` claiming the constraints contradict each other, and that was a bug in the sort, not in the data."""
     assert layers.unsatisfiable() == []
     order = layers.standard_order()
     assert order[-1] == 'overlay', 'the tier rule is seeded in, so overlays come last'
     assert order[0] == 'background'
+    assert order.index('eye') < order.index('face') < order.index('eyebrow')
+
+
+def test_the_halo_is_drawn_behind_the_character():
+    """**A fact this project did not have**, and it is the same halo that inflated every bounding box attempted
+    earlier. The evidence is in the data: the rigs place it before the character, and by how much."""
+    order = layers.standard_order()
+    assert order.index('halo') < order.index('back_hair')
+    assert order.index('halo') < order.index('torso')
+    assert layers.ORDER_EVIDENCE.get(('halo', 'neck'), (0, 0))[1] >= 0.9
+
+
+def test_hair_is_two_layers_and_the_back_one_is_behind():
+    """A material is `hair`; a drawing has `back_hair` and `front_hair` at opposite ends of the stack."""
+    order = layers.standard_order()
+    assert order.index('back_hair') < order.index('front_hair')
+    assert order.index('back_hair') < order.index('torso')
+    assert order.index('front_hair') > order.index('face')
