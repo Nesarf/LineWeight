@@ -852,3 +852,75 @@ draws at six, which is the last value that is still moe by this book's definitio
 - **19 sheets were not measured at all**, so the corpus figure is 273 of 292 and not 292.
 - **`K_HEAD_OVER_FACE = 1.28`** comes from 16 figures on **five textbook pages** — a good sample for a constant, and
   not a large one.
+
+## Q版 (chibi / SD): the rules, and why the corpus's low mode is not it
+
+Looked for because ②'s bimodal result could have been Q-versions rather than what it turned out to be. The corpus
+question is settled below; **this section is the Q版 material itself**, which is a form this library has to draw
+whether or not it appears in that corpus.
+
+### It is a standardised shape, not a small character
+
+The clearest statement comes from [ClipStudio's Q版 article](https://www.clipstudio.net/painting/archives/155508),
+and it is the opposite of what "make the character smaller" suggests:
+
+> **Q版變形是均一化、劃一化。** 變形為Q版角色後，在性別、臉部大小、身高、體型、年齡等方面的差別會消失，**所有角色看起來
+> 都會是差不多的尺寸**。換言之，不管是6頭身的女孩還是8頭身的大叔，都一樣會使用2～3頭身這樣的固定型態來繪製。
+
+**Q版 is a normalisation.** Sex, face size, height, build and age differences disappear; a six-head girl and an
+eight-head man are both drawn at one fixed 2–3頭身. The article then says the differentiation has to be put back
+deliberately — **眼睛、髮型、服裝**, and the characteristic feature **enlarged**: glasses drawn large, long hair drawn
+longer, the character's signature accessory scaled up. **That is the rule that makes a cast of chibis distinguishable
+at all**, and it is a rule about *where to spend information*, which is the same problem this library has.
+
+### Proportions
+
+| rule | source |
+|---|---|
+| **2–4頭身** is the normal range for Q版 | ClipStudio |
+| **2頭身: 身長の半分の位置があご** — half the height is the **chin** | textbook printed 65 |
+| 2頭身: 身長の半分にへそは來ない、**胴体部分のほぼ半分の位置がへそ** | textbook printed 65 |
+| **身體和腳的比例畫成 1：1** | ClipStudio |
+| 身體變長 → 更像人偶; 腳變長 → 更有大人味 | ClipStudio |
+| 2頭身 = 赤ちゃん, or 超デフォルメ | textbook printed 65 |
+| 3頭身 can carry more shape than 2頭身 — 胸、腰、臀的曲線能更成熟一些 | ClipStudio |
+
+**The chin-at-half rule is a checkable landmark**, and it is the 2頭身 counterpart of the 6頭身 chain in
+`RESEARCH-MOE.md` (crotch at half, wrist at crotch, elbow at half the chest, knee at half the crotch-to-ankle).
+
+### What is removed, which is the real content
+
+- **臉是一個球體** — the face is a sphere, and the reference is a **黏土人 (Nendoroid)**, i.e. an actual 3-D object
+  rather than a 2-D convention. 大到如果是在正常的狀況下，大概會因為頭太重而站不起來的程度.
+- **幾乎不會畫出臉頰到下巴部分的銳利感** — the sharp run from cheek to chin is gone; every sharp part is replaced
+  with a soft curve.
+- **眼睛佔的比例相當大**, so the horizontal guide line for the eyes goes **lower** than on a normal face.
+- **鼻子可以不畫，就算要畫也畫成一個點.** The mouth is drawn **small**. Q版 expresses feeling **through the eyes**.
+- **頭髮的「髮束」數量會比普通版本來得少**, and the tips are softer.
+- **脖子** may vanish entirely at 2頭身, or be short and thin; if drawn, it goes **below the ear**.
+- **肩膀不論男女都畫成溜肩** — sloped shoulders; prominent shoulders read as stiff and kill the cuteness.
+- **軀幹**: a girl's chest, waist and hip curves are **all omitted**; the build becomes 幼兒體型.
+- **手腳** are drawn **thicker**, with **關節和肌肉的凹凸完全去除**; at 2頭身 the fingers may be omitted, or the four
+  fingers other than the thumb drawn as one shape. At 3頭身 the hands may be detailed properly.
+- **忽略關節和骨骼** — and the reason given is disarmingly practical: 把頭的尺寸放大成這樣的時間點，身體就已經不可能
+  支撐得住了.
+
+The article's summary of the whole craft is one line, and it is this library's problem stated as an art rule:
+
+> **繪製Q版角色的重點在於一面削減資訊量一面清楚地留下角色特徵。**
+> *The point of drawing Q版 is to cut the amount of information while leaving the character's features clearly.*
+
+### So it is a different subject from the corpus's low mode
+
+**Verified by looking, not by a statistic.** A contact sheet of eight low-mode sheets and four high-mode ones, cropped
+to each detected figure, shows the low group is **busts and half-body artwork** — the art book's cover, portraits, a
+character at a desk — and **not one is a Q版**. The high group is full-body standing figures. So the corpus's
+bimodality is *bust versus whole figure*, and ②'s `raw ≥ 5.0` cut is a bust filter rather than an arbitrary one.
+
+**BA's Q-versions exist separately** — as panels on the design sheets, and in the game as `_spr` Spine rigs — and they
+are a subject for this library in their own right. Two leads not yet followed: ClipStudio has a newer article covering
+**1.5頭身** ([Q版角色的畫法【2頭身・1.5頭身】](https://www.clipstudio.net/painting/archives/174586)), which is past
+where the textbook's range even starts, and
+[Sketching Manga-Style Vol. 1](https://archive.org/download/SketchingMangaStyleVol.1SketchingToPlan/Sketching%20Manga-Style%20Vol.%201%20-%20Sketching%20to%20Plan.pdf)
+on archive.org has a section titled "how to miniaturize a normal-sized character" — the same source this project
+already takes its textbooks from.
