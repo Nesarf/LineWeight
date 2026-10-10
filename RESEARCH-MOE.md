@@ -993,3 +993,68 @@ both become 2頭身**, which is what gives a series its 統一感.
 **The moe range and the SD range overlap at 2–4 and are not the same thing**, which matters for a corpus check: the
 head-body ratio alone cannot say which of the two a drawing is, because the same number means "a moe character" in one
 vocabulary and "a chibi" in the other.
+
+### The 3D models: Blue Archive ships two proportion systems, and the 3D one is SD
+
+Followed the pointer into the game's real resources. The phone copy at `E:\~Harumi~Desuwa~\bluearchive\`
+(11.56 GiB) holds both halves, and the 3D half turns out to be readable with no unpacking work — the bundles are
+`UnityFS 2021.3, LZ4HC, not encrypted`, so `UnityPy` opens them and the skeletons come out.
+
+**`assets-_mx-characters-<name>_original-*-meshes` holds a Unity character with a full Biped skeleton**
+(`Avatar` 1, `SkinnedMeshRenderer` 3, `Mesh` 7, `Transform` 114, `Animator` 1), and the bone names are the usual
+3ds Max Biped set plus the game's own additions:
+
+```
+Bip001  ·  Bip001 Pelvis / Spine / Spine1 / Neck / Head  ·  Bip001 L Foot / L Toe0 / L Calf
+bone_hair_F_00 …  bone_hair_B_L_00 / bone_hair_B_R_00      hair, split front and back-and-sides
+bone_skirtF_L_00 … bone_skirtB_R_02                        a full skirt rig
+bone_eye_D_L_01 / bone_eye_D_R_01 / Xtra_eyeblowL1         eyes and eyebrows each get bones
+bone_Ribbon_L  ·  bone_magazine  ·  Bip001_Weapon
+```
+
+**Measured from those skeletons, over eight characters.** The numbers come from accumulating the transform chain, with
+`Bip001 L Toe0` as the ground and the topmost `bone_hair_*` as the top of the head:
+
+| character | total | head | ratio (neck) | ratio (head bone) |
+|---|---|---|---|---|
+| airi | 0.919 | 0.284 | 3.23 | 3.64 |
+| akane | 0.889 | 0.254 | 3.50 | 3.99 |
+| akari | 0.999 | 0.364 | 2.74 | 3.01 |
+| ako | 0.983 | 0.348 | 2.82 | 3.11 |
+| aris | 0.890 | 0.287 | 3.10 | 3.76 |
+| aru | 0.939 | 0.306 | 3.07 | 3.42 |
+| asuna | 0.965 | 0.331 | 2.92 | 3.23 |
+| atsuko | 0.912 | 0.278 | 3.29 | 3.71 |
+
+**So the in-game 3D models are SD at roughly three heads** — inside the range Sketching Manga-Style gives for
+Super-Deformed (1:2 to about 1:5) and well below the 6頭身 the design sheets measure. The two columns bracket it
+because the neck bone sits at the base of the neck rather than at the chin, so the neck-based figure overstates the
+head and the head-bone-based one is the better estimate of the chin; **the honest range is about 3.0 to 3.6.**
+
+**And the totals are uniform to a tenth of a unit** — 0.889 to 0.999 across eight characters. **That is ClipStudio's
+均一化 present as data**: a 180 cm character and a 150 cm character normalised to one size, which the article
+describes as what gives a series its 統一感. Here it is not a drawing convention but the actual model dimensions.
+
+**The halo was excluded by name, and it is a bone.** `Airi_Original_Halo` sits at y **1.0933** while the topmost hair
+bone is at **0.9188** — a fifth of the character's height above the head. This is the same halo that inflated the 2D
+person boxes, that made the Spine lobby rig look shorter than it was, and that the Spine string table lists twice.
+**It is a real object with its own transform in every representation this game has**, which is why every attempt to
+measure a figure by its bounding box came out wrong until the halo was named and dropped.
+
+#### What this means for the head-body check, and for the project
+
+**Blue Archive ships two proportion systems, and they are not the same shape.**
+
+| | proportion | where |
+|---|---|---|
+| reference art | **~6頭身** | the 設定資料 sheets, and the lobby bust |
+| in-game presence | **~3頭身 SD** | the 3D models, and the battle `_spr` rigs |
+
+The head-body check measured the first (median 6.00 over 160 sheets). This measures the second. **A character is drawn
+at six heads in the art book and exists at three heads in the game**, and both are official.
+
+That is worth having in writing for this project specifically, because it is the ground under its opening complaint:
+the initiative began from 「使用2.5D画法且美术实现很没审美」 — a 2.5D approach whose art had no aesthetic. **A 2.5D pipeline
+that models from 3D SD assets while the drawing wants 6頭身 reference art will produce exactly that mismatch**, and
+the two systems above are what there is to reconcile. It also means the SD rules are not a curiosity here: they are
+half of what this game actually looks like.
