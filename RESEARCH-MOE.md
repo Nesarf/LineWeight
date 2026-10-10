@@ -1,5 +1,99 @@
 # Moe construction, from a professional textbook
 
+---
+
+## Start here
+
+**This document is a notebook: it runs in the order the work happened, and later sections correct earlier ones.** It
+is worth reading in order if you want the reasoning. If you want to *use* what came out of it, this is the entry.
+
+### Three things a drawing can be held to
+
+All three are in the library, all three come from Blue Archive's own rigs, and each carries the size of the sample it
+came from. **None of them is a style guide; each is a statement about what the art actually does, with the evidence
+attached.**
+
+| | what it is | built from |
+|---|---|---|
+| `lineweight/body.py` | the body's topology, and a check for a figure that could not exist | **296** character rigs |
+| `lineweight/layers.py` | the drawing's layers, their order, and the outline as a per-part attribute | **63** lobby rigs, **292** material sets |
+| `lineweight/figure.py` | the two together, validated **before anything is drawn** | those two |
+
+### Using them
+
+```python
+from lineweight import body, layers, figure
+
+# a body, checked by name and by shape
+body.structural_errors(joints)      # the right parents, complete chains, no invented core bones
+body.arity_errors(list(joints.items()))   # the tree's shape, **without using any name**
+
+# the layers, and the order the rigs agree on
+layers.layer_errors(stack)          # tier order, outline attribute, no part split across tiers
+layers.order_errors(stack)          # the measured pairs, each with its sample and rate
+layers.ORDER_EVIDENCE[('eye', 'eyebrow')]     # -> (55, 1.0)
+
+# and the gate
+project.set_figure(figure.standard())         # raises if the figure could not exist, stores nothing
+project.add_stroke(record, layer='torso')     # every mark names a layer the figure declares
+project.layers_in_use()                       # what the drawing used against what was declared
+```
+
+From the command line:
+
+```
+python -m lineweight --standard-figure figure.json    # the reference figure, to vary
+python -m lineweight --check-figure    figure.json    # validate before drawing on it
+python -m lineweight --check-body      body.json
+python -m lineweight --check-layers    layers.json
+```
+
+`figure.standard()` is the reference: the 34-bone body variant the census found in **154 of 286** characters, and the
+twenty-one draw classes in the order the rigs imply. **Vary it, do not rebuild it** -- and the two checks below are
+what tell you whether the variation is still a drawing of a person.
+
+### What is known, and how well
+
+**The body is twenty bones plus two knobs.** With fingers and toes removed the bone set is identical in **all 286**
+characters; the only things that vary are how many fingers a hand has (0, 2, 3, 4, 5 or 7) and whether a foot carries
+a toe (274 yes, 12 no). **Costume is not body**: a skirt chain is as long as a limb, so costume had to become a
+vocabulary taken from the census rather than a naming or a shape rule.
+
+**The draw order is partly a constant and partly not.** 46 pairs co-occurred in ten or more rigs and agreed in ninety
+per cent or more of them -- `eye` before `eyebrow` is **55 rigs at 100%**; `scenery` first; **`halo` behind the
+character**; `torso` and `neck` before the face. Everything else is not weakly known, it is **not known**:
+*whether a hand is in front of a face, whether the front hair covers an eye and where the arms hang depend on the
+pose*.
+
+**The outline is an attribute, not a layer.** The 2D rigs contain no `*_Outline` slot and the 3D assets have
+`_OutlineTex` = 0 across the whole corpus; the line is what a part is *drawn with*.
+
+**The parts, counted over 292 characters**: `Body` 285, **`EyeMouth` 282**, `Hair` 281, `Eyebrow` 280, `Face` 279,
+**`Halo` 219**, `Weapon` 208. **The eyes and mouth are their own material in 97% of the cast** -- a face is not one
+layer, in either representation.
+
+### What is not known, stated rather than left out
+
+* **Any joint position.** The rigs give topology; a position would be invented, so there are none in `body.py`.
+* **The order among the floating classes.** Named in `layers` rather than given a position.
+* **Why the renderer disagrees with itself on 37% of marks** (P4, still open).
+* **Anything about 学園アイドルマスター** -- paused by instruction, results kept in the section below.
+
+### Where the evidence and the tools are
+
+| | |
+|---|---|
+| the census data | `E:\DaShaoHuo\cache\census\` -- `characters.json`, `materials.json`, `slot_orders_many.json` (60 rigs, the first sample), `slot_orders_63.json` and `order_rates.json` (the set the constraints were derived from) |
+| the census scripts | `E:\DaShaoHuo\tools\animeface\` -- `char_census.py`, `material_census.py`, `verify_body.py`, `order_many.py`, `order_rates.py`, `classify_v2.py` |
+| Spine extraction | `E:\DaShaoHuo\tools\spine\` -- `dump_slots.js`, `dump_bones.js`, `rig_measure.js` |
+| the acceptance test | `verify_body.py` runs every character's real skeleton through `body.structural_errors`; **281 accepted, 5 rejected, and all five genuine** |
+
+**Re-run `verify_body.py` after any change to `body.py`.** The first version of that module was written from one
+character and rejected **all 286**; the four reasons were all its own, and only running it over the corpus could have
+said so.
+
+---
+
 Source: **萌えキャラクターの描き方 顔・からだ編** -- 伊原達矢 / 角丸つぶら. (The Chinese edition is 日本漫画大师讲座 4.)
 178 pages. Obtained via the Internet Archive collection in `RESEARCH-SOURCES.md`; local copy
 `E:\DaShaoHuo\downloads\ia-books\moe_face_body.pdf`.
