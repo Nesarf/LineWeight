@@ -1116,3 +1116,52 @@ attempt starts from "unknown, high entropy" rather than from "it is gzip".
 footage. For this project that is the interesting half — `RESEARCH-MOE.md` and the video line both care about how a
 moe character *moves*, and until now the only motion reference on this machine was the three videos in the video
 line's own backlog.
+
+### The 4.9 GB of USM video: demuxed, and it is 603 animation loops
+
+Done with **[WannaCRI](https://github.com/donmai-me/WannaCRI)** (0.3.3, `extractusm`), not by hand. The first attempt at
+reading the container myself got the `@UTF` header fields wrong — `data_offset` came out as 7 and the table name
+offset as 589848 — and the [MultimediaWiki USM page](https://wiki.multimedia.cx/index.php?title=USM&direction=next&oldid=14618)
+that gave the chunk layout also makes clear why: a chunk is *32 bytes* of header (identifier, big-endian length, two
+unknown, padding, a type field, a timestamp, and two more unknowns) before the payload, and the payload's start
+differs between `@SFV` and `@SFA`. A purpose-built tool already reads it.
+
+**Result: 603 videos, 255 audio streams, 4.69 GB, zero failures**, in
+`E:\DaShaoHuo\downloads\gakuen-usm\<md5>\videos|audios\`.
+
+| | |
+|---|---|
+| codec | **MPEG-1** |
+| sizes | **1080×1920 portrait** and **1920×1080 landscape** |
+| frame rate | **60 fps** |
+| durations | **0.36 to 1.06 seconds** |
+
+**The USM metadata carries the original asset names**, which is how these are identified rather than guessed at:
+
+```
+mov_general_media_opening                       the opening movie
+mov_general_monitor
+mov_general_cidol-<code>-3-<nnn>_1[-loop].mp4   per-idol card loops   (13 idols)
+mov_general_gasha_bg_support_csprt-3-<nnnn>.mp4 support-card backgrounds
+```
+
+**13 idols** have loops, and the four-letter codes are the game's own — they appear again in the member list kept by
+the research area (`img_chr_kllj_00-thumb-push.png`, `img_chr_fktn_…`), so the loops can be mapped to characters
+without a guess: `atbm 27, ssmk 26, shro 25, amao 25, kllj 24, hski 23, hrnm 23, fktn 22, ttmr 21, jsna 21, kcna 20,
+hume 19, hmsz 18`.
+
+**And the content is the point.** Frame 1 of `mov_general_media_opening_001` is a 1920×1080 cel-shaded anime
+illustration; a frame of `mov_general_gasha_bg_support_csprt-3-0014` is a 1080×1920 one. Linework, cel shading, hair
+rendering, at a resolution and a frame rate — **60 fps** — well above what a reference sheet carries.
+
+**Why this matters more than the earlier finds, for this project specifically.** `RESEARCH-MOE.md` and the video line
+both care about moe characters *moving*, and until now the only motion reference on this machine was the three videos
+in the video line's own backlog. These are **short loops authored to be watched repeatedly**, per idol, which is a
+better study object than a cutscene: the loop point makes an animation's construction visible in a way a
+once-through clip does not.
+
+**The container claim holds, and it was the one made from the right evidence.** The round that read `CRID` as USM did
+so because the payload held **16 MPEG-2 sequence headers in its first 8 MB** — a signature at a *known* position for
+that stream, not a pattern found by searching. That is the difference between this and the gzip claim recorded above,
+which was wrong. **The two are worth reading together**: the same file, the same round, one reading right and one
+wrong, and the thing that separates them is where the evidence was looked for.
