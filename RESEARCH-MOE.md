@@ -1439,3 +1439,79 @@ taken from the census rather than from taste:
 could have said so.** The three fixes -- costume as a vocabulary, additions allowed, breast bones optional -- all came
 out of reading rejection reasons rather than out of thinking harder about the design. `verify_body.py` is kept as the
 acceptance test, because the next change to the spec needs the same treatment.
+
+### The materials census: the part vocabulary and the outline, over every character
+
+The skeleton census covered 296 characters. This is the other half, and it was run for the same reason: **the layer
+model had been read off one character, and one character is not a corpus.**
+
+**292 of the 296 have a materials bundle.** Their contents split cleanly in two:
+
+| | materials | |
+|---|---|---|
+| character parts | ~2,600 | `Body`, `Face`, `EyeMouth`, `Eyebrow`, `Hair`, `Halo`, `Weapon`, and per-character props |
+| effects | ~7,900 | `FX_MAT_*` -- the skill effects, which ride in the same bundle |
+
+**Character-part materials per character: median 8, range 1 to 19.** The props are where the range comes from --
+`Bomb`, `Hanky`, `Icecream`, `Instrument`, `Desserts`, `SkillProp`, `BattleItem`.
+
+#### The part vocabulary, counted
+
+| part | characters | |
+|---|---|---|
+| `Body` | 285 / 292 | |
+| **`EyeMouth`** | **282 / 292 (97%)** | **the eyes and mouth are their own material, not painted into the face** |
+| `Hair` | 281 | |
+| `Eyebrow` | 280 | |
+| `Face` | 279 | |
+| `Halo` | **219 / 292 (75%)** | a quarter of the characters have none, or it lives elsewhere |
+| `Weapon` | 208 | |
+| `Ear` · `Tail` · `Horn` | **0** | |
+| `Wing` | 1 | |
+
+**`EyeMouth` at 97% is the one worth keeping.** The 2D rig says the same thing differently -- `L_eye_01_1..3` and
+`Mouse_01..10` are their own slots there -- so **both representations agree that a face is not one layer**, and the
+material census says it holds for essentially the whole cast rather than for the one character it was read from.
+
+#### The outline is universal, and it is a parameter set rather than a texture
+
+| property | materials | characters |
+|---|---|---|
+| **`_OutlineTint`** | 1567 | **288 of 292 (99%)** |
+| **`_OutlineSolidColorTint`** | 1457 | **287 (98%)** |
+| **`_OutlineZCorrection`** | 1157 | **287 (98%)** |
+| **`_CodeAddColor` / `_CodeMultiplyColor` / `_CodeAddRimColor`** | ~2230 each | **288 (99%)** |
+| `_MainTex` | 2399 | 288 |
+| `_MaskTex` | 1062 | 287 |
+| **`_ShadowTex`** | **0** | **0** |
+| **`_OutlineTex`** | **0** | **0** |
+
+**Two findings, and the second is the surprising one.**
+
+1. **Linework as a per-material layer is the rule, not the exception** -- 99% of characters carry `_OutlineTint`, and
+   98% carry a solid-colour tint *and* a depth correction. Per-part colour coding (`_Code*Color`) is equally
+   universal at 99%.
+2. **There is no outline texture and no shadow texture.** The outline is built from **a tint, a solid-colour tint and a
+   z-correction**, and the mask -- not from an image. **So the line is a parameter set computed at render time rather
+   than a drawn layer**, which is a different thing from how the 2D rig does it: there the outline is artwork, one
+   drawn slot among 174.
+
+**That contrast is the useful part for this project.** A 2D drawing has to *draw* its outline; a 3D asset of the same
+character states it as three numbers per material. `lineweight` produces drawings, so it is on the 2D side of that --
+but the 3D side is the evidence for *how much* the outline varies per part, which the 2D rig can only show by having
+separate artwork for each one.
+
+#### And the shadow adjustments are specialised rather than general
+
+| property | characters |
+|---|---|
+| `_AdjustiveFaceShadow` | **279 / 292 (96%)** |
+| `_AdjustiveHairShadow` | **281 / 292 (96%)** |
+| `_AdjustiveShadow` (the general one) | **37 / 292 (13%)** |
+
+**The general knob is the rare one and the two part-specific ones are near-universal.** A face's shadow and a hair's
+shadow are adjusted by different numbers on 96% of the cast, and a single "shadow" adjustment exists on 13%. **Shadow
+is per-part in this art, and the asset says so by how it is parameterised.**
+
+Also present on most characters and worth recording as cel-shading controls: `_IsDither`, `_FakeLightDir`, `_UseGlow`,
+`_LightValue`, `_ShadowStrong`, `_SpecStrong`, `_BaseBrightness`, `_InvViewStrength`.
