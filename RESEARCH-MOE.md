@@ -780,3 +780,75 @@ characters**, with the bonus that skin variants mean each character carries **se
 separated (`01_Normal` through `07_Pero`).
 
 Recorded as a research asset rather than as a step towards ②. For ② it is a dead end, and knowing that is the result.
+
+### ②, answered: Blue Archive's design figures sit at the top of the book's moe range
+
+The check is done, and it took four designs to get one that is not circular. This is the result, the method, and what
+is still not solid about it.
+
+#### The method
+
+| step | what |
+|---|---|
+| **faces** | `deepghs/anime_face_detection` `face_detect_v1.4_s`, ONNX, onnxruntime |
+| **figures** | `deepghs/anime_person_detection` `person_detect_v1.3_s`, same export format, same runtime |
+| **raw** | `person box height ÷ (1.28 × face box height)`, where **1.28** is head-over-face measured over 16 figures with two independent detectors |
+| **calibration** | the raw-to-頭身 mapping is read off **printed 57**, which draws six figures at **7/6/5/4/3/2** with the ratio printed beside each |
+| **selection** | the **tallest** person box, not the largest by area |
+
+**The calibration is what makes this a test.** It is built on the textbook and applied to character sheets —
+different drawings, different artist, different decade. The first design here was circular because the constant it
+used had been derived from the same pages it was checked on; this one is not.
+
+**Held out, on the per-ratio pages never used for calibration:**
+
+| page | printed | measured |
+|---|---|---|
+| printed 60 | 5頭身 | **5.27** |
+| printed 62 | 4頭身 | **4.29** |
+| printed 64 | 3頭身 | **3.03** |
+
+**Errors of 0.03 to 0.29 of a head**, and it is worth stating plainly that this is the accuracy: **±0.3 頭身 at
+best, and the head-over-face spread (sd 0.075 on 1.28) puts another ±0.5 on top at a ratio of 5.** This can say
+"about six" and cannot say "6.0".
+
+#### The result
+
+**273 of 292 sheets measured (93%).** The 19 failures are sheets where no face and figure were both found.
+
+**The distribution over the whole corpus is bimodal — 92 sheets near 2.5 and 134 near 6.5 — and the cause is not the
+drawing.** It was settled by annotating one of the low ones and looking: `00001.jpg` is **the cover of the art book**,
+a bust portrait, and a bust measured this way gives a low ratio for the same reason `airi_home` did. **This method
+cannot tell a bust from a chibi**, because both are "a face nearly as tall as the figure".
+
+**Restricted to figures tall enough to be full-body (raw ≥ 5.0), 160 sheets:**
+
+| | |
+|---|---|
+| median | **6.00 頭身** |
+| range | 4.00 – 7.00 |
+| 4–5 | 8 |
+| 5–6 | 17 |
+| **6–7** | **134** |
+| 7–8 | 1 |
+| inside the book's 2–6 | 105 of 160 (66%) |
+
+> **Blue Archive's full-body design figures sit at about 6頭身 — the very top of the range the textbook calls moe,
+> and on its boundary.**
+
+That is consistent with the book's own warning, quoted in `RESEARCH-MOE.md`: 萌えキャラクターの頭身数は2〜6頭身くらいです。
+**7頭身以上になると、大人のプロポーションになってしまう** — at seven heads and up it becomes adult proportion. BA
+draws at six, which is the last value that is still moe by this book's definition, and it is exactly the tension the
+`RESEARCH-MOE.md` note on "2.5D 画法 and no aesthetic" was circling.
+
+#### What is not solid, stated so the number is not read as more than it is
+
+- **The top of the calibration is noise.** The 7頭身 figure measured raw **7.233** and the 6頭身 measured **7.341** —
+  **the two are in the wrong order.** That is 1.4% of the measurement, so the curve's top two points cannot be
+  trusted apart, and the 134 sheets in the 6–7 bucket are really "at or above the 5頭身 calibration point".
+- **The bust/full-body cut is a filter on the answer.** `raw ≥ 5.0` is a plausible-full-body test, and it is chosen
+  by me. It is not derived from anything independent, and the honest statement is that the corpus mixes whole figures
+  with portraits and this method sorts them by how tall they measure.
+- **19 sheets were not measured at all**, so the corpus figure is 273 of 292 and not 292.
+- **`K_HEAD_OVER_FACE = 1.28`** comes from 16 figures on **five textbook pages** — a good sample for a constant, and
+  not a large one.
