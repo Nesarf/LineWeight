@@ -130,8 +130,11 @@ def test_moving_a_layer_breaks_specific_constraints_and_names_them():
     assert layers.order_errors(f.layers) == []
     f.layers.layers.append(f.layers.layers.pop(4))          # back_hair to the very top
     problems = layers.order_errors(f.layers)
-    assert len(problems) >= 5, problems
-    assert any('back_hair is drawn after head' in p for p in problems), problems
+    # **The expectation follows the constraint set, and the set changed.** Rebuilt from 60 rigs instead of 9, the
+    # `back_hair` relations are just these two -- the earlier set's `back_hair before head` did not survive the wider
+    # data. A test asserting five violations here was asserting the old table.
+    assert problems == ['back_hair is drawn after front_hair, and the rigs draw it before',
+                        'back_hair is drawn after overlay, and the rigs draw it before'], problems
 
 
 def test_the_draw_vocabulary_is_finer_than_the_material_one():
@@ -143,3 +146,35 @@ def test_the_draw_vocabulary_is_finer_than_the_material_one():
     assert layers.PART_OF_CLASS['eye'] == 'eye_mouth'
     assert layers.PART_OF_CLASS['mouth'] == 'eye_mouth'
     assert layers.PART_OF_CLASS['torso'] == 'body'
+
+
+def test_the_constraint_set_came_from_sixty_rigs_and_says_what_it_could_not_determine():
+    """**The widening is the finding.** The table was first built from nine rigs and held 99 pairs; run against sixty,
+    **66 of those 99 were contradicted**, most of them in the `shadow` family -- which was not a class at all but a
+    *relation*, with `Handkerchief_Shadow` at slot 17 and `F_Hair_Shadow_06` at 124.
+
+    What is left is what every rig agrees on, and the classes with no determined relation are named rather than given
+    a made-up position: **whether a hand is in front of a face, whether the front hair covers an eye and where the
+    arms hang all depend on the pose.**"""
+    assert len(layers.ORDER_CONSTRAINTS) == 73, len(layers.ORDER_CONSTRAINTS)
+    # **The shape of what is not decided, which is sharper than "unknown".** These six are only ever the *later*
+    # element of a determined pair: each has determined predecessors and no determined successor, so their order
+    # among themselves is free -- and that is exactly the pose-dependent part.
+    earlier = {a for a, _ in layers.ORDER_CONSTRAINTS}
+    later = {b for _, b in layers.ORDER_CONSTRAINTS}
+    assert set(layers.FLOATING) <= later
+    assert not (set(layers.FLOATING) & earlier), set(layers.FLOATING) & earlier
+    # and these are the floor: only ever earlier
+    assert set(layers.ANCHORED_BELOW) <= earlier
+    assert not (set(layers.ANCHORED_BELOW) & later), set(layers.ANCHORED_BELOW) & later
+    # a shadow is not a class any more -- it takes the class of what it shadows
+    assert 'shadow' not in earlier and 'shadow' not in later
+
+
+def test_one_total_order_satisfies_all_of_them():
+    """`unsatisfiable()` is worth having even when it returns nothing: an earlier version of the sort raised
+    `ValueError` claiming the constraints contradict each other, and that was a bug in the sort, not in the data."""
+    assert layers.unsatisfiable() == []
+    order = layers.standard_order()
+    assert order[-1] == 'overlay', 'the tier rule is seeded in, so overlays come last'
+    assert order[0] == 'background'

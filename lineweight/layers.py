@@ -178,49 +178,62 @@ def layer_errors(stack: 'Stack') -> list[str]:
     return problems
 
 
-#: **The draw order the rigs agree on, as pairs rather than as one list.** Nine lobby rigs were dumped in slot order
-#: and every part class compared with every other; these are the pairs whose order is the same in **every rig that has
-#: both members**. They are a partial order because the data is one -- four of the nine rigs are small enough that
-#: most pairs never co-occur, and inventing a single linear order from that would be inventing.
+#: **The draw order the rigs agree on, and what they do not.** Sixty lobby rigs were dumped in slot order and every
+#: draw class compared with every other; these are the pairs that came out the same way in **every rig that saw both
+#: members**.
 #:
-#: The rows worth reading:
+#: **Sixty rigs, not nine, and the number matters.** The first version of this table was built from nine rigs and had
+#: 99 pairs in it. Run against sixty, **66 of those 99 were contradicted** -- including most of the `shadow` family,
+#: which turned out not to be a class at all: `Handkerchief_Shadow` sits at slot 17 and `F_Hair_Shadow_06` at 124, so
+#: grouping them made the class contradict itself. A `*_Shadow` slot now takes the class of what it shadows, and the
+#: relation *a shadow precedes its caster* is checked separately.
 #:
-#: * **`scenery` before everything** and **`shadow` before the character parts**, which is the hand-written tier rule
-#:   confirmed from data;
-#: * **`halo` before `back_hair`, `collar`, `leg`, `skirt`** -- **the halo is drawn behind the character.** That is a
-#:   fact this project did not have, and it is the same halo that inflated every bounding box attempted earlier;
-#: * **`back_hair` before `front_hair` and `head`** -- the back hair is behind the body and the front hair is in
-#:   front of it, which is why hair is two layers and not one;
-#: * **`eye` before `face` before `eyebrow`** -- eyebrows are drawn over both;
-#: * **`mouth` has nothing after it but `overlay`**, so the mouth is the last of the character's own parts.
+#: The rows worth reading, now that only the survivors are here: **`background`, `scenery` and `halo` come before the
+#: character's parts** -- the halo is drawn *behind* the character, the same halo that inflated every bounding box
+#: attempted earlier. **`back_hair` before `front_hair`**, which is why hair is two layers. **`eye` before `face`
+#: before `eyebrow`**. And **`mouth` before `overlay`**.
 ORDER_CONSTRAINTS: tuple[tuple[str, str], ...] = (
-    ('scenery', 'shadow'), ('scenery', 'halo'), ('scenery', 'back_hair'), ('scenery', 'head'),
-    ('scenery', 'arm'), ('scenery', 'leg'), ('scenery', 'skirt'), ('scenery', 'torso'),
-    ('scenery', 'collar'), ('scenery', 'hand'), ('scenery', 'prop'), ('scenery', 'neck'),
-    ('scenery', 'eye'), ('scenery', 'face'), ('scenery', 'mouth'), ('scenery', 'eyebrow'),
-    ('scenery', 'front_hair'), ('scenery', 'overlay'),
-    ('shadow', 'arm'), ('shadow', 'leg'), ('shadow', 'skirt'), ('shadow', 'torso'), ('shadow', 'collar'),
-    ('shadow', 'hand'), ('shadow', 'prop'), ('shadow', 'neck'), ('shadow', 'eye'), ('shadow', 'face'),
-    ('shadow', 'mouth'), ('shadow', 'eyebrow'), ('shadow', 'front_hair'), ('shadow', 'overlay'),
-    ('halo', 'back_hair'), ('halo', 'collar'), ('halo', 'leg'), ('halo', 'skirt'), ('halo', 'mouth'),
-    ('halo', 'prop'),
-    ('back_hair', 'head'), ('back_hair', 'collar'), ('back_hair', 'neck'), ('back_hair', 'eye'),
-    ('back_hair', 'face'), ('back_hair', 'mouth'), ('back_hair', 'eyebrow'), ('back_hair', 'front_hair'),
-    ('back_hair', 'overlay'), ('back_hair', 'prop'),
-    ('arm', 'leg'), ('arm', 'skirt'), ('arm', 'collar'), ('arm', 'hand'), ('arm', 'prop'), ('arm', 'mouth'),
-    ('leg', 'skirt'), ('leg', 'torso'), ('leg', 'collar'), ('leg', 'hand'), ('leg', 'prop'), ('leg', 'neck'),
-    ('leg', 'eye'), ('leg', 'face'), ('leg', 'mouth'), ('leg', 'eyebrow'), ('leg', 'overlay'),
-    ('skirt', 'torso'), ('skirt', 'collar'), ('skirt', 'neck'), ('skirt', 'eye'), ('skirt', 'face'),
-    ('skirt', 'mouth'), ('skirt', 'eyebrow'), ('skirt', 'overlay'), ('skirt', 'prop'),
-    ('prop', 'hand'), ('prop', 'neck'), ('prop', 'eye'), ('prop', 'face'), ('prop', 'mouth'),
-    ('prop', 'eyebrow'), ('prop', 'overlay'),
-    ('collar', 'eye'), ('collar', 'face'), ('collar', 'mouth'), ('collar', 'eyebrow'), ('collar', 'overlay'),
-    ('neck', 'eye'), ('neck', 'face'), ('neck', 'mouth'), ('neck', 'eyebrow'), ('neck', 'overlay'),
-    ('eye', 'face'), ('eye', 'mouth'), ('eye', 'eyebrow'), ('eye', 'overlay'),
-    ('face', 'mouth'), ('face', 'eyebrow'), ('face', 'overlay'),
-    ('mouth', 'overlay'),
+    ('back_hair', 'front_hair'), ('back_hair', 'overlay'), ('background', 'arm'),
+    ('background', 'back_hair'), ('background', 'collar'), ('background', 'eye'),
+    ('background', 'eyebrow'), ('background', 'face'), ('background', 'front_hair'),
+    ('background', 'halo'), ('background', 'hand'), ('background', 'head'),
+    ('background', 'leg'), ('background', 'neck'), ('background', 'overlay'),
+    ('background', 'prop'), ('background', 'skirt'), ('background', 'torso'),
+    ('collar', 'eyebrow'), ('collar', 'mouth'), ('eye', 'eyebrow'),
+    ('eye', 'face'), ('halo', 'back_hair'), ('halo', 'collar'),
+    ('halo', 'eyebrow'), ('halo', 'face'), ('halo', 'front_hair'),
+    ('halo', 'hand'), ('halo', 'head'), ('halo', 'mouth'),
+    ('halo', 'neck'), ('halo', 'overlay'), ('halo', 'skirt'),
+    ('head', 'eyebrow'), ('head', 'face'), ('head', 'mouth'),
+    ('leg', 'front_hair'), ('mouth', 'overlay'), ('neck', 'eyebrow'),
+    ('neck', 'face'), ('other', 'arm'), ('other', 'eye'),
+    ('other', 'eyebrow'), ('other', 'face'), ('other', 'front_hair'),
+    ('other', 'hand'), ('other', 'head'), ('other', 'leg'),
+    ('other', 'mouth'), ('other', 'neck'), ('other', 'prop'),
+    ('other', 'skirt'), ('other', 'torso'), ('prop', 'head'),
+    ('prop', 'mouth'), ('scenery', 'back_hair'), ('scenery', 'collar'),
+    ('scenery', 'eyebrow'), ('scenery', 'face'), ('scenery', 'front_hair'),
+    ('scenery', 'halo'), ('scenery', 'hand'), ('scenery', 'head'),
+    ('scenery', 'mouth'), ('scenery', 'neck'), ('scenery', 'overlay'),
+    ('scenery', 'skirt'), ('skirt', 'eyebrow'), ('skirt', 'face'),
+    ('skirt', 'front_hair'), ('skirt', 'head'), ('skirt', 'mouth'),
+    ('torso', 'eyebrow'),
 )
 
+#: **The classes the rigs only ever place late: each has determined predecessors and no determined successor.**
+#:
+#: This is the shape of what the corpus does not decide, and it is more precise than saying their position is
+#: unknown. Nothing is determined to come *after* an arm, a hand, a face, an eyebrow, the front hair or an overlay --
+#: so **their order among themselves is exactly the part that depends on the pose**: whether a hand is in front of a
+#: face, whether the front hair covers an eye, where the arms hang, what the overlays sit on.
+#:
+#: A draw order is partly a property of the character and partly a property of the drawing, and this list is which
+#: half is which.
+FLOATING: tuple[str, ...] = ('arm', 'eyebrow', 'face', 'front_hair', 'hand', 'overlay')
+
+#: **The classes the rigs only ever place early** -- determined predecessors and no determined predecessor of their
+#: own. Everything else in a drawing sits above these, which is what makes them a floor rather than a layer.
+ANCHORED_BELOW: tuple[str, ...] = ('background', 'scenery')
 
 
 def order_errors(stack: 'Stack') -> list[str]:
@@ -228,7 +241,7 @@ def order_errors(stack: 'Stack') -> list[str]:
     problems = []
     index = {}
     for i, layer in enumerate(stack.layers):
-        if layer.part:
+        if layer.part and layer.part in DRAW_CLASSES:
             index.setdefault(layer.part, i)
     for before, after in ORDER_CONSTRAINTS:
         if before in index and after in index and index[before] > index[after]:
@@ -246,29 +259,55 @@ DRAW_CLASSES: tuple[str, ...] = (
 )
 
 
+#: Which tier each draw class belongs to. The **order** comes from the rigs; the tier is the coarse grouping the
+#: tier check speaks in, and `standard_order` seeds it in as constraints so that a derived order satisfies both.
+TIER_OF_CLASS: dict[str, str] = {
+    'background': 'background', 'scenery': 'scenery', 'shadow': 'cast_shadow', 'overlay': 'overlay',
+}
+
+
 def standard_order() -> list[str]:
-    """A layer order that satisfies every constraint the rigs agree on.
+    """One total order that satisfies as many of the constraints as a total order can.
 
-    **Topologically sorted rather than written out**, so that it cannot drift from `ORDER_CONSTRAINTS`: a constraint
-    added there changes this, and constraints that contradict each other raise rather than quietly producing an order
-    that breaks one of them.
+    **Two sources of order, and both are obeyed.** The pairwise constraints the rigs agree on, and the tier rule --
+    scenery before the character, overlays after everything -- because a stack that satisfies the first and not the
+    second is a stack the tier check rejects. Without the tier rule seeded in, `overlay` has no predecessors and the
+    greedy placed it *before* `front_hair` and `eyebrow`, which is not a drawing anyone would make.
 
-    The free set is *"every class that must precede this one is already placed"*. The first version asked whether any
-    placed class listed it as a successor -- which stays true after the predecessor is placed, so it stalled on the
-    first constrained class and the report blamed the data for a cycle the data does not have.
+    Sorted greedily by fewest unsatisfied predecessors. `unsatisfiable()` reports anything a single order cannot
+    satisfy; it returns nothing here, which is worth knowing rather than assuming -- an earlier version of this
+    function raised `ValueError` claiming the constraints contradict each other, and that was a bug in the sort, not
+    in the data.
     """
     remaining = list(DRAW_CLASSES)
     predecessors = {}
     for a, b in ORDER_CONSTRAINTS:
         predecessors.setdefault(b, set()).add(a)
-    order = []
-    placed = set()
+    # the tier rule, seeded in as constraints of its own
+    scene = [c for c in DRAW_CLASSES if TIER_OF_CLASS.get(c) in ('background', 'scenery', 'cast_shadow')]
+    character = [c for c in DRAW_CLASSES if c not in scene and c != 'overlay']
+    for a in scene:
+        for b in character:
+            predecessors.setdefault(b, set()).add(a)
+    for a in character:
+        predecessors.setdefault('overlay', set()).add(a)
+    order, placed = [], set()
     while remaining:
-        free = [c for c in remaining if predecessors.get(c, set()) <= placed]
-        if not free:
-            raise ValueError('the order constraints contradict each other; stuck with %s' % ', '.join(remaining))
-        pick = free[0]
-        order.append(pick)
-        placed.add(pick)
-        remaining.remove(pick)
+        def cost(c):
+            return len(predecessors.get(c, set()) - placed)
+        best = min(remaining, key=lambda c: (cost(c), DRAW_CLASSES.index(c)))
+        order.append(best)
+        placed.add(best)
+        remaining.remove(best)
     return order
+
+
+def unsatisfiable(order: list[str] | None = None) -> list[tuple[str, str]]:
+    """The constraints no single total order can satisfy, given the others.
+
+    Reported rather than hidden: a stack built from `standard_order()` breaks these, and a caller that wants one of
+    them has to move a layer and accept breaking another.
+    """
+    order = standard_order() if order is None else order
+    index = {c: i for i, c in enumerate(order)}
+    return [(a, b) for a, b in ORDER_CONSTRAINTS if a in index and b in index and index[a] > index[b]]

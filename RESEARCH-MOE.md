@@ -1515,3 +1515,47 @@ is per-part in this art, and the asset says so by how it is parameterised.**
 
 Also present on most characters and worth recording as cel-shading controls: `_IsDither`, `_FakeLightDir`, `_UseGlow`,
 `_LightValue`, `_ShadowStrong`, `_SpecStrong`, `_BaseBrightness`, `_InvViewStrength`.
+
+### The draw order over sixty rigs, and it refuted the nine-rig table
+
+The constraint set was first built from **nine** lobby rigs and held **99 pairs**. Widened to **sixty**, **66 of those
+99 were contradicted** -- the table had been over-confident, and the sample was the reason.
+
+**The worst of it was one classification error.** The contradicted pairs were overwhelmingly the `shadow` family
+(`shadow before torso` 3 for and 10 against; `shadow before neck` 2 against 10; `shadow before arm` 4 against 9).
+**`shadow` is not a class, it is a relation**: `Handkerchief_Shadow` sits at slot 17 and `F_Hair_Shadow_06` at slot
+124, so grouping them made one "class" contradict itself. A `*_Shadow` slot now takes the class of whatever it
+shadows, and *a shadow precedes its caster* is checked separately. `shadow` no longer appears in any constraint.
+
+**And `other` appeared in all sixty rigs** -- the classifier missed at least one slot in every one of them. Printed
+rather than pooled, the misses are **7,640 distinct names**: `E_buil`, `E_Xmas`, `water`, `front`, lowercase `neck`,
+`halo_01`, `L_arm_01`, `fronthair`, `hair_02`, `torso_01`. The naming in these rigs is far more varied than a regex
+written from one of them assumes, and this is stated rather than hidden behind a bucket.
+
+#### What survives, and what it means that it is not everything
+
+```
+only ever the EARLIER element (a floor):   background, scenery, other
+only ever the LATER element:               arm, eyebrow, face, front_hair, hand, overlay
+never in any constraint:                   shadow
+```
+
+**The six that are only ever late are the finding.** Each has determined predecessors and **no determined
+successor** -- so nothing is fixed to come after an arm, a hand, a face, an eyebrow, the front hair or an overlay, and
+**their order among themselves is exactly the part that depends on the pose**: whether a hand is in front of a face,
+whether the front hair covers an eye, where the arms hang, what the overlays sit on.
+
+**A draw order is partly a property of the character and partly a property of the drawing.** The 73 surviving pairs
+are the first half; `FLOATING` is the second, and it is named rather than given a position it has not earned.
+
+#### Two of my own errors, found by building on the widened table
+
+**The sort stalled and blamed the data.** `standard_order()` raised "the constraints contradict each other", which
+would have meant a genuine cycle. It was a bug in the free-set test -- it asked whether any *placed* class listed a
+class as a successor, which stays true after the predecessor is placed. The 73 pairs are in fact mutually consistent
+and `unsatisfiable()` returns nothing.
+
+**And a derived order satisfied the constraints while being a drawing nobody would make.** `overlay` has no
+predecessor among the measured pairs, so the greedy placed it *before* `front_hair` and `eyebrow`. The tier rule --
+overlays after everything -- is now seeded into the sort as constraints of its own, so a derived order obeys both
+sources.

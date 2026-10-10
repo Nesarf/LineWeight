@@ -84,15 +84,6 @@ class Figure:
         return f
 
 
-#: Which tier each draw class belongs to, for the coarse check. The **order** comes from the rigs; the tier is the
-#: grouping the earlier hand-written rule used, kept because it is what `SHADOW_BEFORE_CASTER` and the tier check
-#: speak in.
-TIER_OF_CLASS: dict[str, str] = {
-    'background': 'background', 'scenery': 'scenery', 'shadow': 'cast_shadow',
-    'overlay': 'overlay',
-}
-
-
 def standard() -> Figure:
     """The reference figure a generator would start from and vary.
 
@@ -105,7 +96,7 @@ def standard() -> Figure:
     back hair, head, arms, legs, skirt, torso, collar, prop, hand, neck, eyes, face, mouth, front hair, eyebrows,
     overlays.
     """
-    from .layers import standard_order
+    from .layers import standard_order, TIER_OF_CLASS
     f = Figure(joints=dict(_body.JOINT_PARENT), name='standard')
     for cls in standard_order():
         # **`part` carries the draw class**, because the order is a fact about draw classes; `PART_OF_CLASS` gives the
