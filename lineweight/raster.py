@@ -246,27 +246,29 @@ def _density_to_alpha(density, cap):
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
                  density: bool = False) -> Layer:
-    """... **`density` is an unfinished experiment, and what it was for does not work -- do not use it.**
+    """... **`density` is an experiment with no measured justification -- do not use it.**
 
-    It exists because a real fault was measured: with `accumulate=False`, the coverage across the gap between a
-    hairpin's own two arms has a corner in it, a gradient jump of **3.3 to 7.2 times the typical step** against about
-    1 for a smooth profile (`tools/crease_measure.py`). Compositor's brush note records the same fault after taking
-    the same maximum, and its answer is to integrate optical density along the path and convert the accumulated
-    density to coverage.
+    It was built to fix a fault that turned out not to be there. The claim was that this library has the crease
+    Compositor's brush note describes -- the corner formed where two feathered edges meet after taking the maximum
+    falloff -- and the first measurement appeared to confirm it, a gradient jump of 3.4 to 7.8 times the typical step
+    across the gap between a hairpin's own arms.
 
-    **Two things were learned by trying it, and only one of them is a success.**
+    **That measurement was of dab discretisation.** A scanline crosses the dab pattern at uneven spacing, so the
+    profile it reads is jagged wherever the dabs happened to land rather than smooth along the falloff. Printed out,
+    the profile reads `0.204 0.173 0.137 0.184 0.141 0.114 0.141` -- that is not two smooth arms meeting in a V, it
+    is a row of stamps. **Smoothing the profile by a seven-pixel moving average removes it**, and the same figures
+    become:
 
-    * **The magnitude needed the step.** A sum over dabs approximates a path integral only when each term is weighted
-      by the distance it stands for. Without that weight the wash brush -- whose radius is about a third of nominal at
-      the measured pressure -- came out at a peak alpha of 0.020 against 0.263, faint by thirteen. With it the two
-      agree: peak 0.200 against 0.263, coverage 2444 against 2509.
-    * **And the corner is still there.** Measured at the meeting point rather than across the whole span: the maximum
-      path reads **3.29** and the density path **3.00**; on a wider hairpin, 1.75 against 1.67. **The technique does
-      not transfer.** Whatever puts the corner in this library's hairpin is not the thing that put it in Compositor's,
-      and the honest state is that the fault is measured, described, and unfixed.
+        wash brush, arms 10 apart:  maximum 1.89   density 2.00
+        wash brush, arms 16 apart:  maximum 0.72   density 0.73
+        wash brush, arms 22 apart:  maximum 0.52   density 0.60
 
-    Left in the tree rather than removed so the next attempt starts from what was measured. The default is unchanged,
-    because a change to this function moves every calibration target the library is fitted to.
+    against about 1 for a smooth profile -- **so there is no crease to fix, and the density path does not change
+    anything that is there.** The magnitude problem it also had was real and is solved: the sum over dabs needed each
+    term weighted by the distance it stands for, without which the wash brush came out thirteen times too faint.
+
+    Kept because it is measured, documented and now correctly negative, not because it improves anything. The default
+    is unchanged, and a change to this function would move every calibration target the library is fitted to.
     """
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
