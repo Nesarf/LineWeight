@@ -678,6 +678,14 @@ reveal nothing of the kind.** Every claim made on the way fell:
   themselves, and the two slowest are **by different artists**. **These measures describe what is being drawn and how
   fast, not who is drawing it.**
 
+**Nine, by the time the frames were extracted.** The ninth belongs with these: **ffmpeg dropped frames silently** when
+writing the full frame sequences. Two of the six videos carry repeated timestamps -- ffmpeg says so itself, *"non
+monotonically increasing dts to muxer"* -- and the default for an image2 sequence is to discard the colliding frame.
+Measured: one video declared 4021 frames and wrote 4020, another declared 10231 and wrote 10155, **both with exit code
+0 and nothing on stderr at `-v error`**. `-fps_mode passthrough` fixes it, and the count to check against had to change
+too -- from the container's `nb_frames` to `-count_frames`'s `nb_read_frames`, **because a declared count is not an
+existing one**.
+
 **Eight faults across the two, and every one of them produced a number that could have been written up as a result.**
 A missing `functools.partial` branch reported as eighteen unexpected keys; a wrong layer count as six keys that do not
 match; an inverted output polarity as a model that draws too coarsely; an un-undone resize as an extractor that thins
