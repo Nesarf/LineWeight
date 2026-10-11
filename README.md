@@ -598,14 +598,65 @@ them, and each states its own sample size and what it could not establish.
 | `RESEARCH-SCENERY.md` | scenery and architecture |
 | `RESEARCH-SVG-TOOLS.md` | SVG optimisers, and why SVGO is not used |
 | `RESEARCH-SOURCES.md` | where the source material is and how to reach it |
+| `CORPUS-CLASSIFICATION.md` | **why the corpus cannot be classified, and how the extractor was calibrated.** Two classifiers tried, both wrong, and five faults found on the way -- each of which produced a number that looked like a finding |
 | `DESIGN-PROJECT.md` | what the product is: a **drawing project file**, not an image |
-| `DRAWING-PROCEDURE.md` | the procedure derived from a drawing video |
+| `DRAWING-PROCEDURE.md` | the procedure derived from a drawing video -- **and refuted by the next five**, see below |
 | `PSD-REPORT.md` | how the PSD writer works and every fault found in it |
 | `TODO.md` | what is open, and the corrections that closed the rest |
 
+**Two of the findings live outside the repository**, because they are about material that is not shared: the video
+comparison is at `G:\lineweight-video\videos\COMPARISON.md`, beside the six analyses it summarises, and the corpus
+records stay on the machine that made them. **They are summarised below anyway**, because a finding that lives only in
+a directory nobody opens is not a finding.
+
+### Two investigations that ended in a negative, and what they cost
+
+**Both are worth reading as records of being wrong**, which is what the discipline at the end of this file is for.
+
+**The corpus.** 929 pages of a game's official design materials were to be split into linework and illustrations so
+the line-width distribution could be measured. **Two classifiers were built and both failed**, for different reasons:
+
+* a **colour** measure -- it separates **text from pictures**, not line drawings from illustrations. The assumption was
+  that a design sheet is monochrome; it is **single-hued**, and a saturated pale-blue line measures a chroma of 60.
+  Only 20 of 929 pages fell below chroma 3 and 18 of those were text.
+* a **line-fraction** measure -- it is **inverted**. The top fifteen are all text pages, because it measures fine
+  features against coarse ones, and a sparse line drawing produces long runs that land in the other bucket.
+
+**What actually separates them is `ink_ratio`**, which is what the original rule used before it was replaced. And it
+cannot separate them completely, because **the pages are genuinely mixed**. Which is why the recommendation written
+before any of this stands: **do not classify, extract** -- what is needed is not "is this page a drawing" but "how wide
+are the lines on it".
+
+**The extraction is calibrated against the drawing itself**, since an extractor cannot be its own reference: a design
+sheet is ink on paper, so its widths are measurable directly. The reference is a **median of 3 px**. And a **neural
+extractor does not clearly beat a trivial threshold** -- 0.883 / 1.767 / 0.943 against the classical 0.667 / 1.333 /
+1.000.
+
+**The videos.** Six drawing-process recordings, two of them by one artist, were to reveal a working procedure. **They
+reveal nothing of the kind.** Every claim made on the way fell:
+
+* a "four-stage procedure" read from one video, **downgraded by the second**;
+* an **event rate** that looked like the artist's signature -- **and was the frame rate**. Events were counted per
+  frame, so a 58 fps video scored double; normalised, the ranges overlap.
+* and after six videos, **not even a personal habit holds**: the four by the same artist fall into two groups by
+  themselves, and the two slowest are **by different artists**. **These measures describe what is being drawn and how
+  fast, not who is drawing it.**
+
+**Eight faults across the two, and every one of them produced a number that could have been written up as a result.**
+A missing `functools.partial` branch reported as eighteen unexpected keys; a wrong layer count as six keys that do not
+match; an inverted output polarity as a model that draws too coarsely; an un-undone resize as an extractor that thins
+lines by 62%; a threshold that kept only the line cores as beating the baseline; `scale=trunc(iw/2)*2` as a no-op on a
+1530-wide source; an event ring trimmed before its comparison; a path built with `str.replace`.
+
+**What exposed each one was looking at an intermediate artefact** -- a histogram whose mean was 2.3, a contact sheet
+where the number said "19 line drawings" and the picture said "18 are articles", an output image where the whole
+character was visible while the metric said 0.0002.
+
 **The discipline they share, stated once**: a number is quoted with its sample, a claim is checked against an
 independent artefact, and **an error found along the way is written down rather than removed**. `RESEARCH-MOE.md`
-opens with a section saying so; `TODO.md` ends with the list.
+opens with a section saying so; `TODO.md` ends with the list. **And the corollary these two added**: a quantity being
+comparable along one axis does not make it comparable along another, and **a boundary that looks clean may only mean
+no sample happened to fall between the groups**.
 
 ## Licence
 
