@@ -374,6 +374,32 @@ used, against what the figure declared.
 **A project with no figure is unaffected**, which matters because every project file written before this existed is
 one, and `version: 2` still loads.
 
+### What the gate catches, measured by breaking things on purpose
+
+`python tools/gate_probe.py` draws a correct figure and then breaks it five ways. **It is a check on structure, and it
+catches every structural fault:**
+
+| probe | result |
+|---|---|
+| a mark that names no layer | **caught** -- `a figure is declared, so every mark must name its layer` |
+| a mark on a layer the figure never declared | **caught** -- `no such layer: 'tail'` |
+| a body with a third arm | **caught** -- `Bip001 Spine1 has 4 children, a body has 3 -- an extra limb` |
+| marks in an order the constraints forbid | **caught** -- four problems, naming the pair and the rig count |
+
+**And it does not look at geometry at all**, which is where the errors in this project have actually been. Two probes
+show it: strokes a fraction of a pixel across on an 800-unit canvas, and a stroke placed entirely outside the page.
+**Both are accepted**, and the second is the fault `demo_document` already records in its own comment -- a shape that
+exists in every destination's data and is visible in none of them, *because no format complains about geometry off
+the page*.
+
+**What reported the invisible figure was the coverage line, not the gate.** `--render` prints
+
+    every live mark: 41 of 41 marks, 800 x 600, 17 px covered (0.0%)
+
+and that number is the whole of the warning. It is worth keeping in view for what it is: **the one place in the flow
+that notices a drawing which draws nothing is a statistic about pixels, and the gate that knows what the drawing was
+supposed to be has no opinion about it.**
+
 ## The body, and the layers
 
 Two facts a drawing can be held to, both read off the rigs Blue Archive ships for the same character rather than
