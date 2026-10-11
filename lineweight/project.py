@@ -780,10 +780,19 @@ class Project:
 
 
 def save_project(project: Project, path: str) -> None:
-    """Writes the project. Indented and newline-terminated, because it is meant to be read and diffed by a human."""
-    with open(path, 'w', encoding='utf-8', newline='\n') as handle:
+    """Writes the project. Indented and newline-terminated, because it is meant to be read and diffed by a human.
+
+    **Written beside the target and renamed over it.** The project file is small, so the window in which a reader
+    could find it half written is short -- but it is the file a *viewer* opens, and a truncated project is one a
+    reader either refuses or, worse, loads with part of the drawing missing.
+    """
+    from .atomic import write_atomic
+
+    def render(handle):
         json.dump(project.to_dict(), handle, ensure_ascii=False, indent=1)
         handle.write('\n')
+
+    write_atomic(path, render)
 
 
 def load_project(path: str) -> Project:

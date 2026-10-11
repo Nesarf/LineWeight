@@ -508,8 +508,11 @@ def save_psd(layers: list[Layer], path: str, width: int | None = None, height: i
         out += _packed_channel(raw, w, h)
     out = bytearray(_pad2(bytes(out)))
 
-    with open(path, 'wb') as handle:
-        handle.write(out)
+    # **Atomic, because SAI may have this file open.** The bytes are complete before the name is taken: a reader
+    # sees the previous drawing or this one, never a prefix of one. The temporary is a sibling so the rename stays
+    # within one filesystem -- see `atomic.py`.
+    from .atomic import write_bytes_atomic
+    write_bytes_atomic(path, bytes(out))
     return path
 
 

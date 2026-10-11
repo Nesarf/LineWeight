@@ -19,6 +19,7 @@ floats is where this kind of code goes wrong.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 from .core import BRUSHES, mark_ink
@@ -104,6 +105,11 @@ class Layer:
         # name the sheet it is painting on, and `dab` reads it without any signature changing -- which matters
         # because `dab` is the hot loop and the one place a paper has to reach.
         self.paper = paper or PAPERS['default']
+        # **A float buffer, used only by the density path.** `dab` writes 8-bit RGBA and summing into 8 bits loses
+        # the precision the integral needs -- a hundred dabs each contributing a thousandth would quantise to
+        # nothing. It stays None on every other path, so nothing else pays for it.
+        self.density: list[float] | None = None
+        self.density_colour: tuple[int, int, int] | None = None
         # premultiplied would be faster to blend and harder to reason about; this keeps the colour meaningful when
         # alpha is low, which matters as soon as anybody looks at an intermediate buffer
         self.data = bytearray(width * height * 4)
@@ -217,8 +223,45 @@ class Layer:
         self.dab(x, y, radius, mixed, alpha, grain, accumulate=accumulate)
 
 
+def _density_to_alpha(density, cap):
+    """Optical density to coverage, scaled so that a fully covered pixel reaches `cap`.
+
+    **Beer-Lambert, with the scale chosen from the geometry rather than guessed.** Depositing `a_i` at each dab and
+    summing gives an accumulated density whose value at a point is the integral of the tip's falloff along the path
+    that covers it. For a straight pass of a round tip of radius `r` through a point, that integral is the chord
+    length times the mean falloff, which for `1 - (d/r)^2` is `2r * 2/3`. So dividing by `2r` normalises a straight
+    line to a density of `2/3` at its centre, and `k = -ln(1 - cap) / (2/3)` puts that at `cap`.
+
+    **The alternative -- clamping the sum -- would make a stroke darker wherever its own path curves back**, which is
+    the fault this replaces rather than a fix for it.
+    """
+    import math as _math
+    if cap <= 0:
+        return 0.0
+    reference = 2.0 / 3.0
+    k = -_math.log(max(1e-6, 1.0 - min(cap, 0.999))) / reference
+    return 1.0 - _math.exp(-k * density)
+
+
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
-                 wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None) -> Layer:
+                 wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
+                 density: bool = False) -> Layer:
+    """... **`density` is an unfinished experiment and is not correct yet -- do not use it as if it were.**
+
+    It exists because a real fault was measured: with `accumulate=False`, the coverage across the gap between a
+    hairpin's own two arms has a corner in it -- a gradient jump of 3 to 7 times the typical step, measured by
+    `tools/crease_measure.py`. Compositor's brush note records the same fault after taking the same maximum, and its
+    answer is to integrate optical density along the path and convert the accumulated density to coverage.
+
+    **The integration here does not normalise correctly.** `_density_to_alpha` scales by a reference of `2/3`, which
+    is the integral through a round tip of the *nominal* radius; the dabs are stamped at
+    `nominal * pressure ** curve`, which for the wash brush is about a third of that, so the density comes out far
+    too low. Measured: the wash brush's peak alpha falls from 0.263 to 0.020 while the ink brush's is unchanged and
+    its corner gets *worse* (3.09 to 5.96). The corner does disappear where the normalisation happens to suit the
+    brush, so the approach is the right one and the constant is the thing that is wrong.
+
+    Left in the tree rather than removed so the next attempt starts from what was measured instead of from the idea.
+    """
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
     **This is the same data the vector expander uses**, which is the point of keeping a record rather than an
@@ -228,6 +271,9 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     brush = BRUSHES[record['brush']]
     colour = record.get('colour_int') or (26, 22, 32)
     layer = Layer(width, height, paper=paper)
+    if density:
+        layer.density = [0.0] * (width * height)
+        layer.density_colour = colour
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
     pressure = record['pressure']
@@ -268,10 +314,18 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # **One stroke, one deposit**: the dabs take the maximum rather than compositing over each other, so
             # where the brush's spacing puts them closer together the stroke does not get darker. Strokes still
             # darken strokes, because that happens in the caller when this buffer is composited.
-            layer.wet_dab(x, y, radius, colour, alpha, wet, under,
-                          accumulate=False)
+            if density:
+                # **Summed, not maximised -- and the sum is of the tip's own falloff, so it is the integral of
+                # deposition along the path rather than a count of dabs.** Spacing changes how finely that integral
+                # is sampled, not what it comes to.
+                _deposit(layer, x, y, radius, alpha)
+            else:
+                layer.wet_dab(x, y, radius, colour, alpha, wet, under,
+                              accumulate=False)
             travelled += max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
         carry = travelled - segment
+    if density:
+        _resolve_density(layer, width, height, brush)
     # **The paper bites the finished deposit, once, by position.** Applying it per dab and then taking the maximum
     # lets the *lightest* grain among the overlapping dabs win, so the texture flattens as spacing tightens -- the
     # rough-versus-smooth ratio fell from above 1.5 to 1.48 when the maximum was introduced. That is the same fault
@@ -289,6 +343,50 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                     continue
                 data[index + 3] = int(a * (1.0 - bite * (1.0 - layer.paper.at(px, py, layer.seed))))
     return layer
+
+
+def _deposit(layer, x: float, y: float, radius: float, alpha: float) -> None:
+    """One dab's falloff added into the density buffer -- **the tip's shape, not its result.**"""
+    if radius <= 0 or alpha <= 0:
+        return
+    x0, x1 = max(0, int(x - radius)), min(layer.width - 1, int(x + radius) + 1)
+    y0, y1 = max(0, int(y - radius)), min(layer.height - 1, int(y + radius) + 1)
+    buf = layer.density
+    for py in range(y0, y1 + 1):
+        dy = py - y
+        row = py * layer.width
+        for px in range(x0, x1 + 1):
+            dx = px - x
+            distance = math.hypot(dx, dy)
+            if distance > radius:
+                continue
+            # **Normalised here, by this dab's own radius.** Doing it at the end divides by the brush's nominal
+            # radius while the dabs were stamped at `nominal * pressure ** curve` -- which for the wash brush at the
+            # measured pressure is about a third of it, so the stroke came out 5.5x too faint and the coverage fell
+            # from 2509 pixels to 657. The integral is of deposition per unit length, so the length scale is the one
+            # the deposition actually happened at.
+            buf[row + px] += alpha * (1.0 - (distance / radius) ** 2) / (2.0 * radius)
+
+
+def _resolve_density(layer, width: int, height: int, brush) -> None:
+    """Density to coverage, once, at the end -- and the colour laid down with it."""
+    cap = min(1.0, brush.get('opacity', 1.0))
+    colour = layer.density_colour or (26, 22, 32)
+    buf = layer.density
+    data = layer.data
+    for i in range(width * height):
+        d = buf[i]
+        if d <= 0:
+            continue
+        a = _density_to_alpha(d, cap)
+        if a <= 0:
+            continue
+        j = i * 4
+        data[j] = colour[0]
+        data[j + 1] = colour[1]
+        data[j + 2] = colour[2]
+        data[j + 3] = int(a * 255)
+    layer.density = None
 
 
 def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -> Layer:
@@ -583,4 +681,12 @@ def save_png(layer: Layer, path: str, background: tuple[int, int, int] = (244, 2
                 int(layer.data[index + 1] * a + background[1] * (1 - a)),
                 int(layer.data[index + 2] * a + background[2] * (1 - a)),
             )
-    image.save(path)
+    # **Pillow writes the file, so it is handed the temporary name.** This is what a person looks at, and a
+    # half-written PNG is what a viewer shows as a broken image rather than as an incomplete drawing.
+    from .atomic import atomic_path
+    temporary = atomic_path(path)
+    # **`format` is given explicitly, because Pillow infers it from the extension and the temporary ends in
+    # `.tmp`** -- left to infer it raises `unknown file extension: .tmp`, and the atomic write never happens. This
+    # was found by running the test suite rather than by reading the code.
+    image.save(temporary, format='PNG')
+    os.replace(temporary, os.path.abspath(path))

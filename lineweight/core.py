@@ -1226,11 +1226,19 @@ def collapses_alpha(record: dict) -> bool:
 
 
 def save_strokes(records: list[dict], path: str) -> None:
-    """A drawing is a list of records; this is how it survives the process that made it."""
+    """A drawing is a list of records; this is how it survives the process that made it.
+
+    **Built beside the target and renamed over it**, so a reader never finds this file half written.
+    """
     import json
-    with open(path, 'w', encoding='utf-8', newline='\n') as handle:
+
+    from .atomic import write_atomic
+
+    def render(handle):
         json.dump({'version': 1, 'strokes': records}, handle, ensure_ascii=False, indent=1)
         handle.write('\n')
+
+    write_atomic(path, render)
 
 
 def load_strokes(path: str) -> list[dict]:

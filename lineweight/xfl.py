@@ -231,6 +231,16 @@ def write_xfl(document: Document, path: str | os.PathLike) -> str:
     # the folder is usually named `drawing.xfl` and the marker inside it `drawing.xfl`, so a name that already ends in
     # the extension must not have it doubled -- `drawing.xfl.xfl` is what that looks like when it goes wrong
     marker_name = name if name.lower().endswith('.xfl') else name + '.xfl'
+    # **Built in a sibling directory and moved into place.** Animate opens this folder, and a folder cannot be
+    # replaced in one operation the way a file can -- see `write_tree_atomic`, which also says why a reader finding
+    # the target *missing* is safer than finding it *half written*.
+    from .atomic import write_tree_atomic
+    write_tree_atomic(target, lambda root: _write_xfl_into(document, root, marker_name))
+    return target
+
+
+def _write_xfl_into(document: Document, target: str, marker_name: str) -> None:
+    """The furniture, written into the empty directory this is handed."""
     os.makedirs(os.path.join(target, 'LIBRARY'), exist_ok=True)
     os.makedirs(os.path.join(target, 'META-INF'), exist_ok=True)
     os.makedirs(os.path.join(target, 'bin'), exist_ok=True)

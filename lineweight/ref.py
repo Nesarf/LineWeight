@@ -741,9 +741,14 @@ def summarise(measurements: list[Measurement]) -> dict:
 
 
 def save_report(measurements: list[Measurement], summary: dict, path: str, source: str = '') -> str:
+    from .atomic import write_atomic
+
     payload = {'source': source, 'summary': summary, 'images': [asdict(m) for m in measurements]}
-    with open(path, 'w', encoding='utf-8', newline='\n') as handle:
+
+    def render(handle):
         json.dump(payload, handle, indent=2, sort_keys=True, ensure_ascii=False)
+
+    write_atomic(path, render)
     return path
 
 

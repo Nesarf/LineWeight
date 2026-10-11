@@ -398,10 +398,17 @@ def save(surface, path: str) -> str:
     `tests/test_audit.py` asserts that across two processes rather than taking it on faith.
     """
     import os
+
+    from .atomic import atomic_path
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    surface.write_to_png(path)
+    # **cairo writes the file itself, so it is handed the temporary name and the rename is done here.** The
+    # alternative -- rendering into a buffer and writing that -- would run cairo's encoder a second way, and
+    # byte-identity across processes is asserted by this module's own test.
+    temporary = atomic_path(path)
+    surface.write_to_png(temporary)
+    os.replace(temporary, os.path.abspath(path))
     return path
 
 
