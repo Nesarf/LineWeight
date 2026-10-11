@@ -229,6 +229,80 @@ class Project:
                 counts[m.layer] = counts.get(m.layer, 0) + 1
         return counts
 
+    # ---- geometry, which the figure cannot speak about ------------------------------------------------------
+
+    def drawing_extent(self) -> tuple | None:
+        """The bounding box of every live mark's geometry, or None if there is nothing to bound.
+
+        **The figure knows structure and has no positions**, which is why this is a separate question: it can say that
+        a body has three branches at the spine and cannot say whether the drawing is on the page. Everything here is
+        read out of the marks' own geometry, so a canvas of the wrong scale and a stroke placed off the edge are both
+        visible to it and neither is visible to `figure.errors()`.
+        """
+        xs, ys = [], []
+        for m in self.marks:
+            if m.state != LIVE:
+                continue
+            pts = []
+            geometry = m.geometry or {}
+            for key in ('centre', 'control'):
+                for p in geometry.get(key) or []:
+                    if isinstance(p, (list, tuple)) and len(p) >= 2:
+                        pts.append(p)
+            for p in pts:
+                xs.append(p[0])
+                ys.append(p[1])
+        if not xs:
+            return None
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def geometry_errors(self) -> list[str]:
+        """Problems that mean **nothing this project contains can appear on its own page.** Empty means it draws.
+
+        **Only the definite faults are here, and the distinction is the point.** A bounding box that does not meet the
+        canvas cannot put a pixel on it -- no threshold, no judgement. A drawing that is merely *small* is a different
+        matter: a legitimate drawing of a small object exists, so that ratio is reported by `extent_report()` for
+        someone to look at rather than refused here.
+
+        **The fault this was written for is the first one found end to end**: a pose written in normalised units and
+        emitted that way drew a figure 0.85 units tall on an 800x600 canvas. Its bounding box was inside the page, so
+        this check would not have stopped it either -- what reported it was the coverage line in `--render`. The
+        refusal below stops the sibling fault, a stroke placed entirely off the page, which `demo_document` already
+        records in its own comment as "a shape that exists in every destination's data and is visible in none of
+        them, because no format complains about geometry off the page". Now one of them does.
+        """
+        problems = []
+        live = [m for m in self.marks if m.state == LIVE]
+        if not live:
+            return problems
+        box = self.drawing_extent()
+        if box is None:
+            problems.append('nothing with geometry is live: %d mark(s), none of them carrying any points'
+                            % len(live))
+            return problems
+        x0, y0, x1, y1 = box
+        if x1 < 0 or y1 < 0 or x0 > self.width or y0 > self.height:
+            problems.append('the drawing is entirely off the page: its box is (%.1f, %.1f)-(%.1f, %.1f) and the '
+                            'canvas is %gx%g' % (x0, y0, x1, y1, self.width, self.height))
+        return problems
+
+    def extent_report(self) -> dict:
+        """The drawing's box and how much of the page it occupies -- **a number to look at, not a verdict.**
+
+        Kept beside `geometry_errors` because they answer the two halves of one question and only one of them can be
+        answered without a judgement. `fill` is what makes a figure drawn at a hundredth of the right scale legible as
+        a fault: the correct drawing of a standing figure fills a few percent of its canvas, and one at 0.85 units on
+        an 800-unit page fills 0.00% while passing every structural check there is.
+        """
+        box = self.drawing_extent()
+        page = float(self.width) * float(self.height)
+        if box is None or page <= 0:
+            return {'box': None, 'width': 0.0, 'height': 0.0, 'fill': 0.0}
+        x0, y0, x1, y1 = box
+        w, h = max(0.0, x1 - x0), max(0.0, y1 - y0)
+        return {'box': box, 'width': w, 'height': h,
+                'fill': (w * h) / page if page else 0.0}
+
     # ---- adding ---------------------------------------------------------------------------------------------
 
     def stage_names(self) -> list[str]:

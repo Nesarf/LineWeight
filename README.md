@@ -386,19 +386,29 @@ catches every structural fault:**
 | a body with a third arm | **caught** -- `Bip001 Spine1 has 4 children, a body has 3 -- an extra limb` |
 | marks in an order the constraints forbid | **caught** -- four problems, naming the pair and the rig count |
 
-**And it does not look at geometry at all**, which is where the errors in this project have actually been. Two probes
-show it: strokes a fraction of a pixel across on an 800-unit canvas, and a stroke placed entirely outside the page.
-**Both are accepted**, and the second is the fault `demo_document` already records in its own comment -- a shape that
-exists in every destination's data and is visible in none of them, *because no format complains about geometry off
-the page*.
+**And the figure cannot look at geometry at all**, which is where the errors in this project have actually been -- it
+reads the parent relation and the layer stack and **holds no positions**, so a drawing placed off the edge of its own
+canvas passes every structural check there is. That gap is now closed in two halves, and **which half refuses and
+which half reports is the design**:
 
-**What reported the invisible figure was the coverage line, not the gate.** `--render` prints
+    project.geometry_errors()   # refuses a box that cannot put a pixel on the page
+    project.extent_report()     # the box and the share of the page it claims
 
-    every live mark: 41 of 41 marks, 800 x 600, 17 px covered (0.0%)
+**The off-page box is refused**, because it is a fault with no judgement in it: `the drawing is entirely off the page:
+its box is (-9000.0, -9000.0)-(-8899.6, -8900.0) and the canvas is 800x600`. That is the fault `demo_document` already
+records in its own comment -- a shape that exists in every destination's data and is visible in none of them,
+*because no format complains about geometry off the page*. Now one of them does, and `--render` refuses before it
+rasterises.
 
-and that number is the whole of the warning. It is worth keeping in view for what it is: **the one place in the flow
-that notices a drawing which draws nothing is a statistic about pixels, and the gate that knows what the drawing was
-supposed to be has no opinion about it.**
+**A drawing that is merely small is reported and not refused**, and that distinction is not squeamishness: a
+legitimate drawing of a small object is **geometrically identical** to a figure drawn at a hundredth of the right
+scale. What separates them is a ratio, so `--render` prints it and leaves it to be looked at:
+
+    every live mark: 41 of 41 marks, 800 x 600, 4095 px covered (0.9%)
+    extent: (273.0, 62.9)-(526.9, 539.6), 254 x 477, 25.22% of the page
+
+A standing figure fills about a quarter of its canvas. The first end-to-end drawing, emitted in normalised units,
+filled **0.0000%** -- and that is the number that makes it legible as a fault rather than as a small drawing.
 
 ## The body, and the layers
 

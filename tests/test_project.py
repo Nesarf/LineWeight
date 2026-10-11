@@ -1050,3 +1050,59 @@ def test_an_unknown_role_is_refused_by_the_document_and_a_role_can_be_cleared():
     project.assign_role('m0001', '')
     assert project.by_id('m0001').geometry['role'] == ''
     assert stroke_widths(project.by_id('m0001').geometry) > thinned
+
+
+# ---- geometry, which the figure cannot speak about -------------------------------------------------------------
+
+def test_a_drawing_entirely_off_its_own_page_is_refused_and_nothing_else_is():
+    """**The one geometric fault that is a fault without a judgement.**
+
+    `figure.errors()` reads the parent relation and the layer stack and has no positions at all, so a drawing placed
+    off the edge of its canvas passes every structural check there is -- which is exactly the fault `demo_document`
+    records in its own comment: a shape that exists in every destination's data and is visible in none of them,
+    because no format complains about geometry off the page. This one does.
+    """
+    from lineweight.core import stroke_record
+    from lineweight.figure import standard
+
+    project = Project(figure=standard())
+    project.add_stroke(stroke_record([(100, 100), (300, 120), (200, 400)], 'ink', seed=1), layer='torso')
+    assert project.geometry_errors() == []
+
+    off = Project(figure=standard())
+    off.add_stroke(stroke_record([(-9000, -9000), (-8900, -8900)], 'ink', seed=2), layer='torso')
+    problems = off.geometry_errors()
+    assert len(problems) == 1
+    assert 'entirely off the page' in problems[0]
+
+
+def test_being_small_is_reported_and_not_refused():
+    """**A ratio is not a verdict, and the drawing this was written for proves it.**
+
+    The first end-to-end drawing emitted a normalised pose directly and put a figure 0.85 units tall on an 800x600
+    canvas. Its box was *inside* the page, so a containment check would not have caught it either, and it is
+    indistinguishable by geometry alone from a legitimate drawing of something small. What distinguishes them is the
+    fraction of the page the box claims -- 0.0000% against 12.9% for a real figure -- so that is reported and left to
+    be looked at.
+    """
+    from lineweight.core import stroke_record
+    from lineweight.figure import standard
+
+    tiny = Project(figure=standard())
+    tiny.add_stroke(stroke_record([(0.0, 0.3), (0.1, 0.4), (0.2, 0.5)], 'ink', seed=3), layer='torso')
+    assert tiny.geometry_errors() == [], 'small is not a structural fault'
+
+    real = Project(figure=standard())
+    real.add_stroke(stroke_record([(100, 100), (300, 120), (200, 400)], 'ink', seed=4), layer='torso')
+
+    assert tiny.extent_report()['fill'] < 0.0001
+    assert real.extent_report()['fill'] > 0.05
+    # and the box of the tiny one really is on the page
+    x0, y0, x1, y1 = tiny.extent_report()['box']
+    assert 0 <= x0 and x1 <= tiny.width and 0 <= y0 and y1 <= tiny.height
+
+
+def test_a_project_with_no_live_marks_has_no_geometry_complaint():
+    """An empty project is not a broken one -- it is a project that has not been drawn on yet."""
+    assert Project().geometry_errors() == []
+    assert Project().extent_report()['box'] is None

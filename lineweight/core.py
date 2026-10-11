@@ -1540,6 +1540,17 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
 
     width = int(project.width * scale)
     height = int(project.height * scale)
+    # **The geometric refusal, which the figure cannot make.** `set_figure` knows which bones exist and which layers
+    # are declared and has no positions at all, so a drawing placed entirely off its own page passes every structural
+    # check there is. This is the one geometric fault that can be called a fault without a judgement, and it is
+    # refused before anything is rasterised.
+    problems = project.geometry_errors()
+    if problems:
+        raise SystemExit('--render: %s' % '; '.join(problems))
+    # **The rest is a number, not a verdict.** A bounding box far smaller than the canvas is what a figure drawn at a
+    # hundredth of the right scale looks like -- and also what a legitimate drawing of a small object looks like. It
+    # is reported beside the coverage so that it can be looked at rather than acted on.
+    extent = project.extent_report()
     # **The surface is chosen here and only here.** `check_report` renders the same marks and deliberately does not
     # take a paper: the invariants judge the drawing's stages, and which sheet it is previewed on must not move a
     # measurement.
@@ -1557,6 +1568,15 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
     print('  %s' % out)
     print('  %s: %d of %d marks, %d x %d, %d px covered (%.1f%%)'
           % (label, len(marks), len(project.marks), width, height, covered, 100.0 * covered / (width * height)))
+    # **The extent beside the coverage, because they catch different things.** Coverage counts pixels that survived
+    # rasterisation and says nothing about whether the geometry was the right size; the extent is read off the marks
+    # and says how much of the page the drawing claims. A figure at a hundredth of the right scale shows a real fill
+    # fraction of nearly zero while covering seventeen pixels, and the two numbers together are what makes that
+    # legible as a fault rather than as a small drawing.
+    if extent['box']:
+        x0, y0, x1, y1 = extent['box']
+        print('  extent: (%.1f, %.1f)-(%.1f, %.1f), %.0f x %.0f, %.2f%% of the page'
+              % (x0, y0, x1, y1, extent['width'], extent['height'], 100.0 * extent['fill']))
     return 0
 
 

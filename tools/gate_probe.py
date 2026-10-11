@@ -87,30 +87,33 @@ def main():
     head('5. geometry that draws nothing', 'the fault that actually happened: a figure 0.85 units tall on an 800x600 canvas')
     tiny = project.Project(figure=fig)
     tiny.add_stroke(core.stroke_record([(0.0, 0.3), (0.1, 0.4), (0.2, 0.5)], 'ink', seed=3), layer='torso')
-    ok = True
-    try:
-        tiny.add_stroke(core.stroke_record([(0.0, 0.3), (0.1, 0.4)], 'ink', seed=4), layer='leg')
-    except Exception as e:
-        ok = False
-        print('    CAUGHT      %s' % e)
-    if ok:
-        print('    NOT CAUGHT  two strokes, both about 0.2 units across, on a canvas 800 units wide')
-        print('                the figure is a fraction of a pixel and the gate has nothing to say about it')
-        print('                ** what reported it was `--render`\'s coverage line: "17 px covered (0.0%%)" **')
+    rep = tiny.extent_report()
+    print('    NOT REFUSED  geometry_errors() -> %d' % len(tiny.geometry_errors()))
+    print('                 ** and refusing it would be wrong**: a legitimate drawing of a small object is')
+    print('                 geometrically identical to a figure drawn at a hundredth of the right scale.')
+    print('    REPORTED     extent (%.1f, %.1f)-(%.1f, %.1f)   fill %.4f%%'
+          % (rep['box'][0], rep['box'][1], rep['box'][2], rep['box'][3], 100 * rep['fill']))
+    print('                 a real standing figure fills about 25 percent of its canvas; that ratio is the whole')
+    print('                 of the distinction, so it is printed rather than judged.')
 
-    head('6. a stroke whose geometry is entirely off the canvas', 'the same fault, one step further')
+    head('6. a stroke whose geometry is entirely off the canvas', 'the geometric fault that IS a fault')
     off = project.Project(figure=fig)
     off.add_stroke(core.stroke_record([(-9000, -9000), (-8900, -8900)], 'ink', seed=5), layer='torso')
-    print('    NOT CAUGHT  accepted; the mark exists, names a valid layer, and is outside the page')
-    print('                (this is the one `demo_document` already records: "a shape that exists in every')
-    print('                 destination\'s data and is visible in none of them, because no format complains')
-    print('                 about geometry off the page")')
+    errs = off.geometry_errors()
+    print('    CAUGHT      geometry_errors() -> %d problem(s)' % len(errs))
+    for e in errs:
+        print('       %s' % e)
+    print('                this is the one `demo_document` already records in its own comment: a shape that')
+    print("                exists in every destination's data and is visible in none of them, because no format")
+    print('                complains about geometry off the page. Now one of them does.')
 
     print()
     print('=== summary')
     print('    the gate is a CHECK ON STRUCTURE: which bones exist, how they branch, which layers are declared,')
-    print('    what order they go in. Five of the six probes are structural and every one is caught.')
-    print('    the sixth is GEOMETRIC and it is not -- and geometric is where the real errors have been.')
+    print('    what order they go in. The four structural probes are all refused.')
+    print('    of the two geometric ones, the off-page box is refused -- it cannot put a pixel on the page --')
+    print('    and the merely-small one is REPORTED, because geometry alone does not tell a small drawing from')
+    print('    a wrongly-scaled one. Only the ratio does.')
 
 
 if __name__ == '__main__':
