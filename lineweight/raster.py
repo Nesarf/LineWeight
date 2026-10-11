@@ -246,21 +246,27 @@ def _density_to_alpha(density, cap):
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
                  density: bool = False) -> Layer:
-    """... **`density` is an unfinished experiment and is not correct yet -- do not use it as if it were.**
+    """... **`density` is an unfinished experiment, and what it was for does not work -- do not use it.**
 
     It exists because a real fault was measured: with `accumulate=False`, the coverage across the gap between a
-    hairpin's own two arms has a corner in it -- a gradient jump of 3 to 7 times the typical step, measured by
-    `tools/crease_measure.py`. Compositor's brush note records the same fault after taking the same maximum, and its
-    answer is to integrate optical density along the path and convert the accumulated density to coverage.
+    hairpin's own two arms has a corner in it, a gradient jump of **3.3 to 7.2 times the typical step** against about
+    1 for a smooth profile (`tools/crease_measure.py`). Compositor's brush note records the same fault after taking
+    the same maximum, and its answer is to integrate optical density along the path and convert the accumulated
+    density to coverage.
 
-    **The integration here does not normalise correctly.** `_density_to_alpha` scales by a reference of `2/3`, which
-    is the integral through a round tip of the *nominal* radius; the dabs are stamped at
-    `nominal * pressure ** curve`, which for the wash brush is about a third of that, so the density comes out far
-    too low. Measured: the wash brush's peak alpha falls from 0.263 to 0.020 while the ink brush's is unchanged and
-    its corner gets *worse* (3.09 to 5.96). The corner does disappear where the normalisation happens to suit the
-    brush, so the approach is the right one and the constant is the thing that is wrong.
+    **Two things were learned by trying it, and only one of them is a success.**
 
-    Left in the tree rather than removed so the next attempt starts from what was measured instead of from the idea.
+    * **The magnitude needed the step.** A sum over dabs approximates a path integral only when each term is weighted
+      by the distance it stands for. Without that weight the wash brush -- whose radius is about a third of nominal at
+      the measured pressure -- came out at a peak alpha of 0.020 against 0.263, faint by thirteen. With it the two
+      agree: peak 0.200 against 0.263, coverage 2444 against 2509.
+    * **And the corner is still there.** Measured at the meeting point rather than across the whole span: the maximum
+      path reads **3.29** and the density path **3.00**; on a wider hairpin, 1.75 against 1.67. **The technique does
+      not transfer.** Whatever puts the corner in this library's hairpin is not the thing that put it in Compositor's,
+      and the honest state is that the fault is measured, described, and unfixed.
+
+    Left in the tree rather than removed so the next attempt starts from what was measured. The default is unchanged,
+    because a change to this function moves every calibration target the library is fitted to.
     """
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
@@ -311,6 +317,10 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 alpha = min(1.0, brush['opacity'] * float(alphas[min(i, len(alphas) - 1)]))
             else:
                 alpha = min(1.0, brush['opacity'] * (p ** gamma))
+            # **The distance this dab stands for, needed before it is deposited.** It was computed after the
+            # deposit, which the maximum path never noticed because it does not use it -- and the density path
+            # failed with `cannot access local variable 'dab_step'` on its first run.
+            dab_step = max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
             # **One stroke, one deposit**: the dabs take the maximum rather than compositing over each other, so
             # where the brush's spacing puts them closer together the stroke does not get darker. Strokes still
             # darken strokes, because that happens in the caller when this buffer is composited.
@@ -318,11 +328,11 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 # **Summed, not maximised -- and the sum is of the tip's own falloff, so it is the integral of
                 # deposition along the path rather than a count of dabs.** Spacing changes how finely that integral
                 # is sampled, not what it comes to.
-                _deposit(layer, x, y, radius, alpha)
+                _deposit(layer, x, y, radius, alpha, dab_step)
             else:
                 layer.wet_dab(x, y, radius, colour, alpha, wet, under,
                               accumulate=False)
-            travelled += max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
+            travelled += dab_step
         carry = travelled - segment
     if density:
         _resolve_density(layer, width, height, brush)
@@ -345,8 +355,18 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     return layer
 
 
-def _deposit(layer, x: float, y: float, radius: float, alpha: float) -> None:
-    """One dab's falloff added into the density buffer -- **the tip's shape, not its result.**"""
+def _deposit(layer, x: float, y: float, radius: float, alpha: float, step: float) -> None:
+    """One dab's falloff added into the density buffer -- **the tip's shape, not its result.**
+
+    **`step` is what makes the sum an integral.** A sum over dabs approximates the path integral of the falloff only when each term
+    is weighted by the distance it stands for, and dabs along a path are spaced -- `max(1, 2 r spacing)` apart. Without
+    the weight the total depends on the spacing, which is the fault `accumulate=False` was introduced to remove, one
+    layer down; with it the sum is the path integral however finely the path was sampled.
+
+    Measured before the weight was added: the wash brush, whose radius is about a third of nominal at the measured
+    pressure, came out at a peak alpha of 0.020 against 0.263 for the maximum -- **faint by a factor of thirteen**,
+    and the factor is exactly the ratio of the step to the diameter that the missing weight accounts for.
+    """
     if radius <= 0 or alpha <= 0:
         return
     x0, x1 = max(0, int(x - radius)), min(layer.width - 1, int(x + radius) + 1)
@@ -365,7 +385,7 @@ def _deposit(layer, x: float, y: float, radius: float, alpha: float) -> None:
             # measured pressure is about a third of it, so the stroke came out 5.5x too faint and the coverage fell
             # from 2509 pixels to 657. The integral is of deposition per unit length, so the length scale is the one
             # the deposition actually happened at.
-            buf[row + px] += alpha * (1.0 - (distance / radius) ** 2) / (2.0 * radius)
+            buf[row + px] += alpha * (1.0 - (distance / radius) ** 2) * step / (2.0 * radius)
 
 
 def _resolve_density(layer, width: int, height: int, brush) -> None:
