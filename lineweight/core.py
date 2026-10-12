@@ -1372,21 +1372,27 @@ def fit_report(image_path: str) -> int:
     #
     # The rule is the measurement's own: a length in pixels, or an area over the fixed area of a canvas, moves with the
     # scale of the image. A ratio of two lengths inside the same drawing does not.
-    print('  this drawing, in its own units -- these move with the canvas size')
-    print('    ink fraction    %.4f' % result.ink_ratio)
-    print('    mean darkness   %.1f' % result.darkness)
-    print('    line-like runs  %d of %d' % (result.line_runs, result.runs))
-    if result.line_runs:
-        print('    width           median %.1f  p90 %.1f  max %d'
-              % (result.width_median, result.width_p90, result.width_max))
-    print('  comparable with the library at any size, because both are ratios inside one drawing')
+    # **The groups come from `ref.SCALE_FREE` rather than from my reading of the names.** My first version put
+    # `ink_ratio` among the quantities that move with the canvas, **and the library says the opposite in as many
+    # words**: `taper_ratio` and `ink_ratio` are ratios of one length to another within the same picture, so a small
+    # sheet and a 1920-pixel illustration are comparable. Widths are pixel counts and are not. The consequence of
+    # getting it wrong is not cosmetic: it turns "this drawing has six times the ink of a real design sheet", which is
+    # a finding, into "the canvas is smaller", which is an excuse.
+    print('  comparable with the library at any size -- ratios inside one picture (`ref.SCALE_FREE`)')
+    print('    ink fraction    %.4f      (linework in the library sits at 0.15)' % result.ink_ratio)
     if result.line_runs:
         spread = result.width_p90 / result.width_median if result.width_median else 0.0
         print('    taper ratio     %.4f      (linework in the library sits at 0.42)' % result.taper_ratio)
         print('    p90/median      %.3f      (linework in the library sits at 2.75)' % spread)
     else:
-        print('    no line-like runs, so neither ratio could be measured')
-    print('  the first group is not portable: to compare it, measure the library at this canvas size')
+        print('    no line-like runs, so neither shape ratio could be measured')
+    print('  this drawing in its own units -- these are pixel counts and are not portable')
+    print('    mean darkness   %.1f' % result.darkness)
+    print('    line-like runs  %d of %d' % (result.line_runs, result.runs))
+    if result.line_runs:
+        print('    width           median %.1f  p90 %.1f  max %d'
+              % (result.width_median, result.width_p90, result.width_max))
+    print('  to compare the second group, measure the library at this canvas size')
     return 0
 
 
@@ -1417,13 +1423,13 @@ def fit_directory(root: str) -> int:
     # or could, since the library's own images are not shipped. **Four rows in one table with a library column look
     # like four comparisons**, which is the same fault `--fit` had with its four numbers, and it was found the same
     # way: by running it on a folder and reading the answer.
-    print('  comparable with the library, because both are ratios inside one drawing')
-    reference = targets.get('taper_ratio')
-    print('    %-14s %10.4f %10s' % ('taper ratio', summary['taper_ratio'],
-                                     '%.4f' % reference if isinstance(reference, (int, float)) else '-'))
-    print('  this folder in its own units -- these move with the canvas size and have no library column')
-    for key, label in (('ink_ratio', 'ink fraction'), ('width_median', 'width median'),
-                       ('width_p90', 'width p90')):
+    print('  comparable with the library at any size -- ratios inside one picture (`ref.SCALE_FREE`)')
+    for key, label in (('ink_ratio', 'ink fraction'), ('taper_ratio', 'taper ratio')):
+        reference = targets.get(key)
+        print('    %-14s %10.4f %10s'
+              % (label, summary[key], '%.4f' % reference if isinstance(reference, (int, float)) else '-'))
+    print('  this folder in its own units -- pixel counts, and not portable')
+    for key, label in (('width_median', 'width median'), ('width_p90', 'width p90')):
         print('    %-14s %10.4f' % (label, summary[key]))
     print('  the library row comes from %d pooled line drawings; the checked-in summary is' % targets.get('images', 0))
     print('  tests/data/corpus_summary.json, so both sides can be re-derived. To compare the second group,')
