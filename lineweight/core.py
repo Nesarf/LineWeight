@@ -115,14 +115,33 @@ def catmull(points: list[tuple[float, float]], samples: int) -> list[tuple[float
     return out
 
 
-def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: int) -> list[float]:
-    """**The hand model.** Four effects, each of which is a thing a real tablet records."""
+def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: int,
+              hand: list[tuple[float, float]] | None = None) -> list[float]:
+    """**The hand model.** Four effects, each of which is a thing a real tablet records.
+
+    **Two of the four belong to different resolutions and are now evaluated at both.** `taper_in` and `taper_out` are
+    measured in **distance travelled** -- the docstring below says why -- so they need the expanded path, where a walk
+    along the stroke is a walk of the right length. `speed` and `corner` are properties of **how the hand was
+    sampled**, so they need the control points: read off a Catmull-Rom expansion their spacing is the curve's
+    parameterisation, and measured on a bone that swung the term by two to one where nothing happened.
+
+    `hand` is where those two are read, and defaults to `path` so a caller that has only one set of points gets what
+    it always got. **The first attempt passed the control points as `path` itself and the taper went with them** --
+    with two points the walk from 0 to the full length happens in one step, so the second point collected the exit
+    taper and the whole stroke rendered as a faint even ramp, four times too light on the fine brush.
+    """
     rng = random.Random(seed)
     n = len(path)
     if n < 2:
         return [1.0] * n
     lengths = [math.dist(path[i], path[i + 1]) for i in range(n - 1)]
     total = sum(lengths) or 1.0
+    # **The hand's own samples, which are what `speed` and `corner` are defined on.** Their lengths are the arc
+    # lengths of the stroke as the author laid it down, not as the expander resampled it.
+    src = hand if hand else path
+    m = len(src)
+    src_lengths = [math.dist(src[i], src[i + 1]) for i in range(m - 1)]
+    src_total = sum(src_lengths) or 1.0
     # Taper lengths, in pixels, resolved once: they are properties of the nib and the document's scale, not of where
     # along the stroke the hand happens to be.
     tin = brush['taper_in'] * brush['width']
@@ -131,15 +150,19 @@ def pressures(path: list[tuple[float, float]], brush: dict[str, float], seed: in
     out: list[float] = []
     noise_state = 0.0
     for i in range(n):
+        # **`speed` and `corner` are read at the hand's own sampling rate and carried here.** `k` walks the hand's
+        # points in step with the path's, so a path that is twelve times finer than the hand samples each hand point
+        # twelve times rather than the term being read at the wrong resolution entirely.
+        k = min(m - 1, int(round(i * (m - 1) / max(1, n - 1))))
         # 1. speed: a fast stroke presses less. A long straight run reads as fast.
         speed = 0.0
-        if 0 < i < n - 1:
-            speed = min(1.0, (lengths[i - 1] + lengths[i]) / (2 * total / n) / 4.0)
+        if 0 < k < m - 1:
+            speed = min(1.0, (src_lengths[k - 1] + src_lengths[k]) / (2 * src_total / m) / 4.0)
         # 2. corner: a sharp turn slows the hand and lifts it, so the line thins
         corner = 0.0
-        if 1 < i < n - 1:
-            a = math.atan2(path[i][1] - path[i - 1][1], path[i][0] - path[i - 1][0])
-            b = math.atan2(path[i + 1][1] - path[i][1], path[i + 1][0] - path[i][0])
+        if 1 < k < m - 1:
+            a = math.atan2(src[k][1] - src[k - 1][1], src[k][0] - src[k - 1][0])
+            b = math.atan2(src[k + 1][1] - src[k][1], src[k + 1][0] - src[k][0])
             d = abs((b - a + math.pi) % (2 * math.pi) - math.pi)
             corner = min(1.0, d / (math.pi / 2))
         # 4. a slow drift, which is what makes a line look drawn rather than computed
@@ -1034,7 +1057,18 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     path = catmull(points, resolution)
     path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed,
                    TREMBLE_STEP * brush['width'])
-    ps = pressures(path, brush, seed)
+    # **The pressure model is evaluated on the control points, then carried onto the path.** It models a hand -- "four
+    # effects, each of which is a thing a real tablet records" -- and one of them, `speed`, reads the local spacing of
+    # the points it is given. **That spacing is a fact about the parameterisation once the points are a Catmull-Rom
+    # expansion**, not about how fast the hand moved: measured on a bone, the expansion's segment lengths run from 1.10
+    # to 2.32 pixels, so the term swings by two to one where nothing happened. Evaluated on the control points the
+    # points are at least the ones an author put down.
+    #
+    # The model's resolution is now the stroke's, not the expander's, which is the resolution it was written for: a
+    # hand does not change speed between two samples a third of a pixel apart.
+    #
+    # **This moves every calibration target**, because it changes what every stroke's pressure profile is. See TODO.md.
+    ps = pressures(path, brush, seed, hand=points)
     return {
         'brush': brush_name,
         'seed': seed,
