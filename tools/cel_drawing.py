@@ -93,6 +93,15 @@ LAYER_OF = {
 BASE = {'torso': (214, 186, 168), 'arm': (214, 186, 168), 'leg': (214, 186, 168),
         'hand': (214, 186, 168), 'neck': (206, 178, 160), 'head': (222, 194, 176)}
 
+#: **How much thinner the whole figure is drawn this time, and why.** Measured against the library, the first
+#: cel drawing reads an ink fraction of 0.0588 against 0.15, and against two real design sheets at 0.0094 and 0.0210.
+#: Its taper ratio is 0.3426 against 0.42, and p90 over median 3.500 against 2.75 -- **a width distribution wider
+#: than either reference**, which is the same statement as the taper ratio being low.
+#:
+#: Scaling everything down moves the first and cannot move the second, because a ratio does not see a scale -- so
+#: this is one change and one measurement of two numbers, and which of them moves is the answer.
+THINNER = 0.55
+
 
 def bone_profile(bone, n, taper_from=0.0):
     top = bottom = 0.030
@@ -109,7 +118,7 @@ def bone_profile(bone, n, taper_from=0.0):
             w *= 1.0 - taper_from * (1.0 - t / ENTRY)
         if bone in TIP_BONES and t > 1.0 - EXIT:
             w *= 1.0 - 0.55 * ((t - (1.0 - EXIT)) / EXIT)
-        out.append(w * SCALE)
+        out.append(w * SCALE * THINNER)
     return out
 
 
