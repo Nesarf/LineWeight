@@ -1110,34 +1110,4 @@ this folder in its own units -- these move with the canvas size and have no libr
 **而顺带得到的一条**：两份真实设定稿的 **taper 0.5801** 对库的 **0.4213** ——
 **真实设定稿的 taper 比库的语料高。** 那可能说明库的语料（插画）与设定稿是两种东西，
 **或者说明 `taper_ratio` 本身对线稿的种类敏感 —— 而这一点还没查。**
-END RULE
-python -m pytest -q 2>&1 | tail -2
-git add -A && git commit -q -F - <<'MSG'
-the ruler first: --fit and --fit-dir now print comparable and incomparable quantities apart
-
-Both had the same fault and `--fit-dir` had it worse: it printed four quantities in a table with a column of library
-values beside them, and **three of the four rows -- ink fraction, median width and p90 width -- are scale-dependent**,
-comparable with the library only when the two are at the same canvas size. **Nothing checked that, or could, since
-the library's own images are not shipped.**
-
-    comparable with the library, because both are ratios inside one drawing
-      taper ratio        0.5801     0.4213
-    this folder in its own units -- these move with the canvas size and have no library column
-      ink fraction       0.0152
-      width median       3.0000
-      width p90          6.0000
-
-**The rule is the measurement's own**: a length in pixels, or an area over the fixed area of a canvas, moves with the
-scale of the image; a ratio of two lengths inside one drawing does not. `--fit` says the same thing for a single
-image, and both now end by saying that comparing the first group means measuring the library at this canvas size.
-
-**Found the way the rule was found**: by running the tool on the first drawing that ever went through it and reading
-the answer, where an ink fraction of 0.0588 against two real design sheets at 0.0094 and 0.0210 is not "more ink" but
-"a smaller canvas" -- and the 0.15 it was being compared against is the illustration corpus rather than design sheets.
-**Four numbers in a column look like four comparable numbers**, which this project has now recorded in five different
-places.
-
-**And one thing fell out of testing it**: two real design sheets pool to a taper ratio of 0.5801 against the library's
-0.4213. Either the library's corpus -- illustrations -- and design sheets are two different things, or `taper_ratio`
-is sensitive to the kind of linework, and neither has been checked.
 
