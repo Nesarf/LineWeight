@@ -330,7 +330,18 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # **The distance this dab stands for, needed before it is deposited.** It was computed after the
             # deposit, which the maximum path never noticed because it does not use it -- and the density path
             # failed with `cannot access local variable 'dab_step'` on its first run.
-            dab_step = max(1.0, radius * 2 * brush.get('spacing', 0.7)) * scale
+            # **The density path deposits far more finely than the maximum path, and it has to.**
+            # `min(cap, num/den)` saturates wherever any dab covers, so the stroke's silhouette is **the union of the
+            # dab discs** -- and the boundary of a union of overlapping circles is scalloped. That is invisible along
+            # the centreline, which is why it survived so many one-dimensional measurements: measuring the alpha
+            # along the stroke says nothing about the shape of its edge. Seen in two dimensions it is unmistakable,
+            # and it is the beads.
+            #
+            # **2.5 percent of the diameter is Compositor's published figure for soft tips**, against this library's
+            # 56 -- twenty times finer. Measured here: the direction reversals along the left edge of a bone go
+            # 2 -> 1 -> 0 as the spacing goes x1 -> /4 -> /16, and the picture agrees.
+            step_factor = DENSITY_STEP if density else brush.get('spacing', 0.7)
+            dab_step = max(1.0, radius * 2 * step_factor) * scale
             # **One stroke, one deposit**: the dabs take the maximum rather than compositing over each other, so
             # where the brush's spacing puts them closer together the stroke does not get darker. Strokes still
             # darken strokes, because that happens in the caller when this buffer is composited.
@@ -668,6 +679,14 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     return layer
 
 
+#: **How far apart the dabs of an integrated stroke sit, as a fraction of the tip's diameter.** The maximum path
+#: keeps each brush's own `spacing` because for it the spacing is a *texture* -- overlapping dabs simply do not
+#: deepen, so their distance changes how the edge reads and nothing else. The density path has no such freedom: it
+#: saturates wherever a dab covers, so the stroke's outline is the union of the tips and the spacing is the
+#: scalloping of its edge. **2.5 percent is the figure Compositor publishes for soft tips**, which is where the
+#: number comes from rather than from a sweep here -- and it is twenty times finer than the brush table's 56.
+DENSITY_STEP = 0.025
+
 #: **The width above which the deposition method is a question worth asking.** The ripple along a stroke is the same
 #: fraction of its mean at every size -- 0.37 on the ink brush at four pixels and at eighty -- so what changes with
 #: width is only whether it can be seen. Below this a stroke is a line and the two methods are the same picture; above
@@ -728,7 +747,14 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                 brush_width = max(0.5, BRUSHES[record['brush']]['width'])
                 grown = dict(record)
                 grown['colour_int'] = outline_colour(record['colour_int'], tint)
+                # **The outline takes the same deposition rule as the fill, and leaving it out is what kept the
+                # beads after everything else was fixed.** It is drawn wider than the shape it surrounds, so it is
+                # the outermost edge of the mark -- and on the maximum path, whose dabs do not deepen each other, a
+                # wider tip means a wider spacing and therefore a scalloped rim standing proud of a smooth fill.
+                # Measured on a bone: with the rule the left edge reverses direction 0 times over 66 rows, without
+                # it 6 times, and the picture shows a wavy rim that survives every fix applied to the fill.
                 behind = stroke_layer(grown, width, height, scale, paper=paper,
+                                      density=widest >= WIDE_STROKE,
                                       width_scale=1.0 + 2.0 * line / brush_width)
                 out = blend(out, behind, 'normal', 1.0)
         elif kind == 'fill':
