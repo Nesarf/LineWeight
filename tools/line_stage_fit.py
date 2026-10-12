@@ -39,7 +39,7 @@ def line_stage_frames(vid, want):
     dark = sorted(r.get('band_dark', 0.0) for r in pf)
     cut = dark[int(0.35 * len(dark))]
     # **the records themselves, not pairs** -- the first version kept `enumerate`'s tuple and then indexed it
-    scored = [r for r in pf if r.get('band_dark', 1.0) <= cut and r.get('ink', 0.0) > 0.004]
+    scored = [r for r in pf if r.get('band_dark', 1.0) <= cut and r.get('not_paper', r.get('ink', 0.0)) > 0.004]
     if not scored:
         return []
     step = max(1, len(scored) // want)
