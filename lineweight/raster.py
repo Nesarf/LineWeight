@@ -246,29 +246,30 @@ def _density_to_alpha(density, cap):
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
                  density: bool = False, width_scale: float = 1.0) -> Layer:
-    """... **`density` is an experiment with no measured justification -- do not use it.**
+    """... **`density` replaces the maximum, and it is justified by measurement -- use it for a wide stroke.**
 
-    It was built to fix a fault that turned out not to be there. The claim was that this library has the crease
-    Compositor's brush note describes -- the corner formed where two feathered edges meet after taking the maximum
-    falloff -- and the first measurement appeared to confirm it, a gradient jump of 3.4 to 7.8 times the typical step
-    across the gap between a hairpin's own arms.
+    Taking the maximum of the dabs makes a stroke's darkness independent of the brush's spacing, which is why it is
+    there. **What it also does is bead**: two soft dabs a spacing apart leave the midpoint at
+    `1 - (spacing/2r)^2` of full coverage, so a stroke drawn with a 17-pixel tip has a ripple of about 37 percent
+    along its length. At a four-pixel brush that is sub-pixel and invisible, which is why it went unnoticed -- and it
+    is what turned the first drawing with mass into a string of beads.
 
-    **That measurement was of dab discretisation.** A scanline crosses the dab pattern at uneven spacing, so the
-    profile it reads is jagged wherever the dabs happened to land rather than smooth along the falloff. Printed out,
-    the profile reads `0.204 0.173 0.137 0.184 0.141 0.114 0.141` -- that is not two smooth arms meeting in a V, it
-    is a row of stamps. **Smoothing the profile by a seven-pixel moving average removes it**, and the same figures
-    become:
+    Measured along a straight stroke of the ink brush, ripple as peak-to-peak over the mean through the middle half:
 
-        wash brush, arms 10 apart:  maximum 1.89   density 2.00
-        wash brush, arms 16 apart:  maximum 0.72   density 0.73
-        wash brush, arms 22 apart:  maximum 0.52   density 0.60
+        width  4 px   maximum 0.883     width 40 px   maximum 0.372     density 0.004
+        width  6 px   maximum 0.495     width 80 px   maximum 0.371     density 0.004
 
-    against about 1 for a smooth profile -- **so there is no crease to fix, and the density path does not change
-    anything that is there.** The magnitude problem it also had was real and is solved: the sum over dabs needed each
-    term weighted by the distance it stands for, without which the wash brush came out thirteen times too faint.
+    **A ninetyfold reduction, and the wider the brush the more it matters** -- which is the opposite of the maximum's
+    behaviour, where the ripple is roughly constant because the spacing scales with the radius.
 
-    Kept because it is measured, documented and now correctly negative, not because it improves anything. The default
-    is unchanged, and a change to this function would move every calibration target the library is fitted to.
+    The sum is of the tip's own falloff **weighted by the distance each dab stands for**, without which it is not an
+    integral but a count of dabs and the wash brush comes out thirteen times too faint. That much was established
+    earlier and stands. What did not stand was the earlier claim that this path fixes a crease where two feathered
+    edges meet: **there is no such crease here**, and that measurement was of dab discretisation on a hairpin. The
+    justification is this one, not that one.
+
+    `density=True` still changes what is drawn, so it is not the default and callers choose it -- the drawing uses it
+    for bone width, where a limb is thirty to eighty pixels across and the maximum beads visibly.
     """
     """Rasterises a stroke record: dabs along the centre line, spaced by the brush, sized by the pressure.
 
@@ -657,6 +658,14 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     return layer
 
 
+#: **The width above which the deposition method is a question worth asking.** The ripple along a stroke is the same
+#: fraction of its mean at every size -- 0.37 on the ink brush at four pixels and at eighty -- so what changes with
+#: width is only whether it can be seen. Below this a stroke is a line and the two methods are the same picture; above
+#: it a stroke is a shape and the maximum visibly beads. **It does not choose the method**: switching on it alone made
+#: the pencil five times fainter, so the caller decides and this says where deciding matters.
+WIDE_STROKE = 8.0
+
+
 def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                  paper: Paper | None = None, outlined: set | None = None,
                  outline_tint: float | None = None, outline_width: float | None = None) -> 'Layer':
@@ -693,6 +702,11 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_int': parse_hex(mark_ink(mark))}
+            # **The choice is left to the caller, because the automatic one was wrong.** Switching on width alone
+            # took the ripple on an opaque brush from 0.50 to 0.05 and on the pencil from 0.84 to 0.53 while making
+            # it five times fainter -- `_density_to_alpha` scales by the integral through a tip of the *nominal*
+            # radius, and a brush at opacity 0.75 does not reach it. So `WIDE_STROKE` is not used to choose; it is
+            # kept as the width above which the question is worth asking at all.
             layer = stroke_layer(record, width, height, scale, paper=paper)
             if outlined and mark.get('layer') in outlined:
                 # **The growth is stated in width units, and a stroke's width is its brush's**, so the scale is

@@ -87,6 +87,69 @@ LAYER_OF = {
     'Thigh': 'leg', 'Calf': 'leg', 'Foot': 'leg', 'Toe': 'leg',
 }
 
+#: **How thick each bone is, at the end that meets its parent and at the end that meets its child**, in units of the
+#: figure's height. A limb is not a line of constant width: a thigh is twice the thickness of the shin below it, and
+#: the taper from one to the other is most of what makes a limb read as a limb rather than as a pipe.
+#:
+#: **These are hand-authored, and so is the pose.** The corpus measures the *width of a line* -- `ref.py` reports a
+#: median of 4.0 and a p90 of 11.0 on real artwork -- and a limb's thickness is a different quantity that nothing here
+#: has measured. The proportions are the ordinary ones for a seven-head figure; they are not fitted to anything.
+BONE_WIDTH = {
+    'Pelvis':   (0.112, 0.105),
+    'Spine':    (0.105, 0.098),
+    'Spine1':   (0.098, 0.086),
+    'Neck':     (0.050, 0.044),
+    'Head':     (0.095, 0.115),
+    'Clavicle': (0.058, 0.050),
+    'UpperArm': (0.050, 0.039),
+    'Forearm':  (0.039, 0.029),
+    'Hand':     (0.029, 0.024),
+    'Finger':   (0.011, 0.008),
+    'Thigh':    (0.088, 0.061),
+    'Calf':     (0.061, 0.037),
+    'Foot':     (0.037, 0.029),
+    'Toe':      (0.029, 0.022),
+}
+
+#: The bones whose far end is the end of the body, so the stroke there really does exit. **Everywhere else a bone
+#: meets another bone**, and tapering into a joint would draw a pinch at the knee that the body does not have.
+TIP_BONES = ('Finger01', 'Finger11', 'Finger21', 'Toe0')
+
+#: How much of the length an entry or an exit takes, when there is one.
+ENTRY = 0.30
+EXIT = 0.22
+
+
+def bone_profile(bone: str, n: int, taper_from=0.0) -> list[float]:
+    """The thickness along a bone, in canvas pixels, sampled at the `n` points the stroke has.
+
+    **The width profile is used as given, so the brush's own entry and exit do not apply** -- which is why the taper
+    is written here rather than left to the brush. A profile that set a constant width would draw a limb as a length
+    of pipe: worse than the thin line it replaced, because a thin line at least has the brush's taper at its ends.
+    """
+    top, bottom = 0.0, 0.0
+    for key in ('Finger', 'Toe', 'Head', 'Neck', 'Clavicle', 'UpperArm', 'Forearm', 'Hand',
+                'Thigh', 'Calf', 'Foot', 'Spine1', 'Spine', 'Pelvis'):
+        if key in bone:
+            top, bottom = BONE_WIDTH[key]
+            break
+    if not top:
+        top = bottom = 0.030
+    out = []
+    for i in range(n):
+        t = i / max(1, n - 1)
+        w = top + (bottom - top) * t
+        # **An entry where the stroke actually starts, and an exit where the body actually ends.** The first bone of
+        # a chain enters the paper; every later one continues from the bone before it, so only `taper_from` and a tip
+        # are tapered and a knee is not pinched.
+        if t < ENTRY:
+            w *= 1.0 - taper_from * (1.0 - t / ENTRY)
+        if bone in TIP_BONES and t > 1.0 - EXIT:
+            w *= 1.0 - 0.55 * ((t - (1.0 - EXIT)) / EXIT)
+        out.append(w * SCALE)
+    return out
+
+
 # The brush a bone is drawn with. Weight follows the bone: a thigh is heavy, a finger is not.
 def brush_for(bone: str) -> str:
     if 'Finger' in bone:
@@ -153,7 +216,13 @@ def main():
         mx += -dy / length * bow * (1 if a[0] >= 0 else -1)
         my += dx / length * bow * (1 if a[0] >= 0 else -1)
         pts = [a, (mx, my), b]
-        rec = core.stroke_record(pts, brush, seed=abs(hash(child)) % 9973, resolution=16)
+        # **The bone's own thickness, sampled at the points the stroke will have.** `stroke_record` expands the
+        # control points through a Catmull-Rom curve at `resolution`, so the profile has to be as long as the
+        # expanded path or it is read short -- `stroke_layer` indexes it by the point it is drawing.
+        n = 16 * (len(pts) - 1) + 1
+        rec = core.stroke_record(pts, brush, seed=abs(hash(child)) % 9973, resolution=16,
+                                 width_profile=bone_profile(child, n,
+                                                            taper_from=0.55 if parent == 'Bip001' else 0.0))
         proj.add_stroke(rec, stage='line', layer=layer, note='bone %s' % child)
         drawn += 1
 
