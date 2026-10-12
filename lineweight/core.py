@@ -1565,8 +1565,14 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
     from .raster import PAPERS
     if paper and paper not in PAPERS:
         raise SystemExit('--paper: unknown surface %r; known are %s' % (paper, ', '.join(sorted(PAPERS))))
+    # **`Layer.outline` finally reaches a renderer.** The figure declares which layers are drawn with their own line,
+    # and until now nothing read it; the set is taken from the figure rather than from a flag on the command line,
+    # because it is a fact about the drawing and not about this render.
+    outlined = None
+    if getattr(project, 'figure', None) is not None:
+        outlined = {l.name for l in project.figure.layers.layers if getattr(l, 'outline', False)}
     layer = render_marks([m.to_dict() for m in marks], width, height, scale,
-                         paper=PAPERS[paper] if paper else None)
+                         paper=PAPERS[paper] if paper else None, outlined=outlined)
     parent = os.path.dirname(out)
     if parent:
         os.makedirs(parent, exist_ok=True)

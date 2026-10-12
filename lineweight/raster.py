@@ -245,7 +245,7 @@ def _density_to_alpha(density, cap):
 
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
-                 density: bool = False) -> Layer:
+                 density: bool = False, width_scale: float = 1.0) -> Layer:
     """... **`density` is an experiment with no measured justification -- do not use it.**
 
     It was built to fix a fault that turned out not to be there. The claim was that this library has the crease
@@ -310,9 +310,9 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # `ref.py` measures width and darkness distributions out of real artwork, and the brush table is
             # per-brush, so it cannot hold a per-stroke measurement.
             if widths:
-                radius = max(0.5, float(widths[min(i, len(widths) - 1)]) * scale * 0.5)
+                radius = max(0.5, float(widths[min(i, len(widths) - 1)]) * scale * 0.5 * width_scale)
             else:
-                radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5)
+                radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5 * width_scale)
             if alphas:
                 # The profile is the stroke's opacity along its length; the brush's own opacity is the medium and
                 # still applies, exactly as it does on the vector side.
@@ -658,13 +658,29 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
 
 
 def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
-                 paper: Paper | None = None) -> 'Layer':
+                 paper: Paper | None = None, outlined: set | None = None,
+                 outline_tint: float | None = None, outline_width: float | None = None) -> 'Layer':
     """Composites marks bottom to top **in the order given**, which is the drawing order.
 
     **Order is the picture.** A later mark covers an earlier one, so this must not sort, group or otherwise reorder
     what it is handed -- a renderer that rendered by kind, or by stage, would produce a perfectly plausible image of
     something that was never drawn. The caller decides the order; `Project.in_stage` and `Project.upto` are how.
+
+    **`outlined` is the set of layer names drawn with their own line, and passing it is the whole of what the
+    `Layer.outline` attribute ever needed.** Until now that attribute was declared on all twenty-one layers of the
+    standard figure, validated by `layers.check`, written into the project file, and **read by no renderer** -- which
+    this project's own rule calls a comment rather than a feature, and which it has been caught by twice now: once for
+    a shader capability the material declares and never uses, and once here.
+
+    The line is the part's own shape **drawn again, thicker, in the tint colour, underneath** -- grown rather than
+    offset, so that the outline and the shape are the same geometry through the same rasteriser and cannot disagree
+    about where the shape is. `cel.outline_colour` multiplies the fill by the tint, which is what the asset's own
+    property does, so a hair's outline is a darker hair rather than a grey.
     """
+    from .cel import OUTLINE_TINT, OUTLINE_WIDTH, outline_colour
+
+    tint = OUTLINE_TINT if outline_tint is None else outline_tint
+    line = OUTLINE_WIDTH if outline_width is None else outline_width
     out = Layer(width, height, paper=paper)
     for mark in marks:
         if mark.get('state', 'live') != 'live':
@@ -678,6 +694,16 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_int': parse_hex(mark_ink(mark))}
             layer = stroke_layer(record, width, height, scale, paper=paper)
+            if outlined and mark.get('layer') in outlined:
+                # **The growth is stated in width units, and a stroke's width is its brush's**, so the scale is
+                # relative to that rather than absolute -- a fine line and a wash both get the same line around them,
+                # which is what the art does: the outline's width does not follow the fill's.
+                brush_width = max(0.5, BRUSHES[record['brush']]['width'])
+                grown = dict(record)
+                grown['colour_int'] = outline_colour(record['colour_int'], tint)
+                behind = stroke_layer(grown, width, height, scale, paper=paper,
+                                      width_scale=1.0 + 2.0 * line / brush_width)
+                out = blend(out, behind, 'normal', 1.0)
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)
         else:

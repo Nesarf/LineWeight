@@ -79,6 +79,27 @@ from dataclasses import dataclass, field
 #: `_BaseColor_Step`. It is Unity's number rather than MToon's -- see the module docstring for the derivation.
 LIGHT_VALUE = 0.5
 
+#: **The outline, which is the one per-part attribute in the corpus that actually varies.**
+#:
+#: `_OutlineTint` has **144 distinct values** across the cast, mostly greys between 0.31 and 0.6, while every other
+#: per-part knob the material carries is at its identity value -- `_AdjustiveFaceShadow` is 0.0 in all 292 characters,
+#: `_CodeMultiplyColor` is (1,1,1,1) in all 460 materials. **So the darkness of the line is the one thing the art
+#: genuinely varies part by part, and it is the one thing this library has never drawn.**
+#:
+#: It is a **multiplier on the ink**, which is what Unity's tint property is, so a part with a darker line has a
+#: smaller number rather than a different colour. The default is the middle of the measured range rather than its mode:
+#: the values are spread evenly enough across 0.31 to 0.6 that a mode would be an artefact of binning.
+OUTLINE_TINT = 0.45
+
+#: How much of the ink's own colour survives in the line. **The tint is applied as a multiply, and a multiply alone
+#: would make every outline a darker version of the same grey** -- which is wrong for this art, where a hair's line is
+#: a darker version of the hair. So the tint scales the part's colour toward black and no further.
+#:
+#: The **width** is not measured and is not claimed to be: the corpus gives a tint and no width, and `ref.py` measures
+#: line widths for linework rather than for silhouettes. It defaults to the reference library's own median so that an
+#: outline is not thinner than the drawing it surrounds, and it is a parameter for exactly that reason.
+OUTLINE_WIDTH = 1.6
+
 #: **The width of the transition, which is the parameter the industry actually names.** Unity calls it Feather, MToon
 #: calls the complement Toony, Blender calls it Smooth, and **no shipped shader calls anything "hardness"**. The
 #: corpus's mode is 0.1 -- Unity's `_BaseShade_Feather` at MToon's default `toony = 0.9`, since `Feather = 1 - toony`.
@@ -204,6 +225,17 @@ class Shading:
     def candidate(self) -> float:
         """What the lit side is worth: `_BaseBrightness` floors it and `_SpecStrong` sets a highlight above it."""
         return min(1.0, self.base_brightness + self.spec_strong)
+
+
+def outline_colour(base: tuple[int, int, int], tint: float = OUTLINE_TINT) -> tuple[int, int, int]:
+    """The colour of a part's own line: **its fill colour, multiplied by the tint.**
+
+    A multiply, because that is what the asset's property is -- `_OutlineTint` scales the line rather than replacing
+    it, so a hair's outline is a darker hair and not a grey. A tint of 0 leaves black, a tint of 1 leaves the fill
+    colour, and the corpus sits mostly between 0.31 and 0.6.
+    """
+    t = min(1.0, max(0.0, tint))
+    return tuple(max(0, min(255, int(round(c * t)))) for c in base)
 
 
 def shadow_colour(base: tuple[int, int, int], weight: float, strength: float = SHADOW_STRONG) -> tuple[int, int, int]:
