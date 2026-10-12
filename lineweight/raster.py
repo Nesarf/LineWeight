@@ -109,6 +109,7 @@ class Layer:
         # the precision the integral needs -- a hundred dabs each contributing a thousandth would quantise to
         # nothing. It stays None on every other path, so nothing else pays for it.
         self.density: list[float] | None = None
+        self.density_ref: list[float] | None = None
         self.density_colour: tuple[int, int, int] | None = None
         # premultiplied would be faster to blend and harder to reason about; this keeps the colour meaningful when
         # alpha is low, which matters as soon as anybody looks at an intermediate buffer
@@ -223,24 +224,27 @@ class Layer:
         self.dab(x, y, radius, mixed, alpha, grain, accumulate=accumulate)
 
 
-def _density_to_alpha(density, cap):
-    """Optical density to coverage, scaled so that a fully covered pixel reaches `cap`.
+def _density_to_alpha(numerator, denominator, cap):
+    """The coverage at a pixel: **the alpha of the dabs covering it, weighted by how much each covers it.**
 
-    **Beer-Lambert, with the scale chosen from the geometry rather than guessed.** Depositing `a_i` at each dab and
-    summing gives an accumulated density whose value at a point is the integral of the tip's falloff along the path
-    that covers it. For a straight pass of a round tip of radius `r` through a point, that integral is the chord
-    length times the mean falloff, which for `1 - (d/r)^2` is `2r * 2/3`. So dividing by `2r` normalises a straight
-    line to a density of `2/3` at its centre, and `k = -ln(1 - cap) / (2/3)` puts that at `cap`.
+    Both buffers are the same sum -- of the tip's falloff along the path, times the distance each dab stands for,
+    over the tip's diameter -- and they differ only in that one is weighted by the dab's alpha and the other is not.
+    So the ratio is an average of alpha, and **for a straight stroke of constant alpha it is exactly that alpha, with
+    no constant anywhere in the arithmetic.**
 
-    **The alternative -- clamping the sum -- would make a stroke darker wherever its own path curves back**, which is
-    the fault this replaces rather than a fix for it.
+    **That is what the first version got wrong, and the measurement is what said so.** It scaled a single accumulated
+    density by `-ln(1 - cap) / (2/3)`, taking `2/3` for the integral through a tip of the *nominal* radius. Measured,
+    the sum comes to `0.81` to `0.97` of that integral depending on the brush, because the dabs are discrete and a
+    coarse Riemann sum of a concave falloff is not its integral -- so the map was wrong by a factor that varied per
+    brush, and switching to it made the pencil five times fainter while the opaque ink came out right.
+
+    **A ratio of two sums cannot have that fault**, because whatever the sampling does to one it does to the other.
+    The alternative -- clamping a raw sum -- would darken a stroke wherever its own path curves back, which is the
+    fault this replaces rather than a fix for it.
     """
-    import math as _math
-    if cap <= 0:
+    if denominator <= 0 or cap <= 0:
         return 0.0
-    reference = 2.0 / 3.0
-    k = -_math.log(max(1e-6, 1.0 - min(cap, 0.999))) / reference
-    return 1.0 - _math.exp(-k * density)
+    return min(cap, numerator / denominator)
 
 
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
@@ -282,6 +286,9 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     layer = Layer(width, height, paper=paper)
     if density:
         layer.density = [0.0] * (width * height)
+        # **The same sum without the alpha**, so the ratio is an average rather than a magnitude that depends on how
+        # finely the path happened to be sampled.
+        layer.density_ref = [0.0] * (width * height)
         layer.density_colour = colour
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
@@ -388,7 +395,9 @@ def _deposit(layer, x: float, y: float, radius: float, alpha: float, step: float
             # measured pressure is about a third of it, so the stroke came out 5.5x too faint and the coverage fell
             # from 2509 pixels to 657. The integral is of deposition per unit length, so the length scale is the one
             # the deposition actually happened at.
-            buf[row + px] += alpha * (1.0 - (distance / radius) ** 2) * step / (2.0 * radius)
+            weight = (1.0 - (distance / radius) ** 2) * step / (2.0 * radius)
+            buf[row + px] += alpha * weight
+            layer.density_ref[row + px] += weight
 
 
 def _resolve_density(layer, width: int, height: int, brush) -> None:
@@ -396,12 +405,12 @@ def _resolve_density(layer, width: int, height: int, brush) -> None:
     cap = min(1.0, brush.get('opacity', 1.0))
     colour = layer.density_colour or (26, 22, 32)
     buf = layer.density
+    ref = layer.density_ref
     data = layer.data
     for i in range(width * height):
-        d = buf[i]
-        if d <= 0:
+        if buf[i] <= 0:
             continue
-        a = _density_to_alpha(d, cap)
+        a = _density_to_alpha(buf[i], ref[i], cap)
         if a <= 0:
             continue
         j = i * 4
@@ -410,6 +419,7 @@ def _resolve_density(layer, width: int, height: int, brush) -> None:
         data[j + 2] = colour[2]
         data[j + 3] = int(a * 255)
     layer.density = None
+    layer.density_ref = None
 
 
 def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -> Layer:
@@ -702,12 +712,15 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_int': parse_hex(mark_ink(mark))}
-            # **The choice is left to the caller, because the automatic one was wrong.** Switching on width alone
-            # took the ripple on an opaque brush from 0.50 to 0.05 and on the pencil from 0.84 to 0.53 while making
-            # it five times fainter -- `_density_to_alpha` scales by the integral through a tip of the *nominal*
-            # radius, and a brush at opacity 0.75 does not reach it. So `WIDE_STROKE` is not used to choose; it is
-            # kept as the width above which the question is worth asking at all.
-            layer = stroke_layer(record, width, height, scale, paper=paper)
+            # **Above `WIDE_STROKE` the deposition is integrated, below it the maximum is used.** The ripple along
+            # a stroke is the same fraction of its mean at every width -- 0.37 on the ink brush at four pixels and at
+            # eighty -- so what the width decides is only whether it can be seen. Measured after the normalisation
+            # became a ratio of two sums, the peak agrees between the two methods on all four brushes (229/232,
+            # 169/176, 243/245, 85/86) and the residual ripple on pencil and wash is their own paper grain.
+            profile = record.get('width_profile') or []
+            widest = max(profile) if profile else BRUSHES[record['brush']]['width']
+            layer = stroke_layer(record, width, height, scale, paper=paper,
+                                 density=widest >= WIDE_STROKE)
             if outlined and mark.get('layer') in outlined:
                 # **The growth is stated in width units, and a stroke's width is its brush's**, so the scale is
                 # relative to that rather than absolute -- a fine line and a wash both get the same line around them,
