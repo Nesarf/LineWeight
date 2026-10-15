@@ -59,5 +59,12 @@
     "records": 180,
     "linework": 180
   },
-  "note": "Real line drawings, measured so that a drawing can be calibrated against linework rather than against a corpus that is 69 per cent paintings. Recorded with the resolution it was measured at, because this quantity moves with the canvas."
+  "note": "Real line drawings, measured so that a drawing can be calibrated against linework rather than against a corpus that is 69 per cent paintings. Recorded with the resolution it was measured at, because this quantity moves with the canvas.",
+  "linework_excluded": {
+    "median": 50.62,
+    "p10": 37.32,
+    "p90": 63.74,
+    "n": 180,
+    "meaning": "the share of runs wider than 16 px or narrower than 2, which `taper_ratio` therefore does not see. Both sides of a taper comparison are clipped by this much, and the ratio is only comparable when the two fractions are close."
+  }
 }

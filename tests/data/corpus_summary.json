@@ -52,5 +52,10 @@
     "linework": 276,
     "paintings": 645,
     "records": 929
+  },
+  "linework_excluded": {
+    "median": null,
+    "n": 0,
+    "meaning": "not recorded, and not guessable: the corpus images are not in this repository and this fraction has to be measured from them. Until it is, a taper comparison against this summary has one side unclipped-unknown."
   }
 }

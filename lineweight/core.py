@@ -1341,7 +1341,7 @@ def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) 
     return out
 
 
-def fit_report(image_path: str) -> int:
+def fit_report(image_path: str, against: str = 'corpus') -> int:
     """Measure one drawing the same way the reference library is measured.
 
     **This used to be a second, separate measurement.** It loaded the image, counted dark pixels per row and column,
@@ -1381,9 +1381,10 @@ def fit_report(image_path: str) -> int:
     #
     # **And the reference's own scale is printed**, because it is the thing that was missing: the targets come from a
     # corpus measured at 656x566, and this tool had been holding 1920-pixel sheets up against them in silence.
-    targets = _library_targets()
+    targets = _library_targets(against)
     ref_w, ref_h = targets.get('ref_width'), targets.get('ref_height')
-    where = ('the library\'s linework corpus, %d images' % targets.get('images', 0))
+    which = 'linework_summary (design sheets)' if against == 'linework' else "the library's corpus"
+    where = ('%s, %d images' % (which, targets.get('images', 0)))
     if ref_w:
         where += ', measured at %dx%d' % (ref_w, ref_h)
     print('  this drawing: %dx%d' % (result.width, result.height))
@@ -1391,9 +1392,34 @@ def fit_report(image_path: str) -> int:
     print('  scale-free -- an area over an area, and measured to hold across a change of canvas')
     print('    ink fraction    %.4f      (the library sits at %.4f)'
           % (result.ink_ratio, targets.get('ink_ratio') or 0))
-    print('  comparable only at a like scale -- a ratio, but taken inside an absolute 2..16 px window')
+    print('  comparable only at a like clip fraction -- a ratio taken inside an absolute 2..16 px window')
     if result.line_runs:
         spread = result.width_p90 / result.width_median if result.width_median else 0.0
+        mine = 100.0 * (result.runs - result.line_runs) / result.runs if result.runs else 0.0
+        ref_ex = targets.get('excluded')
+        print('    runs dropped by that window: %.1f%% of %d' % (mine, result.runs))
+        if ref_ex is None:
+            print('    ** the reference\'s own clip fraction is not recorded, so this row is withheld. **')
+            print('       It is derivable from any measurement -- runs minus line_runs over runs -- and it was')
+            print('       never written down. Until it is, a taper comparison has one side unknown, and printing')
+            print('       the number anyway would be printing it under a warning.')
+            print('    p90/median      %.3f      (withheld for the same reason)' % spread)
+            return _fit_tail(result)
+        print('    the reference drops %.1f%%  (difference %.1f points)' % (ref_ex, abs(mine - ref_ex)))
+        # **The threshold is twelve points and that is a choice, not a measurement.** Nothing here establishes what
+        # difference makes two clip fractions too far apart to compare; what is measured is that the fraction moves
+        # 25 points over a fivefold change of canvas, and twelve is under half of that. Saying so in the output matters
+        # more than the value does, because a threshold presented without its provenance is read as a fact -- and this
+        # project has recorded that shape often enough to stop doing it.
+        if abs(mine - ref_ex) > 12:
+            print('    ** more than twelve points apart, so the two samples are not the same part of a drawing.**')
+            print('       Withheld rather than printed under a warning: a number under a warning gets quoted')
+            print('       without it. Render nearer the reference\'s own size to move this fraction.')
+            print('       ** The twelve-point line is a chosen threshold, not a measured one. ** What is measured is')
+            print('       that the fraction moves about 25 points over a fivefold change of canvas, and twelve is')
+            print('       under half of that. The difference itself is printed above and is the number to read.')
+            print('    p90/median      %.3f      (not comparable at this clip fraction)' % spread)
+            return _fit_tail(result)
         print('    taper ratio     %.4f      (the library sits at %.4f, at %s)'
               % (result.taper_ratio, targets.get('taper_ratio') or 0,
                  ('%dx%d' % (ref_w, ref_h)) if ref_w else 'its own size'))
@@ -1402,10 +1428,20 @@ def fit_report(image_path: str) -> int:
         if ref_w:
             ratio = result.width / float(ref_w)
             if ratio < 0.7 or ratio > 1.4:
-                print('    ** this canvas is %.2fx the reference\'s width, so the taper row is a comparison' % ratio)
-                print('       across scales. Render at about %d px wide to make it one. **' % ref_w)
+                # **Context, not a demand.** The canvas ratio is what makes the clip fraction move, but the clip
+                # fraction is the thing that decides whether the row above means anything -- and by the time this
+                # prints, it has already been checked and passed. Worded as an instruction ("render at 2048 to
+                # compare") it would tell a caller to discard a comparison that is sound, which is the same fault as
+                # accepting one that is not, pointed the other way.
+                print('    (this canvas is %.2fx the reference\'s width; the clip fraction above is what governs)'
+                      % ratio)
     else:
         print('    no line-like runs, so neither shape ratio could be measured')
+    return _fit_tail(result)
+
+
+def _fit_tail(result) -> int:
+    """The rows that are never comparable, printed the same way whichever branch reached them."""
     print('  this drawing in its own units -- pixel counts, never portable')
     print('    mean darkness   %.1f' % result.darkness)
     print('    line-like runs  %d of %d' % (result.line_runs, result.runs))
@@ -1415,7 +1451,7 @@ def fit_report(image_path: str) -> int:
     return 0
 
 
-def fit_directory(root: str) -> int:
+def fit_directory(root: str, against: str = 'corpus') -> int:
     """Measure a folder of drawings and print the pooled distribution, against the library's targets.
 
     The point of pooling is that one drawing's distribution is noisy and a folder's is not; the point of printing the
@@ -1435,7 +1471,7 @@ def fit_directory(root: str) -> int:
     if not summary.get('runs'):
         print('  nothing measurable in this folder')
         return 1
-    targets = _library_targets()
+    targets = _library_targets(against)
     ref_w, ref_h = targets.get('ref_width'), targets.get('ref_height')
     # **One row is scale-free, one needs a like scale, and two never were comparable.** A pooled ink fraction is an
     # area over an area and holds across a change of canvas. A pooled taper ratio is a ratio but is taken inside an
@@ -1459,13 +1495,23 @@ def fit_directory(root: str) -> int:
     return 0
 
 
-def _library_targets() -> dict:
-    """The pooled linework distribution, from the checked-in summary when it is there."""
+def _library_targets(against: str = "corpus") -> dict:
+    """The pooled linework distribution, from whichever checked-in summary was asked for.
+
+    **Two summaries exist and they are not interchangeable.** `corpus_summary.json` pools 929 records of which
+    645 are paintings, and its linework subset was measured at 656x566. It records **no clip fraction** -- how
+    much of each drawing the 2..16 px window drops -- and that cannot be measured here because the images are not
+    in this repository, so a taper comparison against it has one side unknown and is withheld rather than
+    printed. `linework_summary.json` is 180 design sheets measured at 2048x1448 and **does** record it.
+
+    Choosing is the caller's business because the two answer different questions: the corpus is where the
+    calibration targets came from, and the design sheets are what linework actually looks like.
+    """
     import json
 
     targets: dict = {}
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        'tests', 'data', 'corpus_summary.json')
+    name = 'linework_summary.json' if against == 'linework' else 'corpus_summary.json'
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tests', 'data', name)
     try:
         with open(path, encoding='utf-8') as handle:
             data = json.load(handle)
@@ -1486,6 +1532,12 @@ def _library_targets() -> dict:
     if isinstance(res.get('median_width'), (int, float)):
         targets['ref_width'] = res['median_width']
         targets['ref_height'] = res.get('median_height', 0)
+    # **And the clip fraction, because it is what decides whether the taper row means anything.** It is derivable
+    # from any measurement -- runs minus line_runs over runs -- and it was never written down, so every taper
+    # comparison this tool made had one side of it unknown. `None` stays `None` rather than being estimated.
+    exc = data.get('linework_excluded') or {}
+    if isinstance(exc.get('median'), (int, float)):
+        targets['excluded'] = exc['median']
     return targets
 
 
@@ -2034,6 +2086,10 @@ def median_of(values: list[float]) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='strokes.svg')
+    parser.add_argument('--against', default='corpus', choices=('corpus', 'linework'),
+                        help='which checked-in summary to compare against: the pooled corpus, or the design '
+                             'sheets. They record different things -- the design-sheet summary knows how much '
+                             'of each drawing the 2..16 px window drops, and the corpus does not.')
     parser.add_argument('--fit', default='', metavar='IMAGE',
                         help="measure one drawing's linework, on the same scale as the reference library")
     parser.add_argument('--fit-dir', default='', metavar='DIR',
@@ -2085,9 +2141,9 @@ def main() -> int:
                         help="report a project's line roles, their widths, their inks and the trade each makes")
     args = parser.parse_args()
     if args.fit:
-        return fit_report(args.fit)
+        return fit_report(args.fit, against=args.against)
     if args.fit_dir:
-        return fit_directory(args.fit_dir)
+        return fit_directory(args.fit_dir, against=args.against)
     if args.bridge:
         return bridge(args.bridge, svg_out=args.svg_out, report=args.report, run=args.run)
     if args.psd:
