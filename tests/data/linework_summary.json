@@ -1,0 +1,63 @@
+{
+  "images": 12,
+  "usable": 12,
+  "skipped": 0,
+  "runs": 654423,
+  "ink_ratio": 0.39169,
+  "darkness": 185.58,
+  "width_mean": 5.061,
+  "width_median": 4.0,
+  "width_p90": 12.0,
+  "taper_ratio": 0.4082,
+  "corpora": [
+    {
+      "description": "Blue Archive official design sheets, three volumes, read from a local collection",
+      "images": 12,
+      "usable": 12,
+      "shared": false,
+      "tag": "design-sheets"
+    }
+  ],
+  "linework_resolution": {
+    "median_width": 2048,
+    "median_height": 1448,
+    "min_width": 1650,
+    "max_width": 3508,
+    "note": "The scale these were measured at, kept because `taper_ratio` is not scale-free: a twofold change of canvas moves it by about 28 per cent, so a comparison with a reference measured at another size is a comparison of two things."
+  },
+  "linework_ink_ratio": {
+    "median": 0.3306,
+    "p10": 0.0583,
+    "p90": 0.8564,
+    "n": 12
+  },
+  "linework_taper_ratio": {
+    "median": 0.392,
+    "p10": 0.3348,
+    "p90": 0.4402,
+    "n": 12
+  },
+  "linework_width_median": {
+    "median": 4.0,
+    "p10": 3.0,
+    "p90": 5.0,
+    "n": 12
+  },
+  "linework_width_p90": {
+    "median": 11.0,
+    "p10": 10.0,
+    "p90": 13.0,
+    "n": 12
+  },
+  "linework_p90_over_median": {
+    "median": 3.125,
+    "n": 12,
+    "p10": 2.6,
+    "p90": 3.6667
+  },
+  "totals": {
+    "records": 12,
+    "linework": 12
+  },
+  "note": "Real line drawings, measured so that a drawing can be calibrated against linework rather than against a corpus that is 69 per cent paintings. Recorded with the resolution it was measured at, because this quantity moves with the canvas."
+}

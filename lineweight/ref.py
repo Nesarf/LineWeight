@@ -773,7 +773,22 @@ def compare(generated: dict, reference: dict) -> dict:
     return out
 
 
-# Ratios that survive a change of canvas size. Everything else needs the scale factor to be interpreted.
+#: **Ratios that survive a change of canvas size -- one of which does not, measured.**
+#:
+#: `ink_ratio` is an area over an area, and it holds: the same project rendered at 800x600 and at 400x300 measured
+#: 0.0324 against 0.0309, a drift of five per cent.
+#:
+#: `taper_ratio` is a ratio too, and it was assumed to hold for that reason. **It does not.** The same pair measured
+#: 0.2814 against 0.3601 -- **twenty-eight per cent at a twofold change of scale** -- and the cause is visible in the
+#: definition rather than mysterious: the runs that feed it are admitted only between 2 and 16 pixels, **an absolute
+#: window**, so halving the canvas changes which runs are in it, and the ratio is taken within that window.
+#:
+#: **So the honest rule is not "these are ratios". It is "`ink_ratio` is scale-free, and `taper_ratio` is comparable
+#: only between two things measured at roughly the same size."** Which matters here because the numbers quoted in the
+#: README come from a corpus measured at a median of **656 by 566** -- a fact that was recorded in
+#: `linework_resolution` and never once consulted when a drawing at 800x600 or a sheet at 1920x1357 was held up against
+#: it. A ratio that is nearly scale-free is the more dangerous kind, because a comparison across scales produces a
+#: plausible number rather than an obviously wrong one.
 SCALE_FREE = ('taper_ratio', 'ink_ratio')
 
 

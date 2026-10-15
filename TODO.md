@@ -1350,3 +1350,71 @@ yuuyake-36557553674          123300     17254        30       0.2%       0.0%
 
 > **而这正是落盘买来的东西**：这个问题现在一分钟就能问、答案留在文件里，
 > **而在落盘之前，问它意味着重跑一遍连接器，而且没法把新答案摆在旧答案旁边。**
+
+## 尺子：参考基准是在 656x566 上量的，而这件事从没被印出来过
+
+**整段调参卡住的地方在这里。** `tests/data/corpus_summary.json` 里一直记着：
+
+```
+linework_resolution: {"median_width": 656, "median_height": 566}
+totals: linework 276, paintings 645, records 929
+```
+
+**`--fit` 印的「the library sits at 0.15 / 0.42」从来不说它是在 656x566 上量的**，
+而拿它去比的是 800x600 的生成图、1920x1357 的设定稿、2160x3092 的录屏。**跨了三倍以上的尺度，而且双方都没说。**
+
+### 而三个尺度一起量，才知道那个量有多不稳
+
+同一份工程渲染到三个尺寸：
+
+```
+render      size        ink      taper    p90/med
+w800        800x600     0.0324   0.2814   2.333
+w656        656x491     0.0323   0.2977   2.167
+w1312      1312x983     0.0323   0.3536   3.500
+参考                    0.1485   0.4213   2.750
+```
+
+- **`ink` 三次几乎不动（0.0324 / 0.0323 / 0.0323，漂移 0.3%）—— 尺度无关这一条，实测非常干净。**
+- **而 `taper` 从 0.281 到 0.354，跨 26%，而且不单调。**
+
+### 而这里我自己破了自己的规矩
+
+先前那次两测是 800 给 0.2814、400 给 0.3601，**我据此写下「画布越小 taper 越高」**。
+现在 1312 给出 0.3536 —— **比 800 还高**，方向反了。
+
+> **两点定不出方向。加第三点就露了。**
+> 而这正是本项目反复记的那条：**一次测量不是趋势** —— 而我是在写它的时候破的。
+
+### 所以修正后的结论，比先前那条更强
+
+**不是「`taper_ratio` 漂移 28%，换算一下还能比」，而是：**
+
+> **它在不同尺度上的取值不能互相推出 —— 没有换算系数，只有一个「必须在同一尺度上量」的要求。**
+> **而接近尺度无关的量比明显尺度相关的量更危险**，因为跨尺度比出来的数看着合理，不看着离谱。
+
+**所以「渲染到参考尺度再判」是必要的、但不充分的** —— 它必须**同尺度量**，而不是**换算**。
+
+### `--fit` 与 `--fit-dir` 已按此改（269 tests pass）
+
+```
+this drawing: 800x600
+against the library's linework corpus, 276 images, measured at 656x566
+scale-free -- an area over an area, and measured to hold across a change of canvas
+  ink fraction    0.0324      (the library sits at 0.1485)
+comparable only at a like scale -- a ratio, but taken inside an absolute 2..16 px window
+  taper ratio     0.2814      (the library sits at 0.4213, at 656x566)
+  ** this canvas is 2.93x the reference's width, so the taper row is a comparison across
+     scales. Render at about 656 px wide to make it one. **
+```
+
+**`ref.SCALE_FREE` 那条注释也改了** —— 它先前把两个名字并列，而实测只有一个是无条件的。
+
+### 进行中：线稿自己的基准
+
+`tools/build_linework_summary.py` 在跑（929 张设定稿里按三卷分层抽 180 张），
+产出 `tests/data/linework_summary.json`，**并且把测量尺寸写进文件**。
+
+**小样本（12 张，2048x1448）已经露出两件事**：
+`ink_ratio` 从 0.058 跨到 0.856（设定稿集里混着整页插画），**而 `taper_ratio` 只在 0.335–0.440** ——
+**后者对这种混杂更稳。**

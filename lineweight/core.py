@@ -1372,27 +1372,46 @@ def fit_report(image_path: str) -> int:
     #
     # The rule is the measurement's own: a length in pixels, or an area over the fixed area of a canvas, moves with the
     # scale of the image. A ratio of two lengths inside the same drawing does not.
-    # **The groups come from `ref.SCALE_FREE` rather than from my reading of the names.** My first version put
-    # `ink_ratio` among the quantities that move with the canvas, **and the library says the opposite in as many
-    # words**: `taper_ratio` and `ink_ratio` are ratios of one length to another within the same picture, so a small
-    # sheet and a 1920-pixel illustration are comparable. Widths are pixel counts and are not. The consequence of
-    # getting it wrong is not cosmetic: it turns "this drawing has six times the ink of a real design sheet", which is
-    # a finding, into "the canvas is smaller", which is an excuse.
-    print('  comparable with the library at any size -- ratios inside one picture (`ref.SCALE_FREE`)')
-    print('    ink fraction    %.4f      (linework in the library sits at 0.15)' % result.ink_ratio)
+    # **Three groups, and the split is measured rather than reasoned.** `ink_ratio` is an area over an area and holds
+    # across a change of canvas -- 0.0324 against 0.0309 for the same project at 800x600 and 400x300, five per cent.
+    # `taper_ratio` is a ratio too and was assumed to hold for that reason; **it does not**, 0.2814 against 0.3601 over
+    # the same pair, twenty-eight per cent, because the runs that feed it are admitted only between 2 and 16 pixels --
+    # an absolute window -- so the canvas decides which runs are counted. Widths are pixel counts and never were
+    # comparable.
+    #
+    # **And the reference's own scale is printed**, because it is the thing that was missing: the targets come from a
+    # corpus measured at 656x566, and this tool had been holding 1920-pixel sheets up against them in silence.
+    targets = _library_targets()
+    ref_w, ref_h = targets.get('ref_width'), targets.get('ref_height')
+    where = ('the library\'s linework corpus, %d images' % targets.get('images', 0))
+    if ref_w:
+        where += ', measured at %dx%d' % (ref_w, ref_h)
+    print('  this drawing: %dx%d' % (result.width, result.height))
+    print('  against %s' % where)
+    print('  scale-free -- an area over an area, and measured to hold across a change of canvas')
+    print('    ink fraction    %.4f      (the library sits at %.4f)'
+          % (result.ink_ratio, targets.get('ink_ratio') or 0))
+    print('  comparable only at a like scale -- a ratio, but taken inside an absolute 2..16 px window')
     if result.line_runs:
         spread = result.width_p90 / result.width_median if result.width_median else 0.0
-        print('    taper ratio     %.4f      (linework in the library sits at 0.42)' % result.taper_ratio)
-        print('    p90/median      %.3f      (linework in the library sits at 2.75)' % spread)
+        print('    taper ratio     %.4f      (the library sits at %.4f, at %s)'
+              % (result.taper_ratio, targets.get('taper_ratio') or 0,
+                 ('%dx%d' % (ref_w, ref_h)) if ref_w else 'its own size'))
+        print('    p90/median      %.3f      (the library sits at %.3f)'
+              % (spread, targets.get('p90_over_median') or 0))
+        if ref_w:
+            ratio = result.width / float(ref_w)
+            if ratio < 0.7 or ratio > 1.4:
+                print('    ** this canvas is %.2fx the reference\'s width, so the taper row is a comparison' % ratio)
+                print('       across scales. Render at about %d px wide to make it one. **' % ref_w)
     else:
         print('    no line-like runs, so neither shape ratio could be measured')
-    print('  this drawing in its own units -- these are pixel counts and are not portable')
+    print('  this drawing in its own units -- pixel counts, never portable')
     print('    mean darkness   %.1f' % result.darkness)
     print('    line-like runs  %d of %d' % (result.line_runs, result.runs))
     if result.line_runs:
         print('    width           median %.1f  p90 %.1f  max %d'
               % (result.width_median, result.width_p90, result.width_max))
-    print('  to compare the second group, measure the library at this canvas size')
     return 0
 
 
@@ -1417,23 +1436,26 @@ def fit_directory(root: str) -> int:
         print('  nothing measurable in this folder')
         return 1
     targets = _library_targets()
-    # **One row is comparable and three are not, and the old table printed all four against the library.** A pooled
-    # ink fraction and a pooled median width are lengths and areas of whatever canvases the folder happens to hold, so
-    # they can only be set against the library's if the two are at the same scale -- and nothing here checks that,
-    # or could, since the library's own images are not shipped. **Four rows in one table with a library column look
-    # like four comparisons**, which is the same fault `--fit` had with its four numbers, and it was found the same
-    # way: by running it on a folder and reading the answer.
-    print('  comparable with the library at any size -- ratios inside one picture (`ref.SCALE_FREE`)')
-    for key, label in (('ink_ratio', 'ink fraction'), ('taper_ratio', 'taper ratio')):
-        reference = targets.get(key)
-        print('    %-14s %10.4f %10s'
-              % (label, summary[key], '%.4f' % reference if isinstance(reference, (int, float)) else '-'))
-    print('  this folder in its own units -- pixel counts, and not portable')
+    ref_w, ref_h = targets.get('ref_width'), targets.get('ref_height')
+    # **One row is scale-free, one needs a like scale, and two never were comparable.** A pooled ink fraction is an
+    # area over an area and holds across a change of canvas. A pooled taper ratio is a ratio but is taken inside an
+    # absolute 2..16 px window, so it moves when the canvas does -- 28 per cent over a twofold change, measured -- and
+    # it can only be set against the reference's when the two are at about the same size. **Three rows in one table
+    # with a library column look like three comparisons**, which is the fault this table had, and it was found the way
+    # the other one was: by running it and reading the answer.
+    where = 'the library\'s linework corpus (%d images' % targets.get('images', 0)
+    where += (', measured at %dx%d)' % (ref_w, ref_h)) if ref_w else ')'
+    print('  against %s' % where)
+    print('  scale-free -- an area over an area')
+    print('    %-14s %10.4f %10.4f' % ('ink fraction', summary['ink_ratio'], targets.get('ink_ratio') or 0))
+    print('  comparable only at a like scale -- a ratio taken inside an absolute 2..16 px window')
+    print('    %-14s %10.4f %10.4f' % ('taper ratio', summary['taper_ratio'], targets.get('taper_ratio') or 0))
+    print('  never portable -- pixel counts')
     for key, label in (('width_median', 'width median'), ('width_p90', 'width p90')):
-        print('    %-14s %10.4f' % (label, summary[key]))
-    print('  the library row comes from %d pooled line drawings; the checked-in summary is' % targets.get('images', 0))
-    print('  tests/data/corpus_summary.json, so both sides can be re-derived. To compare the second group,')
-    print("  measure the library at this folder's canvas size -- the numbers are not portable.")
+        print('    %-14s %10.4f %10s' % (label, summary[key], '(no reference column)'))
+    print('  the reference rows come from %d pooled line drawings; the checked-in summary is' % targets.get('images', 0))
+    print('  tests/data/corpus_summary.json, so both sides can be re-derived. To compare the taper row honestly,')
+    print('  measure the folder at the reference\'s size -- the ratio is not portable across a wide scale gap.')
     return 0
 
 
@@ -1457,6 +1479,13 @@ def _library_targets() -> dict:
     spread = data.get('linework_p90_over_median', {}).get('median')
     if isinstance(spread, (int, float)):
         targets['p90_over_median'] = spread
+    # **The scale the reference was measured at, carried alongside the numbers rather than left in the file.**
+    # It was always recorded -- `linework_resolution` -- and never once printed, so every comparison this tool made
+    # set a drawing at 800x600 or a sheet at 1920x1357 against targets taken at 656x566 without either side saying so.
+    res = data.get('linework_resolution') or {}
+    if isinstance(res.get('median_width'), (int, float)):
+        targets['ref_width'] = res['median_width']
+        targets['ref_height'] = res.get('median_height', 0)
     return targets
 
 
