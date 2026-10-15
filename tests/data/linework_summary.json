@@ -66,5 +66,32 @@
     "p90": 63.74,
     "n": 180,
     "meaning": "the share of runs wider than 16 px or narrower than 2, which `taper_ratio` therefore does not see. Both sides of a taper comparison are clipped by this much, and the ratio is only comparable when the two fractions are close."
-  }
+  },
+  "linework_bands": {
+    "pale": {
+      "ink_from": 0.0,
+      "ink_to": 0.05,
+      "n": 15,
+      "ink_ratio": 0.03476,
+      "taper_ratio": 0.4543,
+      "width_median": 3.0
+    },
+    "middle": {
+      "ink_from": 0.05,
+      "ink_to": 0.4,
+      "n": 113,
+      "ink_ratio": 0.12874,
+      "taper_ratio": 0.3987,
+      "width_median": 3.0
+    },
+    "dark": {
+      "ink_from": 0.4,
+      "ink_to": 1.01,
+      "n": 52,
+      "ink_ratio": 0.56693,
+      "taper_ratio": 0.3521,
+      "width_median": 4.0
+    }
+  },
+  "mixture_note": "This collection holds illustrations as well as design sheets, and `taper_ratio` is not the same quantity on the two. The headline medians above are therefore medians of a mixture and describe neither kind: the pale third has a taper of 0.4543 against the dark third's 0.3521, 29 per cent apart. `linework_bands` carries the median of each band so that a caller can compare against the kind of picture it is actually drawing, and the cut points are a stated choice rather than a measured boundary -- the classifiers tried earlier in this project both failed, so no band here should be read as \"this is linework and that is not\"."
 }
