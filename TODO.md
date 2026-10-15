@@ -1818,3 +1818,59 @@ balance_over_height  stdev/mean 4.421   design
 
 **下一次走那条路，而判据是现成的**：若这些 clip 的姿态分布也是紧的，那它们同样没有姿势信息；
 若散开，那才是可用的来源。**这一次先测再建，而不是建完再测。**
+
+### 而那一步测了：**三条路，每一次都是「比预想的贵」**
+
+**① 动画剪辑的曲线在流式压缩里，不在能直接读的地方。**
+
+```
+m_RotationCurves len 0   m_PositionCurves len 0   m_FloatCurves len 0     <- 全空
+m_MuscleClip.m_Clip.data:
+    m_DenseClip     m_CurveCount 0, m_SampleArray len 0                   <- 也空
+    m_StreamedClip  curveCount 660, data=[...]                            <- 数据在这里
+    m_ConstantClip  data=[...]
+```
+
+**660 条曲线在 `StreamedClip` 的变长编码里** —— 解它要写解码器，**那不是十分钟的事，而我说过不先建。**
+
+**② 一个便宜的替代判据找到了，而它全零。** `m_MuscleClip.m_DeltaPose` 是 `HumanPose`、带 `m_DoFArray`，
+看着正是一个可直接比较的姿势向量。读了六个角色的六条 clip：
+
+```
+dof len 55   nonzero 0   max|v| 0.0000      （六条全都这样）
+```
+
+**所以那个字段在这批资产里没有承载信息。** 便宜的路走不通。
+
+**③ Spine 那条路（2D 立绘）的入口没找到。** `*spinecharacters-airi_spr*assets*` 里只有 13 个
+`MonoBehaviour`、0.00 MB，**没有一个 `TextAsset`** —— 骨骼数据不在那里。
+
+### 而真正的收获是一个我没预料到的用途
+
+**先量的那些 rest pose 比例没白量 —— 用途不是「取一个姿势」，而是「检查手写的比例哪里偏了」。**
+
+```
+                       语料中位    手写 POS    差
+shoulder_width         0.2356      0.1938      窄 18%
+hip_width              0.2307      0.1292      窄 44%
+pelvis_y               0.5439      0.6335      高 16%
+stance_width           0.2608      0.1888      窄 28%
+```
+
+**四项全部同向：偏窄、骨盆偏高。** 而那正是「僵」与「不像萌系角色」的样子。
+
+**而第一次算出来的数不是这些，原因是身高被污染了 21.5%：**
+
+```
+最高的 Bip001 骨：Bip001 Xtra_eyeblowR1   Y 0.8163    <- 一根眉毛辅助骨
+Bip001 Head                              Y 0.6664
+```
+
+**`height` 用 `max(ys)` 算，而最高点是眉毛骨在头顶之上** —— 于是 `head_y_over_height` 恒为 1.0（我的）
+或 0.8205（语料的），而**除以身高的那三项也一起偏了**。把 `Bip001 Xtra*` 排除之后才是上表。
+
+> **同一个形状，这是这一段的第三次**：`foot_y` 的离群值、`height` 的眉毛骨、`stdev/mean` 的分母。
+> **都是「一个数在它该在的位置上，而它量的是另一个东西」，而三次都是把真实数据打印出来才看见的。**
+
+**所以下一步不再是「从语料取一个姿势」**（那条路三条支线全部走不通），
+**而是「按这四个比值调手写的 `POS`」** —— 判据现成，改动是一处，而且它直接对着「僵」这个症状。
