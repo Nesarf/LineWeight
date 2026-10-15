@@ -242,12 +242,41 @@ def shadow_colour(base: tuple[int, int, int], weight: float, strength: float = S
     """The shadow side of a colour, as a **multiply** -- which is what `_CodeMultiplyColor` is for.
 
     The multiply is not invented here: `_CodeMultiplyColor` is the property the asset uses to tint a part, it is set
-    to the identity on every character in the corpus, and a cel shadow is exactly the thing it would carry. A
-    `strength` of ten darkens to about half; a drawing that wants a lighter shadow passes a smaller one.
+    to the identity on every character in the corpus, and a cel shadow is exactly the thing it would carry.
+
+    **And the multiply is what real work does, measured rather than assumed.** Over 332 cel-shaded illustrations every
+    pair of adjacent flat colours was tested against three hypotheses -- a multiply, a subtraction, a move toward grey
+    -- and **67.6 per cent of 13,808 pairs are a multiply**, 32.2 per cent a subtraction and 0.2 per cent a
+    desaturation. So the operation below is the one the material uses.
+
+    **The same measurement corrected the amount, and the correction is about what was checkable.** The constant over
+    those pairs has a median of **0.742**, running from 0.391 at the fifth percentile to 0.926 at the ninety-fifth.
+    The expression here is `1 - weight * (1/strength) * 5`, and **the `* 5` is invented in this file** -- `strength`
+    is a shader quantity from the assets rather than a ratio between two colours, so no term in it meant "how much
+    darker". At the weight the drawing tool passes it evaluates to 0.775, close to the median, **so it was roughly
+    right and could not be checked**; a plausible number that nothing could falsify. `shadow_at` now takes the ratio
+    directly and this function converts to it, so existing drawings do not move.
     """
     if weight <= 0:
         return base
     factor = 1.0 - weight * (1.0 / max(1.0, strength)) * 5.0
+    return shadow_at(base, factor)
+
+
+#: **The measured median and the measured spread.** One constant is not the finding: cel work uses a wide range of
+#: them, and a library offering a single number and calling it measured would claim more than the material supports.
+#: These come from `tools/cel_shadow_measure.py` over the 332-file アニメ塗り corpus.
+SHADOW_FACTOR_MEDIAN = 0.742
+SHADOW_FACTOR_P05 = 0.391
+SHADOW_FACTOR_P95 = 0.926
+
+
+def shadow_at(base: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
+    """The lit colour multiplied by `factor` -- the quantity the measurement is actually about.
+
+    1.0 is no shadow, 0.74 is the median of real work, and real work runs from about 0.39 to about 0.93. **This is the
+    honest entry point**; `shadow_colour` is kept for callers that already pass a weight and a strength.
+    """
     factor = max(0.0, min(1.0, factor))
     return tuple(int(max(0, min(255, round(c * factor)))) for c in base)
 
