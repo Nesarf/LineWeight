@@ -1475,3 +1475,49 @@ render               runs     line  excluded      wmed      wmax
 ### 所以这一条要记进 `--fit`
 
 **它该印的不只是参考的尺寸，还有两边的排除率** —— **排除率差得远时，比值不该被印出来，或者该带着警告印。**
+
+## `i.pixiv.re` 直连不能用来取图，而截断看起来像成功
+
+浏览器应用的设置里写着 `PXIMG_PROXY = i.pixiv.re` 且 `PXV_PXIMG_DIRECT = true`，看着像一条**不需要登录、可能也不需要代理**的路。测了，**同一张图的同一路径，五条路**（`tools/pixiv_routes.py`）：
+
+```
+route                            http   content-type        bytes  sha256[:16]
+i.pximg.net + Referer + mihomo   200    image/jpeg        1124669  05bca2bd426ea20b
+i.pixiv.re  no Referer, mihomo   200    image/jpeg        1124669  05bca2bd426ea20b   <- 完全相同
+i.pixiv.re  no Referer, direct   200    image/jpeg         925340  9f2069483f85ecd0
+i.pixiv.re  WITH Referer, direct 200    image/jpeg         819200  5e456de8e50cedf2
+i.pximg.net direct (no proxy)    000    -                     0  -
+```
+
+**四条都是 900x1200 的 RGB —— 同一个尺寸、三种字节数。** 那不是镜像给了不同的品质，那是**响应被截断了**：
+
+```
+file                  bytes  ends EOI  verdict
+mirror-direct.bin    925340  NO        TRUNCATED
+mirror-ref.bin       819200  NO        TRUNCATED
+mirror-proxy.bin    1124669  yes       complete
+pximg.bin           1124669  yes       complete
+
+再取一轮：
+direct, no referer    94220  NO   <- 又截断，而长度又换了一个
+mihomo, no referer  1124669  yes  05bca2bd426ea20b   <- 两次都一样，且与 i.pximg.net 相同
+```
+
+**所以：**
+
+- **`i.pixiv.re` 直连不可用** —— 每次都截断，而且**每次长度都不同**（925340 / 819200 / 94220），所以是连接被切断而不是内容不同。
+- **走 mihomo 则完整，且与 `i.pximg.net` 那条路字节完全相同。** 而且**不需要 Referer** —— 这一点是新的，既有的路一直带着它。
+- **`i.pximg.net` 直连是 HTTP 000** —— DNS 污染，与库里那条记录一致。
+
+### 而它指的是一个既有的判据缺口
+
+**截断的响应是 HTTP 200 + `image/jpeg`。** 而 `fetch_pixiv.py` 的判据是 `code == '200' and 'image' in ctype` —— **它看不见截断。**
+
+查了已有的语料：**332 个文件 / 224.4 MB / 零个截断** —— 所以**没有实际损失**。
+**但那是运气，不是判据。** 而且失败的样子是「一张量出来略有偏差的画」，而不是「一次报错的取件」。
+
+**已补**：`fetch_pixiv.py` 加 `_ends_with_eoi()` —— 读最后两字节是否 `FF D9`。实测它与语料一致（332/332 通过），并把那三个截断的样本判为不合格。
+
+> **这一条和这一整段里其它几条是同一个形状**：**一个看起来像成功的响应**。
+> `ink` 的阈值、`taper` 的窗口、`ev/min` 的 fps、MediaInfo 的总体积、LevelDB 的校验和 ——
+> **都是「状态码对了、而内容不对」。**
