@@ -1713,5 +1713,50 @@ XZY  符号 (1, -1, 1)   中位残差 0.000000   最差 0.000001
 > **所以合成本身是对的，那 54 根骨的世界坐标可信 —— 而这一条是三条里唯一给绝对值的，**
 > **前两条一个自证、一个只管左右。**
 
-**Editor 那条权威路径试过，走不通**：中国版的许可客户端起不来，`-batchmode -quit` 返回 199、
+**Editor 那条权威路径试过，走不通**：`-batchmode -quit` 返回 199、
 日志停在 `Timed-out after 60.01s, waiting for channel: "LicenseClient-Administrator"`。**如实记下，不硬撞。**
+
+### 而「走不通」的真原因查清了，它和团结引擎、网络、版本都无关
+
+用户指出没用团结引擎、一直用 Unity Hub —— **核对下来用户是对的**：
+
+```
+E:\Unity\Hub\Editor\2022.3.22f1c1   ProductName  Unity   2022.3.22f1c1   Unity Technologies
+E:\Unity\Editor                     ProductName  Unity   2019.4.13f1c1   Unity Technologies ApS
+```
+
+**两个的 ProductName 都是 `Unity`** —— 团结引擎会是 `Tuanjie`。而 `c1` 是 **Unity 中国版**的标记
+（签名者 `CN=优三缔科技（上海）有限公司`，优三缔 是 Unity 的中文实体名）。
+
+**而我先前的两个归因都是猜的，而且都错了：**
+
+- ~~「中国版用不同的许可服务器」~~ —— **测了，`license.unity3d.com`、`core.cloud.unity3d.com`、
+  `public-cdn.cloud.unity3d.com` 全部可达**（0.5–2.9 秒，200；走 mihomo 更快）。网络不是原因。
+- ~~「LicensingClient 起不来」~~ —— **`upm.log` 显示包管理器起来过、还解析成功了**：
+  `project:update-dependencies 200`、`resolve-packages 200`，然后因为父进程被我 `Stop-Process` 掉而退出。
+
+**真原因在 Editor.log 里，一行就说完：**
+
+```
+[Licensing::IpcConnector] Successfully connected to the License Client on channel: "LicenseClient-Administrator"
+[Licensing::Client] Error: Code 10 while verifying Licensing Client signature
+  path: ".../2022.3.22f1c1/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client.exe"
+[Licensing::Module] Error: LicensingClient has failed validation; ignoring
+```
+
+**它连上了，然后签名校验不过，于是被丢弃。** 而那个签名：
+
+```
+signer : CN=优三缔科技（上海）有限公司
+issuer : DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1
+valid  : 2023-02-09 .. 2026-02-08          <- **今天是 2026-10-16，过期 250 天**
+```
+
+**Windows 说这个签名 `Valid`** —— 因为代码签名带时间戳，「签的时候有效」即算有效。
+**而 Unity 自己的校验器不这么看，它读到过期的 `NotAfter` 就丢弃整个客户端。**
+
+**两个 Unity 的证书都过期了**（2019 那个是 2021-07-11，更早），所以这台机器上 Editor 的许可激活这条路是封的，
+**而 Hub 用的是它自己的许可流程** —— 那大概是用户一直走 Hub 的原因。
+
+> **而这一条值得单记**：那个 `Code 10` 是**第一个**指向真原因的线索，而我在它之前先编了两个解释。
+> **`Successfully connected` 后面紧跟一个 `Error` —— 那两行放在一起才说得通，而我当时只读了后面那句。**
