@@ -82,7 +82,12 @@ DRAW_ORDER = ('head', 'leg', 'arm', 'hand', 'neck', 'torso')
 
 LAYER_OF = {
     'Pelvis': 'torso', 'Spine': 'torso', 'Spine1': 'torso', 'Neck': 'neck', 'Head': 'head',
-    'Clavicle': 'torso', 'UpperArm': 'arm', 'Forearm': 'arm', 'Hand': 'hand', 'Finger': 'hand',
+    # **The clavicle and the hand belong to the arm, and the first version filed them elsewhere.** With the clavicle
+    # in `torso` and the hand in its own layer, the arm came out as three separate chains that met at joints -- so the
+    # shoulder and the wrist carried exactly the discontinuity the elbow did, in a drawing whose whole problem was
+    # joints being the thinnest place. **A chain is delimited by where a hand would stop, not by which part of the
+    # body a bone is nearest to.** The fingers stay separate because they really are separate marks.
+    'Clavicle': 'arm', 'UpperArm': 'arm', 'Forearm': 'arm', 'Hand': 'arm', 'Finger': 'hand',
     'Thigh': 'leg', 'Calf': 'leg', 'Foot': 'leg', 'Toe': 'leg',
 }
 
@@ -103,7 +108,16 @@ BASE = {'torso': (214, 186, 168), 'arm': (214, 186, 168), 'leg': (214, 186, 168)
 THINNER = 0.55
 
 
-def bone_profile(bone, n, taper_from=0.0):
+def bone_profile(bone, n, taper_from=0.0, is_head=True, is_tail=True):
+    """One bone's width along its own length.
+
+    **`is_head` and `is_tail` exist because a taper belongs to a stroke and not to a bone.** A chain of four bones is
+    one line in a drawing: it enters at the clavicle, runs to the hand, and leaves once. The first version tapered the
+    first `ENTRY` of every bone and let `stroke_record` end every mark, so a four-bone arm carried four entries and
+    four exits -- **and at each joint two exits met, which is why the join came out thinner than either bone.** The
+    flags say whether this particular bone is the one at the head or the tail of the chain it belongs to; a bone in
+    the middle tapers at neither end, because its ends are joints and a joint is not where a line stops.
+    """
     top = bottom = 0.030
     for key in ('Finger', 'Toe', 'Head', 'Neck', 'Clavicle', 'UpperArm', 'Forearm', 'Hand',
                 'Thigh', 'Calf', 'Foot', 'Spine1', 'Spine', 'Pelvis'):
@@ -114,12 +128,60 @@ def bone_profile(bone, n, taper_from=0.0):
     for i in range(n):
         t = i / max(1, n - 1)
         w = top + (bottom - top) * t
-        if t < ENTRY:
+        if is_head and t < ENTRY:
             w *= 1.0 - taper_from * (1.0 - t / ENTRY)
-        if bone in TIP_BONES and t > 1.0 - EXIT:
+        if is_tail and bone in TIP_BONES and t > 1.0 - EXIT:
             w *= 1.0 - 0.55 * ((t - (1.0 - EXIT)) / EXIT)
         out.append(w * SCALE * THINNER)
     return out
+
+
+def chains(by_layer):
+    """Every bone of each layer, each in exactly one chain, walked from root to tip.
+
+    **The invariant is that no bone is dropped, and the first version broke it.** It started chains only at bones
+    whose parent lies outside the layer, and it stopped the walk at any fork. That reads like a tidy guard and is not:
+    the two clavicles hang off `Spine1`, so their parent *is* in the layer and they are not starts, and the walk from
+    the pelvis stops at that same fork -- **so both clavicles were never reached by anything and simply left the
+    drawing.** The only reason it was noticed is that the printed list had nine chains where it should have had
+    eleven; the same fault would have taken the twelve finger bones without changing any count anybody looks at.
+
+    So the walk marks what it has taken, and a fork pushes each child back as a new chain head. Whatever is left when
+    the queue empties starts a chain of its own, which is the backstop that makes "each in exactly one" a property
+    rather than a hope.
+    """
+    out = []
+    for layer, pairs in by_layer.items():
+        children = {c: p for c, p in pairs}
+        remaining = set(children)
+        queue = sorted(c for c, p in pairs if p not in children)
+        while remaining:
+            if not queue:
+                queue = [sorted(remaining)[0]]
+            start = queue.pop(0)
+            if start not in remaining:
+                continue
+            walk, cur = [], start
+            while cur in remaining:
+                remaining.discard(cur)
+                walk.append(cur)
+                kids = sorted(k for k, kp in pairs if kp == cur)
+                if len(kids) == 1:
+                    cur = kids[0]
+                else:
+                    queue.extend(k for k in kids if k in remaining)
+                    break
+            if walk:
+                out.append((layer, walk))
+    return out
+
+
+def label_of(walk):
+    """A chain's name for a note, short enough to read in a listing."""
+    first = walk[0].replace('Bip001 ', '')
+    if len(walk) == 1:
+        return first
+    return '%s..%s' % (first, walk[-1].replace('Bip001 ', ''))
 
 
 def layer_for(bone):
@@ -195,31 +257,62 @@ def main():
     SHADOW_SHIFT = 0.45       # of the half-width: how far off centre it sits
 
     marks = 0
+    # **Per chain, not per bone.** A chain is one line a hand would draw in one movement: it enters once at the root
+    # and leaves once at the tip, and the joints inside it are places where the line keeps going. The first version
+    # built a mark per bone, so a four-bone arm carried four entries and four exits -- and **at every joint two exits
+    # met**, which is why the join came out thinner than either bone on both sides of it.
     for layer in DRAW_ORDER:
-        for bone, parent in by_layer.get(layer, []):
-            a, b = place(POS[parent]), place(POS[bone])
-            mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-            dx, dy = b[0] - a[0], b[1] - a[1]
-            length = math.hypot(dx, dy) or 1.0
-            bow = 0.045 if ('Thigh' in bone or 'UpperArm' in bone) else 0.022
-            side = 1 if a[0] >= 0 else -1
-            mx += -dy / length * bow * side
-            my += dx / length * bow * side
-            pts = [a, (mx, my), b]
-            n = 16 * (len(pts) - 1) + 1
-            profile = bone_profile(bone, n, taper_from=0.55 if parent == 'Bip001' else 0.0)
+        for chain_layer, walk in chains(by_layer):
+            if chain_layer != layer:
+                continue
+            parent_of = {c: p for c, p in by_layer.get(layer, [])}
+            # **Every segment keeps its full three control points, and the seams are trimmed once at the end.**
+            # The first attempt trimmed each segment as it was built and then used those trimmed segments to make
+            # the widths -- so each bone after the first lost one interval's worth of samples and the profile came
+            # out 81 long for a path that wanted 129. `outline_spines` indexed past the end of it and the run died
+            # with an `IndexError`, which is the loud kind. **A length that had come out larger rather than smaller
+            # would have been silently offset**, and the limb would have been drawn with the width belonging to a
+            # different part of itself.
+            segs = []
+            for k, bone in enumerate(walk):
+                parent = walk[k - 1] if k else parent_of.get(bone, 'Bip001')
+                a, b = place(POS[parent]), place(POS[bone])
+                mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                length = math.hypot(dx, dy) or 1.0
+                bow = 0.045 if ('Thigh' in bone or 'UpperArm' in bone) else 0.022
+                side = 1 if a[0] >= 0 else -1
+                mx += -dy / length * bow * side
+                my += dx / length * bow * side
+                segs.append([a, (mx, my), b])
+
+            pts = [segs[0][0]]
+            for seg in segs:
+                pts += seg[1:]
+            profile = []
+            for k, (bone, seg) in enumerate(zip(walk, segs)):
+                values = bone_profile(bone, 16 * (len(seg) - 1) + 1, taper_from=0.55,
+                                      is_head=(k == 0), is_tail=(k == len(walk) - 1))
+                profile += values if k == 0 else values[1:]
+            want = 16 * (len(pts) - 1) + 1
+            if len(profile) != want:
+                raise SystemExit('chain %s: profile has %d values for a path wanting %d'
+                                 % (label_of(walk), len(profile), want))
+
             # the fill needs no pressure and no wobble: it is a shape, and its edge is where the light lands
             plain = core.stroke_record(pts, 'ink', seed=0, resolution=16, width_profile=profile)
             shape = core.outline_polygon(plain)
             base = BASE.get(layer, (200, 200, 200))
             shadow = shaded(base, 0.45)
+            label = label_of(walk)
 
             # **The shadow first, offset; then the lit colour over it; then the line.** The offset shadow is the one
             # this art actually describes -- `_AdjustiveFaceShadow` is 0.0 on all 292 characters, so there is no
             # computed boundary to reproduce, and what is left is a shape drawn by hand and translated.
             # **The band.** A thinner profile, nudged to the side the light does not reach; the sign follows the
             # limb across the centreline so both sides of the figure are lit from the same direction.
-            side_sign = 1 if a[0] >= 0 else -1
+            a = pts[0]
+            side_sign = 1 if POS[walk[0]][0] >= 0 else -1
             band_profile = [w * SHADOW_BAND for w in profile]
             band = core.stroke_record(pts, 'ink', seed=0, resolution=16, width_profile=band_profile)
             band_shape = core.outline_polygon(band)
@@ -227,13 +320,13 @@ def main():
             sx = -half * SHADOW_SHIFT * side_sign
             sy = half * SHADOW_SHIFT * 0.6
             proj.add_fill(region_of(offset_polygon(band_shape, sx, sy)),
-                          stage='colour', colour=hexed(shadow), note='shadow, %s' % bone)
-            proj.add_fill(region_of(shape), stage='colour', colour=hexed(base), note='lit, %s' % bone)
+                          stage='colour', colour=hexed(shadow), note='shadow, %s' % label)
+            proj.add_fill(region_of(shape), stage='colour', colour=hexed(base), note='lit, %s' % label)
             marks += 2
 
-            rec = core.stroke_record(pts, brush_for(bone), seed=abs(hash(bone)) % 9973, resolution=16,
+            rec = core.stroke_record(pts, brush_for(walk[0]), seed=abs(hash(label)) % 9973, resolution=16,
                                      width_profile=profile)
-            proj.add_stroke(rec, stage='line', layer=layer, note='bone %s' % bone)
+            proj.add_stroke(rec, stage='line', layer=layer, note='chain %s' % label)
             marks += 1
 
     print('  marks: %d  (fills %d, lines %d)' % (len(proj.marks), marks - (marks // 3), marks // 3))
