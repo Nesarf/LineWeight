@@ -1389,6 +1389,32 @@ def fit_report(image_path: str, against: str = 'corpus') -> int:
         where += ', measured at %dx%d' % (ref_w, ref_h)
     print('  this drawing: %dx%d' % (result.width, result.height))
     print('  against %s' % where)
+
+    # **Which band, decided by the drawing's own ink fraction and printed rather than applied quietly.** A band
+    # picked behind the caller's back would be the same fault as a threshold with no provenance: correct, and
+    # impossible to check. The other bands are named beside it so that what was *not* compared is visible too.
+    bands = targets.get('bands') or {}
+    band = None
+    if bands:
+        for name, b in bands.items():
+            lo, hi = b.get('ink_from', 0.0), b.get('ink_to', 1.0)
+            if lo <= result.ink_ratio < hi:
+                band = (name, b)
+                break
+        if band:
+            name, b = band
+            others = ', '.join('%s %.4f' % (k, v.get('taper_ratio', 0)) for k, v in bands.items() if k != name)
+            print('  the reference is a mixture, so one band of it is used: the drawing\'s ink of %.4f falls in'
+                  % result.ink_ratio)
+            print('  ** %s (n %d, ink %.2f-%.2f) **, whose taper sits at %.4f. The other bands: %s.'
+                  % (name, b.get('n', 0), b.get('ink_from', 0), b.get('ink_to', 1),
+                     b.get('taper_ratio', 0), others))
+            targets = dict(targets)
+            targets['taper_ratio'] = b.get('taper_ratio', targets.get('taper_ratio'))
+            targets['ink_ratio'] = b.get('ink_ratio', targets.get('ink_ratio'))
+        else:
+            print('  ** the drawing\'s ink of %.4f falls in no band of the reference, so the top-level medians are')
+            print('     used -- and those are the medians of a mixture. **' % result.ink_ratio)
     print('  scale-free -- an area over an area, and measured to hold across a change of canvas')
     print('    ink fraction    %.4f      (the library sits at %.4f)'
           % (result.ink_ratio, targets.get('ink_ratio') or 0))
@@ -1538,6 +1564,14 @@ def _library_targets(against: str = "corpus") -> dict:
     exc = data.get('linework_excluded') or {}
     if isinstance(exc.get('median'), (int, float)):
         targets['excluded'] = exc['median']
+    # **And the bands, because the top-level medians are a mixture.** The collection this summary was built from
+    # holds illustrations as well as design sheets -- two pages opened at random are both painted scenes -- and
+    # `taper_ratio` is not the same quantity on the two. Grouped by how little of a page is ink, the medians run
+    # 0.4543 / 0.3987 / 0.3521, twenty-nine per cent apart, so the headline figure describes neither kind. A caller
+    # that compares against it is comparing against an average of two drawings it is not.
+    bands = data.get('linework_bands') or {}
+    if isinstance(bands, dict) and bands:
+        targets['bands'] = bands
     return targets
 
 
