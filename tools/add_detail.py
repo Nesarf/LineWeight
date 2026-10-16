@@ -138,9 +138,63 @@ def measure(path):
     return m, keep, area, keep / math.sqrt(max(1, area))
 
 
+#: **Where a face's parts sit, in head radii about the head's own centre, read off 11 character rigs.** These are not
+#: a pose and so the finding that a rest pose is a pipeline convention does not apply to them: an eye's place on a head
+#: is anatomy, and the spread across rigs agrees -- the brows move by 0.06 to 0.10 of a head radius between characters
+#: while the halo moves by 1.10.
+#:
+#: **Expressed in head radii and not in body heights**, which was the first attempt's mistake. The corpus's
+#: `Bip001 Head` sits low in the skull, so an eye placed 0.083 of a body height above it lands outside a head drawn
+#: with the bone at its centre -- two rigs using one name for two different points. Dividing by the head's own extent
+#: removes the disagreement, because both sides then mean the same thing by "one head across".
+FEATURES = (
+    ('eye', 0.308, -0.126),
+    ('brow', 0.299, 0.500),
+    ('halo', 0.000, 2.003),
+)
+
+
+def add_features(proj, cx, cy, rx, ry):
+    """Eyes, brows and a halo, each a mark that touches nothing.
+
+    **The point is that they are separate.** A line drawing is one large piece plus several dozen small ones -- the
+    main contour holds about seven tenths of the ink and the rest is features, ornaments and highlights -- and the
+    strands added here first all grew out of the head and stayed joined to it, so the component count never moved.
+    These sit inside the head's fill or above it with clear space around them, so each one adds a component.
+    """
+    made = 0
+    for name, fx, fy in FEATURES:
+        for side in ((-1, 1) if name != 'halo' else (0,)):
+            x = cx + side * fx * ry
+            # screen y grows downward, so the corpus's "above the head" is a subtraction
+            y = cy - fy * ry
+            if name == 'eye':
+                # a small down-turned arc, which is what an eye reads as at this size
+                w = ry * 0.42
+                pts = [(x - w, y - ry * 0.06), (x, y + ry * 0.05), (x + w, y - ry * 0.06)]
+                profile = [1.6, 2.4, 1.6]
+                brush = 'fine'
+            elif name == 'brow':
+                w = ry * 0.46
+                pts = [(x - w, y - ry * 0.10), (x, y + ry * 0.04), (x + w, y - ry * 0.14)]
+                profile = [1.8, 2.8, 1.4]
+                brush = 'fine'
+            else:
+                # the halo is a closed ellipse, and closed means one mark that encircles nothing else
+                pts = [(x + ry * 0.95 * math.cos(t / 12.0 * 2 * math.pi),
+                        y + ry * 0.30 * math.sin(t / 12.0 * 2 * math.pi)) for t in range(13)]
+                profile = [2.4] * 13
+                brush = 'pencil'
+            rec = core.stroke_record(pts, brush, seed=abs(hash((name, side))) % 9973, resolution=16,
+                                     width_profile=profile)
+            proj.add_stroke(rec, stage='line', layer='head', note='%s %d' % (name, side))
+            made += 1
+    return made
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--strands', type=int, default=40)
+    ap.add_argument('--strands', type=int, default=0)
     ap.add_argument('--folds', type=int, default=12)
     args = ap.parse_args()
 
@@ -151,10 +205,15 @@ def main():
         print('  no head fill in the project; nothing to hang strands on')
         return 1
     print('  the head fill measures %.1f by %.1f px at (%.1f, %.1f)' % (2 * ell[2], 2 * ell[3], ell[0], ell[1]))
+    # **Features by default and strands not.** The strands grew out of the head and stayed joined to it -- strokes
+    # went from thirteen to sixty-five with no change in the component count -- while a feature sits in clear space
+    # and is a component of its own. So the default is the thing that was shown to work, and the strands stay
+    # available for when the body itself is worth drawing hair on.
+    feat = add_features(proj, *ell)
     s = add_strands(proj, args.strands, *ell)
     f = add_folds(proj, args.folds)
     after = len([m for m in proj.marks if m.kind == 'stroke'])
-    print('  added %d strands and %d folds; strokes %d -> %d' % (s, f, before, after))
+    print('  added %d features, %d strands and %d folds; strokes %d -> %d' % (feat, s, f, before, after))
 
     out = TMP / 'detailed.json'
     project_mod.save_project(proj, str(out))
