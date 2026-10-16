@@ -74,6 +74,12 @@ BONE_WIDTH = {
 TIP_BONES = ('Finger01', 'Finger11', 'Finger21', 'Toe0')
 ENTRY, EXIT = 0.30, 0.22
 
+#: **How wide the contour pen is, and it is not a bone's width.** The reference library's own measurement of real
+#: linework puts the median run at about three pixels, so that is what a line is here -- **the bone's width belongs to
+#: the fill**, which is a fact about the body, and this is a fact about the pen. Keeping them the same object was the
+#: mistake the component count exposed: a limb drawn with a thirty-pixel pen is not a drawing of a limb.
+CONTOUR_WIDTH = 3.0
+
 #: **The parts, back to front.** This is the figure's own stack order read off the rigs -- the halo behind the
 #: character, then back hair, head, arms, legs, skirt, torso, collar, hand, neck, face, front hair -- cut down to the
 #: parts a bone skeleton actually has. **The order is the picture**, and it is the one thing here that is not invented:
@@ -324,9 +330,21 @@ def main():
             proj.add_fill(region_of(shape), stage='colour', colour=hexed(base), note='lit, %s' % label)
             marks += 2
 
-            rec = core.stroke_record(pts, brush_for(walk[0]), seed=abs(hash(label)) % 9973, resolution=16,
-                                     width_profile=profile)
-            proj.add_stroke(rec, stage='line', layer=layer, note='chain %s' % label)
+            # **The contour, and it is a different object from the fill boundary.** Until now the "line" layer was
+            # the same stroke as the fill, drawn a second time -- so a limb thirty pixels across was drawn as a
+            # thirty-pixel-wide mark, and the drawing was solid ink in its topology where real linework is a mesh.
+            # **That is what the component count was saying**: one blob here against fifty to a hundred in a line
+            # drawing, and it is also why the figure read as a stick figure rather than as a drawing.
+            #
+            # A contour follows the **boundary** of the shape and not its centreline, so what is stroked here is the
+            # polygon the fill produced, closed back on itself. The width is the one the reference library measures on
+            # real linework -- a median of about three pixels -- and not the bone's width, because the bone's width is
+            # a fact about the body and this is a fact about the pen.
+            contour = list(shape) + [shape[0]]
+            contour_profile = [CONTOUR_WIDTH] * (16 * (len(contour) - 1) + 1)
+            rec = core.stroke_record(contour, 'fine', seed=abs(hash(label)) % 9973, resolution=16,
+                                     width_profile=contour_profile)
+            proj.add_stroke(rec, stage='line', layer=layer, note='contour %s' % label)
             marks += 1
 
     print('  marks: %d  (fills %d, lines %d)' % (len(proj.marks), marks - (marks // 3), marks // 3))
