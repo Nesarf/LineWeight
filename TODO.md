@@ -3159,3 +3159,31 @@ from another angle.**"*
 > **「只画必要的」和「缓慢测量」是对立的，而它们是同一个方向的两端**：
 > **测量越多，画的线越多；而线越多，信息越糊。**
 > **项目里每一笔都来自一次测量** —— **所以它的线不是「必要的」，是「测量结果的副产品」。**
+
+### 而 Hampton 那本 241 页走完了，它的骨架是这样
+
+**每页都见过一遍（十一张缩略图目录，每张二十四页），关键页精读。结构如下：**
+
+```
+1-16      八个部分 · 三种线 · 缓慢测量会弄僵 · 侧面是 S · 重心三块
+17-33     gesture 的更多练习 · 「正要…」的时间点 · 平衡三角 · 线的经济
+34-48     LANDMARKS —— 第二阶段：骨架的地标
+49-72     更多 structure 练习（盒子、圆柱）
+73-91     头与脸 —— 耳朵、眼睛、头部的块面、各角度
+92-120    全身解剖
+121-144   躯干、手臂、腿的体积
+145-192   更多解剖与应用
+193-216   腿、脚、鞋
+217-241   手臂与手
+```
+
+**而它的方法在 p35 一句话说完了：**
+
+> *"Looking for the skeleton is the **second stage** in developing your figure drawings. This step is meant to give your
+> drawings **the look and feel of weight** provided by the skeleton, as well as be a **transitional stage in developing
+> volume**."*
+
+**所以三阶段是：gesture → skeleton → volume。而项目里有第三步，前两步不存在。**
+
+> **而这是这一整段里第一次，一本完整的书把整个流程分成三步、每一步都有名字。
+> 而项目缺的不是「更好的线」，是前两个有名字的阶段。**
