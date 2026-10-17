@@ -37,27 +37,40 @@ def place(pt):
     return (ORIGIN_X + pt[0] * SCALE, ORIGIN_Y + pt[1] * SCALE)
 
 
+#: **Every vertical here is the corpus's own segment, scaled to the figure.** Measured over eleven rigs as the drop
+#: from the top of the head over the whole height: head 0.180, neck 0.222, spine1 0.354, spine 0.438, pelvis 0.556,
+#: thigh 0.557, calf 0.761, foot 0.941, toe 1.000, upper arm 0.282, hand 0.448. Multiply by `FIG_BOTTOM` and that is
+#: where each bone goes.
+#:
+#: **The previous values were not those, and the error was mine to have caught sooner.** The pelvis sat at 0.461 where
+#: the corpus puts it at 0.556 -- seventeen per cent adrift -- which made the trunk short and the legs long, and a
+#: short trunk then disappeared behind a head drawn at the corpus's ratio. **The two measurements agreed with each
+#: other and both disagreed with this table.**
+#:
+#: **The horizontal for the arm is the one width ratio that could be measured**: shoulder half-width over head
+#: half-width is 0.816, so with a head half-width of 0.124 figure units the shoulder sits at 0.101 -- and the corpus's
+#: own 0.096 agrees, which is the check that it is not an invention.
 POS = {
-    'Bip001':              (0.0, 0.48),
-    'Bip001 Pelvis':       (0.0, 0.470),
-    'Bip001 Spine':        (0.0, 0.395),
-    'Bip001 Spine1':       (0.0, 0.300),
-    'Bip001 Neck':         (0.0, 0.215),
-    'Bip001 Head':         (0.0, 0.175),
-    'Bip001 L Clavicle':   (0.042, 0.270),
-    'Bip001 L UpperArm':   (0.078, 0.285),
-    'Bip001 L Forearm':    (0.150, 0.385),
-    'Bip001 L Hand':       (0.205, 0.478),
-    'Bip001 L Finger0':    (0.228, 0.512),
-    'Bip001 L Finger01':   (0.243, 0.532),
-    'Bip001 L Finger1':    (0.233, 0.505),
-    'Bip001 L Finger11':   (0.249, 0.524),
-    'Bip001 L Finger2':    (0.229, 0.497),
-    'Bip001 L Finger21':   (0.244, 0.515),
-    'Bip001 L Thigh':      (0.052, 0.450),
-    'Bip001 L Calf':       (0.065, 0.700),
-    'Bip001 L Foot':       (0.070, 0.930),
-    'Bip001 L Toe0':       (0.076, 0.980),
+    'Bip001':              (0.0, 0.55),
+    'Bip001 Pelvis':       (0.0, 0.567),
+    'Bip001 Spine':        (0.0, 0.447),
+    'Bip001 Spine1':       (0.0, 0.361),
+    'Bip001 Neck':         (0.0, 0.226),
+    'Bip001 Head':         (0.0, 0.184),
+    'Bip001 L Clavicle':   (0.054, 0.312),
+    'Bip001 L UpperArm':   (0.098, 0.288),
+    'Bip001 L Forearm':    (0.170, 0.392),
+    'Bip001 L Hand':       (0.228, 0.457),
+    'Bip001 L Finger0':    (0.252, 0.492),
+    'Bip001 L Finger01':   (0.268, 0.512),
+    'Bip001 L Finger1':    (0.258, 0.485),
+    'Bip001 L Finger11':   (0.274, 0.504),
+    'Bip001 L Finger2':    (0.253, 0.477),
+    'Bip001 L Finger21':   (0.269, 0.495),
+    'Bip001 L Thigh':      (0.058, 0.568),
+    'Bip001 L Calf':       (0.070, 0.776),
+    'Bip001 L Foot':       (0.074, 0.960),
+    'Bip001 L Toe0':       (0.080, 1.000),
 }
 for _n in list(POS):
     if ' L ' in _n:
@@ -114,6 +127,18 @@ MIN_FILL_WIDTH = 7.0
 HAIR_WIDTH_OF_HEAD = 1.34
 HAIR_HEIGHT_OF_HEAD = 1.16
 HAIR_COLOUR = (58, 52, 74)      # the ink-blue this character is described in, and a choice rather than a measurement
+HAIR_SHADOW_COLOUR = (36, 32, 48)
+
+#: **The fringe, and it is the single change that most makes a head read as a character.** A bare ellipse of skin with
+#: two eyes in it is a mask; what turns it into a person is something covering the forehead with an edge of its own.
+#:
+#: **The edge is a chain of arcs and not a straight line.** A fringe cut straight across reads as a bowl; a real one is
+#: a series of locks, each of which ends in a point, and they start and stop at different heights. The heights below
+#: are chosen -- the corpus has hair meshes, and meshing is not something a bone skeleton describes.
+FRINGE_LOCKS = 7
+FRINGE_LOW = 0.30       # how far down the locks reach, in head radii below the head's centre
+FRINGE_HIGH = 0.62      # and how far up the shortest of them stops
+FRINGE_DIP = 0.09       # how far each lock's point hangs below its neighbours' meeting
 
 #: The iris, and the one colour on a face that carries the most weight. The character's eyes are described as blue
 #: with a violet cast, which is a description and not a measurement -- the corpus has 292 palettes and says nothing.
@@ -150,7 +175,7 @@ BASE = {'torso': (214, 186, 168), 'arm': (214, 186, 168), 'leg': (214, 186, 168)
 #:
 #: Scaling everything down moves the first and cannot move the second, because a ratio does not see a scale -- so
 #: this is one change and one measurement of two numbers, and which of them moves is the answer.
-THINNER = 0.55
+THINNER = 1.0
 
 
 def bone_profile(bone, n, taper_from=0.0, is_head=True, is_tail=True):
@@ -250,6 +275,39 @@ def smooth_closed(points, passes=3, keep=None):
     return pts
 
 
+def add_fringe(proj, cx, cy, rx, ry):
+    """The fringe: one filled shape whose lower edge is a chain of locks.
+
+    **One shape, not seven.** Drawing seven locks as seven marks leaves seven outlines, and locks share their edges --
+    so what is filled here is a single region whose lower boundary zigzags. That is also what makes the lock points
+    read as points instead of as the ends of sticks.
+
+    **It covers the top of the head down past the brow line**, and the brow sits at +0.500 head radii above the
+    centre, so the locks reach below that: a fringe that stops short of the brows leaves a band of forehead and the
+    face reads as bald.
+    """
+    far = rx * 1.06
+    edge = []
+    for i in range(FRINGE_LOCKS):
+        # each lock's outer point, then the notch between it and the next
+        t0 = i / float(FRINGE_LOCKS)
+        t1 = (i + 0.5) / float(FRINGE_LOCKS)
+        t2 = (i + 1) / float(FRINGE_LOCKS)
+        drop0 = FRINGE_LOW + (FRINGE_HIGH - FRINGE_LOW) * ((i * 37) % 5) / 4.0
+        edge.append((cx - far + 2 * far * t0, cy - ry * drop0))
+        edge.append((cx - far + 2 * far * t1, cy - ry * (drop0 - FRINGE_DIP)))
+    edge.append((cx + far, cy - ry * (FRINGE_LOW + (FRINGE_HIGH - FRINGE_LOW) * ((FRINGE_LOCKS * 37) % 5) / 4.0)))
+    # **The top edge follows the head's own arc, not a straight line.** A rectangle over a round head leaves two
+    # square corners standing outside it, which is what the first version looked like -- a helmet rather than hair.
+    cap = []
+    for i in range(25):
+        t = math.pi * (1.0 - i / 24.0)          # from the left of the arc over the top to the right
+        cap.append((cx + far * math.cos(t), cy - ry * 1.02 * math.sin(t)))
+    shape = cap + edge[::-1]
+    proj.add_fill(region_of(shape), stage='colour', colour=hexed(HAIR_COLOUR), note='fringe')
+    return 1
+
+
 def add_face(proj, cx, cy, rx, ry):
     """Eyes, brows and a mouth on the head's own ellipse, placed by the corpus and shaped here.
 
@@ -266,7 +324,12 @@ def add_face(proj, cx, cy, rx, ry):
     made = 0
     #: sizes in head radii; chosen, since the corpus gives position and not extent
     EYE_W, EYE_H = 0.17, 0.13
-    IRIS_W, IRIS_H = 0.15, 0.16
+    IRIS_W = 0.150
+    #: **An almond is not a flattened ellipse.** The upper edge turns tightly and the lower one runs nearly level --
+    #: two different curvatures meeting at the corners, which is what makes an eye an almond and a circle a circle.
+    #: So the iris is built from those two edges rather than from one radius, and the asymmetry is the whole point.
+    IRIS_UP = 0.190       # how far the upper edge rises above the eye's line
+    IRIS_DOWN = 0.075     # how far the lower edge falls below it
     SPARK_W, SPARK_H = 0.045, 0.045
     BROW_W, BROW_LIFT = 0.20, 0.06
     MOUTH_W, MOUTH_DROP = 0.10, 0.26
@@ -274,9 +337,14 @@ def add_face(proj, cx, cy, rx, ry):
     for side in (-1, 1):
         ex = cx + side * 0.308 * ry
         ey = cy + 0.126 * ry            # screen y grows downward, so a negative corpus y is a positive offset
-        # the iris: a filled ellipse, the darkest thing on the face
-        iris = [(ex + IRIS_W * ry * math.cos(i / 24.0 * 2 * math.pi),
-                 ey + IRIS_H * ry * math.sin(i / 24.0 * 2 * math.pi)) for i in range(25)]
+        # the iris: an almond, the darkest thing on the face
+        iris = []
+        for i in range(19):             # the upper edge, running from the outer corner to the inner
+            t = math.pi * i / 18.0
+            iris.append((ex - IRIS_W * ry * math.cos(t), ey - IRIS_UP * ry * math.sin(t)))
+        for i in range(1, 19):          # the lower edge, back the other way and much flatter
+            t = math.pi * (1.0 - i / 18.0)
+            iris.append((ex - IRIS_W * ry * math.cos(t), ey + IRIS_DOWN * ry * math.sin(t)))
         proj.add_fill(region_of(iris), stage='colour', colour=hexed(EYE_COLOUR), note='iris %d' % side)
         made += 1
         # the highlight, off-centre toward the light, which is what makes an eye look wet
@@ -286,22 +354,26 @@ def add_face(proj, cx, cy, rx, ry):
                   sy + SPARK_H * ry * math.sin(i / 16.0 * 2 * math.pi)) for i in range(17)]
         proj.add_fill(region_of(spark), stage='colour', colour='#F6F2EA', note='highlight %d' % side)
         made += 1
-        # the upper lid: the heaviest line on a face, and it is the one that gives an eye its direction
-        lid = [(ex - EYE_W * ry, ey - 0.04 * ry),
-               (ex, ey - EYE_H * ry),
-               (ex + EYE_W * ry, ey - 0.04 * ry)]
+        # **The lid follows the iris's own upper edge**, so the two cannot drift apart when either is adjusted. The
+        # first version gave the lid its own curvature and the two disagreed -- a lid that does not sit on the iris
+        # reads as a line drawn near an eye rather than as the eye's edge.
+        lid = [(ex - IRIS_W * ry * 1.06, ey - IRIS_UP * ry * 0.10),
+               (ex, ey - IRIS_UP * ry * 1.10),
+               (ex + IRIS_W * ry * 1.06, ey - IRIS_UP * ry * 0.10)]
         rec = core.stroke_record(lid, 'fine', seed=abs(hash(('lid', side))) % 9973, resolution=16,
-                                 width_profile=[1.4, 3.2, 1.4])
+                                 width_profile=[1.6, 3.4, 1.6])
         proj.add_stroke(rec, stage='line', layer='head', note='lid %d' % side)
         made += 1
-        # the brow, lifted above the lid by the corpus's own offset
+        # **The brow is the same pen as the lid and only slightly lighter.** It was drawn with the pencil brush at a
+        # width of 1.6 to 2.6 and came out nearly invisible -- the brush's alpha, not its width, was what made it
+        # faint, and a brow that is fainter than the eye it belongs to reads as a smudge.
         bx = cx + side * 0.299 * ry
         by = cy - 0.500 * ry
         brow = [(bx - BROW_W * ry, by + BROW_LIFT * ry * 0.4),
                 (bx, by - BROW_LIFT * ry),
                 (bx + BROW_W * ry, by + BROW_LIFT * ry * 0.4)]
-        rec = core.stroke_record(brow, 'pencil', seed=abs(hash(('brow', side))) % 9973, resolution=16,
-                                 width_profile=[1.6, 2.6, 1.6])
+        rec = core.stroke_record(brow, 'fine', seed=abs(hash(('brow', side))) % 9973, resolution=16,
+                                 width_profile=[1.4, 2.6, 1.4])
         proj.add_stroke(rec, stage='line', layer='head', note='brow %d' % side)
         made += 1
 
@@ -448,9 +520,14 @@ def main():
                 body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
                 h = HEAD_HEIGHT_OF_BODY * body_px
                 hx, hy = place(POS['Bip001 Head'])
-                cy = hy + h / 2.0
-                rx = h * HEAD_WIDTH_OVER_HEIGHT / 2.0
-                ry = h / 2.0
+                # **The corpus's 0.361 is the whole head, hair included**, and this drawing was applying it to the
+                # skin ellipse with the hair sized up from that -- so the visible head came out at 42 per cent of the
+                # figure and covered the trunk entirely. The skin is the head divided by the hair's own growth.
+                hh_skin = h / HAIR_HEIGHT_OF_HEAD
+                hy_skin = hy + (h - hh_skin) / 2.0
+                cy = hy_skin + hh_skin / 2.0
+                rx = hh_skin * HEAD_WIDTH_OVER_HEIGHT / 2.0
+                ry = hh_skin / 2.0
                 shape = [(hx + rx * math.cos(i / 48.0 * 2 * math.pi),
                           cy + ry * math.sin(i / 48.0 * 2 * math.pi)) for i in range(49)]
             else:
@@ -528,8 +605,16 @@ def main():
     # at 14, with only `front_hair` in front of it. So this is not a preference, it is the order the asset uses.
     body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
     hh = HEAD_HEIGHT_OF_BODY * body_px
+    hh_skin = hh / HAIR_HEIGHT_OF_HEAD
     hx, hy = place(POS['Bip001 Head'])
-    marks += add_face(proj, hx, hy + hh / 2.0, hh * HEAD_WIDTH_OVER_HEIGHT / 2.0, hh / 2.0)
+    face_cy = hy + (hh - hh_skin) / 2.0 + hh_skin / 2.0
+    face_rx = hh_skin * HEAD_WIDTH_OVER_HEIGHT / 2.0
+    face_ry = hh_skin / 2.0
+    # **The fringe goes on before the face and after every body layer**, which is the one place in the order that is
+    # both: the corpus has `face` at 16 and `front_hair` at 18, so the fringe is over the body and the face is over the
+    # fringe -- and a fringe drawn after the face would cover the eyes it is framing.
+    marks += add_fringe(proj, hx, face_cy, face_rx, face_ry)
+    marks += add_face(proj, hx, face_cy, face_rx, face_ry)
 
     print('  marks: %d  (fills %d, lines %d)' % (len(proj.marks), marks - (marks // 3), marks // 3))
     print('  layers in use: %s' % sorted(set(m.layer for m in proj.marks if m.layer)))
