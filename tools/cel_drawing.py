@@ -86,6 +86,23 @@ CONTOUR_WIDTH = 3.0
 #: which is the whole point of separating the pen from the body.
 CONTOUR_POINTS = 240
 
+#: **The head is taller than it is wide, and it is a third of the figure.** Both came out of the corpus and both were
+#: wrong in the other direction before. Measured over eleven rigs: the head's height is 0.361 of the body, the eye
+#: separation 0.111, so a head is 3.25 eye-separations tall, and with a width of 2.2 separations its width over height
+#: is 0.677.
+#:
+#: **This drawing had a head 32 wide by 22 high -- wider than tall, and a twentieth of the figure.** So it was wrong in
+#: proportion and wrong in style: the corpus is drawn at about three heads tall and this was drawn at twenty. The
+#: difference is not a measurement error, it is the difference between a chibi style and a realistic one, and the style
+#: asked for is the corpus's.
+HEAD_WIDTH_OVER_HEIGHT = 0.677
+HEAD_HEIGHT_OF_BODY = 0.361
+
+#: **The thinnest a limb may be and still keep its fill.** Below this the outline is wider than the shape and covers it
+#: completely, which is what turned the hands into a solid black mass. A finger's fill is about three pixels across
+#: here, so a three-pixel outline leaves nothing. Where the shape is thinner than that, the contour alone is the mark.
+MIN_FILL_WIDTH = 7.0
+
 #: **The parts, back to front.** This is the figure's own stack order read off the rigs -- the halo behind the
 #: character, then back hair, head, arms, legs, skirt, torso, collar, hand, neck, face, front hair -- cut down to the
 #: parts a bone skeleton actually has. **The order is the picture**, and it is the one thing here that is not invented:
@@ -342,7 +359,21 @@ def main():
 
             # the fill needs no pressure and no wobble: it is a shape, and its edge is where the light lands
             plain = core.stroke_record(pts, 'ink', seed=0, resolution=16, width_profile=profile)
-            shape = core.outline_polygon(plain)
+            # **The head is an ellipse of its own, not the outline of a bone's stroke.** A bone describes an axis and a
+            # thickness; a head is not described by that, and the difference shows -- the same machinery produced a
+            # rounded rectangle where an ellipse belongs. Its size is the corpus's ratio of the body, and it hangs
+            # downward from the head bone, which sits at the top of the figure.
+            if walk == ['Bip001 Head']:
+                body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
+                h = HEAD_HEIGHT_OF_BODY * body_px
+                hx, hy = place(POS['Bip001 Head'])
+                cy = hy + h / 2.0
+                rx = h * HEAD_WIDTH_OVER_HEIGHT / 2.0
+                ry = h / 2.0
+                shape = [(hx + rx * math.cos(i / 48.0 * 2 * math.pi),
+                          cy + ry * math.sin(i / 48.0 * 2 * math.pi)) for i in range(49)]
+            else:
+                shape = core.outline_polygon(plain)
             base = BASE.get(layer, (200, 200, 200))
             shadow = shaded(base, 0.45)
             label = label_of(walk)
@@ -380,7 +411,13 @@ def main():
             # pen independent of the limb.**
             ring = smooth_closed(shape, passes=3, keep=CONTOUR_POINTS)
             contour = ring + [ring[0]]
-            contour_profile = [CONTOUR_WIDTH] * (16 * (len(contour) - 1) + 1)
+            # **The pen narrows where the limb does.** A three-pixel outline around a three-pixel finger covers it
+            # entirely, which is what made the hands a solid black mass -- and no fixed width fixes that, because the
+            # same three pixels are right on a thigh and wrong on a finger. Capping the pen at a fraction of the
+            # shape's own thinnest point keeps a sliver of fill visible at every width, so the rule scales instead of
+            # needing a table.
+            cwidth = min(CONTOUR_WIDTH, MIN_FILL_WIDTH and 0.55 * min(profile))
+            contour_profile = [cwidth] * (16 * (len(contour) - 1) + 1)
             rec = core.stroke_record(contour, 'fine', seed=abs(hash(label)) % 9973, resolution=16,
                                      width_profile=contour_profile)
             proj.add_stroke(rec, stage='line', layer=layer, note='contour %s' % label)
