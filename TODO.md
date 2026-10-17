@@ -3108,3 +3108,25 @@ L8  人物构图
 
 > **而这四种画法回答了一个一直没问的问题：「结构」到底要画什么。**
 > **不是画形状，是画「方向 → 运动 → 空间 → 透视」，一层比一层具体，而每一层都能单独存在。**
+
+**而 p24 讲「重心」，而它给出的形状比我用的精确：**
+
+> *"On top of the gesture, add a **sphere for the head, an egg shape for the rib cage, and a horizontal egg shape for the
+> pelvis.**"*
+
+**而三种姿态的对照是这一页的核心：**
+
+| | 描述 |
+|---|---|
+| **BALANCED** | 三块都落在重心垂直线上 —— *"A common mistake when drawing the figure is keeping these shapes balanced and straight"* |
+| **DYNAMIC** | 三块**偏离**重心线 |
+| **MOST DYNAMIC** | 偏得最多 |
+
+> *"notice how the major masses move around the center of gravity **without lining up on it**."*
+
+**而 TIP 把这件事说得更准**：**平衡的姿势和不平衡的姿势本身没有好坏** ——
+*"What matters is that you are able to build the correct position to match your story/intention."*
+**而因为脊柱的存在，三块之间**总会有某种反向平衡**。
+
+> **而项目里的 A-pose 是三块全在中线上 —— 那正是书里点名的「常见错误」。**
+> **所以「图僵」的第四层：不是没有姿态，是三块骨头**排成了一条直线**。**
