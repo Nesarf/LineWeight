@@ -293,6 +293,13 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
     pressure = record['pressure']
+    # **The stroke's own median pressure, taken once.** A profile is an absolute width curve and the pressure is a
+    # relative one, so dividing by this keeps a caller's width curve meaning what it says while letting the hand's own
+    # variation through. A median of zero would mean a stroke with no pressure at all; the fallback keeps the
+    # division finite rather than inventing a numerator.
+    median_pressure = sorted(pressure)[len(pressure) // 2] if pressure else 1.0
+    if median_pressure <= 0:
+        median_pressure = 1.0
     widths = record.get('width_profile') or []
     alphas = record.get('alpha_profile') or []
     # **Spacing is measured against the radius, not against the width times a factor.** The first version
@@ -317,8 +324,19 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # renderer ignores is a comment, and both of these exist to be the place a *measured* profile lands --
             # `ref.py` measures width and darkness distributions out of real artwork, and the brush table is
             # per-brush, so it cannot hold a per-stroke measurement.
+            #
+            # **But a profile must not silence the hand.** This branch used to take the profile and drop `pressure`
+            # entirely, and since every caller in this project supplies a profile, `pressures` -- noise, speed near a
+            # fast run, the thinning at a corner -- **never reached the picture at all.** That is why a stroke came out
+            # with the same width along ninety-eight per cent of its length: not because the brush asked for it, but
+            # because the branch meant to use the brush's dynamics was never taken.
+            #
+            # So the profile gives the width and the pressure gives the **relative** pressure, divided by the stroke's
+            # own median. Multiplying keeps the profile's absolute scale, which is what a caller writing a width curve
+            # means, and restores the variation that a hand has and a curve cannot.
             if widths:
-                radius = max(0.5, float(widths[min(i, len(widths) - 1)]) * scale * 0.5 * width_scale)
+                base = float(widths[min(i, len(widths) - 1)])
+                radius = max(0.5, base * (p / median_pressure) * scale * 0.5 * width_scale)
             else:
                 radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5 * width_scale)
             if alphas:

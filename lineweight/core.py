@@ -60,12 +60,18 @@ from .curve import Cubic
 # **Only the 14.3x ratio is measured. The split between 入り and 抜き is not.**
 BRUSHES: dict[str, dict[str, float]] = {
     # name:            width  opacity taper_in taper_out spacing  speed   corner  noise  wobble
+    # **`noise` is the term that decides whether a line breathes, and it was far too small to see.** The pressure is
+    # multiplied by `1 + noise * state`, where `state` is a smoothed random walk whose amplitude works out around 0.4
+    # -- so the old 0.05 moved the width by two per cent, which on a three-pixel line is no change at all. Measured
+    # with `tools/stroke_swell.py`: ninety-eight per cent of a straight run sat within one pixel of its own median.
+    # **A pen that lays down the same width all along a stroke is a computer's pen**, and that was the one property of
+    # the line that no amount of correct geometry could supply. These values are raised until the swell is visible.
     'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 6.0, 'taper_out': 8.3, 'spacing': 0.56,
-             'speed': 0.35, 'corner': 0.40, 'noise': 0.06, 'wobble': 0.30, 'curve': 1.15},
+             'speed': 0.35, 'corner': 0.40, 'noise': 0.34, 'wobble': 0.30, 'curve': 1.15},
     'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 5.4, 'taper_out': 8.9, 'spacing': 0.56,
-            'speed': 0.22, 'corner': 0.30, 'noise': 0.05, 'wobble': 0.26, 'curve': 0.85},
+            'speed': 0.22, 'corner': 0.30, 'noise': 0.42, 'wobble': 0.26, 'curve': 0.85},
     'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
-               'speed': 0.40, 'corner': 0.45, 'noise': 0.22, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
+               'speed': 0.40, 'corner': 0.45, 'noise': 0.38, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
     # **Spacing is measured, not chosen.** Sweeping it per brush and counting how many separate runs of ink a
     # single straight stroke leaves shows all four staying continuous to 0.8 of a diameter and breaking at
     # 1.0, so every brush sits at 0.56 -- a measured value with the margin left in, rather than a number
