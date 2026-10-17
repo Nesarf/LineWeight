@@ -2936,3 +2936,19 @@ shapes."*
 
 > **而项目里每个部位一个颜色（肤色、衣服），从来没有「前黑中灰后白」这一层。**
 > **而那个「眯眼」的诊断法，是这一整段里第一个不需要任何工具、只靠眼睛就能做的检查。**
+
+**而 `FEATHERING` 与 `CROSS-HATCHING` 两章共享同一条规则，而它在两章里都说了出来：**
+
+> *"Always keep in mind that **organic shapes do not contain right angles!**"*
+> *"the lines intersect at right angles, creating a mathematical pattern that looks monotonous and unnatural."*
+
+**而其余几条：**
+
+- **羽化的三个作用**：柔化硬边、明暗渐变、给形体以体积。**第三条靠「沿肌肉弯曲」（curving feather lines around
+  the muscle）。**
+- **等长的平行线不是阴影，是装饰条纹** —— 他把它点名为「教科书式的错误做法」。
+- **「无缝的明暗过渡」**（the seamless light-to-dark fade）是两种技法的共同目标。
+- **别过度使用**：*"Excessive cross-hatching is not a sign of artistic skill — in fact, it's often just the opposite."*
+
+> **所以「直角」是「不像画」的一个可测特征** —— 而项目里的轮廓是平滑过的多边形，
+> **直角可能还在，只是从来没有人量过拐角。**
