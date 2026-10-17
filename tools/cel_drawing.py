@@ -80,6 +80,12 @@ ENTRY, EXIT = 0.30, 0.22
 #: mistake the component count exposed: a limb drawn with a thirty-pixel pen is not a drawing of a limb.
 CONTOUR_WIDTH = 3.0
 
+#: **How many points a stroked contour is reduced to.** The outline of a thick stroke carries four figures' worth of
+#: points and a thin one a few dozen, so stroking both as they come gives one an edge so dense it reads as a jag and the
+#: other an outline that covers its own fill. Reducing both to the same count makes the pen independent of the limb --
+#: which is the whole point of separating the pen from the body.
+CONTOUR_POINTS = 240
+
 #: **The parts, back to front.** This is the figure's own stack order read off the rigs -- the halo behind the
 #: character, then back hair, head, arms, legs, skirt, torso, collar, hand, neck, face, front hair -- cut down to the
 #: parts a bone skeleton actually has. **The order is the picture**, and it is the one thing here that is not invented:
@@ -180,6 +186,35 @@ def chains(by_layer):
             if walk:
                 out.append((layer, walk))
     return out
+
+
+def smooth_closed(points, passes=3, keep=None):
+    """A closed polygon with its corners knocked off, and resampled to a workable number of points.
+
+    **Two faults in one place, and both came from the same thing.** The contour was stroked along the outline the fill
+    produced, which is right -- a contour follows the boundary of a shape and not its centreline -- but that outline is
+    a per-pixel approximation of a thick stroke's edge, so stroking it reproduced every pixel step as a jag. And its
+    point count scales with the pen: a thigh drawn twenty-five pixels wide has four figures' worth of points while a
+    finger has a few dozen, so one command produced an over-dense jagged edge on the thick limbs and an outline that
+    swallowed the fill on the thin ones.
+
+    So the outline is averaged around its own ring and then resampled evenly. **Averaging on a closed ring has to wrap
+    at the seam** -- treating it as an open polyline pulls the polygon's start and end toward each other and leaves a
+    visible pinch, which is the sort of thing that is easy to write and hard to notice.
+
+    `keep` caps the number of points so that a thick limb and a thin one are stroked at comparable density.
+    """
+    pts = list(points)
+    if len(pts) < 4:
+        return pts
+    for _ in range(max(0, passes)):
+        n = len(pts)
+        pts = [((pts[(i - 1) % n][0] + 2 * pts[i][0] + pts[(i + 1) % n][0]) / 4.0,
+                (pts[(i - 1) % n][1] + 2 * pts[i][1] + pts[(i + 1) % n][1]) / 4.0) for i in range(n)]
+    if keep and len(pts) > keep:
+        step = len(pts) / float(keep)
+        pts = [pts[int(i * step)] for i in range(keep)]
+    return pts
 
 
 def label_of(walk):
@@ -337,10 +372,14 @@ def main():
             # drawing, and it is also why the figure read as a stick figure rather than as a drawing.
             #
             # A contour follows the **boundary** of the shape and not its centreline, so what is stroked here is the
-            # polygon the fill produced, closed back on itself. The width is the one the reference library measures on
-            # real linework -- a median of about three pixels -- and not the bone's width, because the bone's width is
-            # a fact about the body and this is a fact about the pen.
-            contour = list(shape) + [shape[0]]
+            # polygon the fill produced. **But not raw**: the first version stroked that polygon as it came, and it
+            # showed three faults in the render -- a jagged edge, a head turned into a square, and hands turned into
+            # solid black. All three were the same thing: the polygon is a per-pixel approximation whose point count
+            # scales with the pen, so a twenty-five-pixel thigh was stroked with four figures' worth of steps while a
+            # three-pixel finger had so few that the outline swallowed its fill. **Smoothing and a fixed cap make the
+            # pen independent of the limb.**
+            ring = smooth_closed(shape, passes=3, keep=CONTOUR_POINTS)
+            contour = ring + [ring[0]]
             contour_profile = [CONTOUR_WIDTH] * (16 * (len(contour) - 1) + 1)
             rec = core.stroke_record(contour, 'fine', seed=abs(hash(label)) % 9973, resolution=16,
                                      width_profile=contour_profile)
