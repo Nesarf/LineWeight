@@ -3059,3 +3059,18 @@ L8  人物构图
 
 > **「缓慢测量会把姿态弄僵。」** —— 而这一整段我做的事，就是缓慢而系统地测量。
 > **所以「图僵」有两个原因，而它们是同一件事的两面**：**一个姿态（不变），加上一种把姿态量僵的方法（不许变）。**
+
+**而下一页给的第三条，把「僵」讲成了力学：**
+
+> *"The most important thing to keep in mind while drawing the figure is that the human form is essentially a
+> **balancing act**."*
+>
+> *"In the side view, the head is suspended out over the rib cage by the forward angle of the neck. The neck and head
+> are in turn balanced by the rib cage as it pushes at the opposite angle. **The pelvis moves opposite to the tilt of the
+> rib cage, and the legs stabilize the body in the shape of a large "S".**"*
+
+**而正面看，它是「硬与软的交替」**：**头、胸腔、骨盆是大块骨头，而四肢是软的肌肉与肉。**
+
+> **所以「图僵」还有第三层：不只是「一个姿态」，也不只是「量僵了」，还有「那个姿态从侧面看是一条直线」。**
+> **人类从侧面看是一个大「S」，而项目里的 A-pose 从侧面看是直的。**
+> **而这一条是可测的** —— **侧面轮廓的拐点有几个、在哪些高度。**
