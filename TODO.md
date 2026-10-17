@@ -3144,3 +3144,18 @@ L8  人物构图
 > **所以「僵」的最后一条诊断是时间上的，而不是形状上的**：
 > **A-pose 是「动作还没开始」，而一张画该画的是「动作进行到一半」。**
 > **那不是「姿态的选择」，是「时间点的选择」** —— 而项目里从头到尾只有同一个时间点。
+
+**而 p28 的标题是「ECONOMY OF LINE」，而它的正文正好是我一直在做的反面：**
+
+> *"**Render only what is necessary to describe the gesture**, to communicate the whole. The challenge is to **maintain the
+> figure while drawing as little as needed.**"*
+> *"Economy of line will help yourself and your viewer concentrate on the concept and understand clearly what the drawing
+> is meant to say."*
+
+**而 p32 给了一条很实用的**：*"Remember that **if designed well, the shapes of the pose will appear to work equally well
+from another angle.**"*
+**p33 把姿态放到最高位**：*"Consider the gesture as the most advanced way of capturing the motion of the human figure."*
+
+> **「只画必要的」和「缓慢测量」是对立的，而它们是同一个方向的两端**：
+> **测量越多，画的线越多；而线越多，信息越糊。**
+> **项目里每一笔都来自一次测量** —— **所以它的线不是「必要的」，是「测量结果的副产品」。**
