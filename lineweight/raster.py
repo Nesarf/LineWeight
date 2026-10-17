@@ -306,7 +306,13 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     # multiplied the brush width by its spacing factor, which for a 22-pixel wash with a factor of 1.4 drew a
     # dab every 15 pixels -- a string of separate beads. A brush's spacing is how far apart its dabs sit
     # *relative to how big they are*: a tenth of the diameter is smooth, half the diameter is a texture.
-    spacing = max(1.0, brush['width'] * brush.get('spacing', 0.7) * 0.5)
+    #
+    # **And it has to be recomputed per dab once the pressure varies.** It used to be resolved once from the brush's
+    # nominal width, which was harmless while every stroke was the same width and became wrong the moment the pressure
+    # model started reaching the picture: a contour asked for one and a half pixels narrows its radius below that, the
+    # spacing stayed at one pixel, and **the dots stopped touching -- the outline came out as a dotted line.** So the
+    # spacing factor is kept here and the distance is derived from the radius each dab is about to be stamped at.
+    spacing_factor = brush.get('spacing', 0.7)
     carry = 0.0
     for i in range(1, len(centre)):
         x0, y0 = centre[i - 1]
@@ -339,6 +345,10 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 radius = max(0.5, base * (p / median_pressure) * scale * 0.5 * width_scale)
             else:
                 radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5 * width_scale)
+            # **The step is a fraction of the radius this dab will actually be stamped at.** A floor of half a pixel
+            # keeps a hairline from spending its whole budget on steps, and the factor comes from the brush because
+            # that is where a texture would be chosen.
+            spacing = max(0.5, radius * 2.0 * spacing_factor * 0.5)
             if alphas:
                 # The profile is the stroke's opacity along its length; the brush's own opacity is the medium and
                 # still applies, exactly as it does on the vector side.

@@ -67,11 +67,11 @@ BRUSHES: dict[str, dict[str, float]] = {
     # **A pen that lays down the same width all along a stroke is a computer's pen**, and that was the one property of
     # the line that no amount of correct geometry could supply. These values are raised until the swell is visible.
     'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 6.0, 'taper_out': 8.3, 'spacing': 0.56,
-             'speed': 0.35, 'corner': 0.40, 'noise': 0.34, 'wobble': 0.30, 'curve': 1.15},
+             'speed': 0.35, 'corner': 0.40, 'noise': 0.20, 'wobble': 0.30, 'curve': 1.15},
     'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 5.4, 'taper_out': 8.9, 'spacing': 0.56,
-            'speed': 0.22, 'corner': 0.30, 'noise': 0.42, 'wobble': 0.26, 'curve': 0.85},
+            'speed': 0.22, 'corner': 0.30, 'noise': 0.24, 'wobble': 0.26, 'curve': 0.85},
     'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
-               'speed': 0.40, 'corner': 0.45, 'noise': 0.38, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
+               'speed': 0.40, 'corner': 0.45, 'noise': 0.26, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
     # **Spacing is measured, not chosen.** Sweeping it per brush and counting how many separate runs of ink a
     # single straight stroke leaves shows all four staying continuous to 0.8 of a diameter and breaking at
     # 1.0, so every brush sits at 0.56 -- a measured value with the margin left in, rather than a number
