@@ -2952,3 +2952,28 @@ shapes."*
 
 > **所以「直角」是「不像画」的一个可测特征** —— 而项目里的轮廓是平滑过的多边形，
 > **直角可能还在，只是从来没有人量过拐角。**
+
+### 而 `figure-in-proportion` 的第一节，是「测量的定义」
+
+**281 页，文本完整可读。作者 Michael Massen。而它的目录就是一套系统：**
+
+```
+CH 1  Drawing Basics: Materials · Perspective · Foreshortening · Working Deductively
+CH 2  Anatomy Basics: Anatomy Measurement Parameters
+CH 3  The Body's Internal Proportions: Centerline · Front Brackets · Widened Stance Brackets ·
+      Brackets in Perspective · Upper Bracket Division · Quarter Subdivisions · Eighth Subdivisions ·
+      Torso Depth · Hip and Shoulder Width
+```
+
+**而第二章那一节的开头，正是这一整段反复撞上的那堵墙：**
+
+> *"When we are talking about the length, width or height of any particular body part, **it is essential that we know
+> where it is that we're measuring.** If, for example, we were to say the 'length of the foot,' most people would
+> probably assume we mean the distance from the tip of the toes to the back of the heel. In other parts of the body,
+> however, especially where the limbs join the trunk, these measurements are a little more difficult to gauge."*
+
+**而它接着给了完整的词汇表**：**正面十七个测量、背面十五个、手六个、脚四个、头四个**，每个都有名字，画在图上。
+
+> **所以这本书第一节处理的不是比例，是「你说的是哪一段」** —— 而我量「骨盆位置」时量的是
+> 「从头顶到骨盆骨的那一段距离」，**而它和「髋高」是不是同一件事，我从来没有定义过。**
+> **而这一整段里所有「量错了」的故事，起点都在这里。**
