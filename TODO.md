@@ -2897,3 +2897,42 @@ VIII  ESTABLISHING YOUR INKING STYLE
 
 **而这两条其实是同一件事的两种说法**：**线宽编码光照，高光编码形状** ——
 **两者都是「哪里不画」比「哪里画」更要紧。**
+
+**而 `CONTOUR LINES` 那一章给了四条能直接用的规则：**
+
+**一、轮廓有五个作用**，而第五个最容易被忘：**创造深度**。规则很简单 ——
+**前景用重轮廓线、中景用中等线、背景用细线**，那让画面分层。
+
+**二、三种风格，区别只在「笔画的哪一段最重」**：
+- **cursive（草写）**：中段最重
+- **angular（棱角）**：底部最重（他点名 Klaus Janson）
+- **dead-weight（等粗）**：粗轮廓配细内部细节（Dave Stevens、Adam Hughes）
+
+**三、同类线宽必须一致**：*"Your thinner lines (facing the light source) should all be more or less the same width,
+as should your heavier lines."* —— **细的都细、重的都重，而不是随机。**
+
+**四、小尺寸时删细节**：*"identify details that won't reproduce, then eliminate them or translate them into basic
+shapes."*
+
+> **而项目里 `CONTOUR_WIDTH = 3.0` 恒定 —— 那在书里的语言里不叫「一致」，那叫「只有一种线」。**
+> **一致说的是「细的那一组彼此一致、重的那一组彼此一致」，前提是至少有两组。**
+
+**而 `SPOTTING BLACKS` 那一章给的是一个三层规则：**
+
+> *"The best way to solve the depth problem is to layer three values — **black, gray, and white** — into the
+> **foreground, middle ground, and background**."*
+
+| 平面 | 明度 |
+|---|---|
+| 前景 | 黑 |
+| 中景 | 灰 |
+| 背景 | 白 |
+
+**而两条配套的：**
+
+- **相邻但不同平面的物体不能用同一个明度** —— 否则它们在视觉上合并成一层。
+  书里的例子很具体：**那两个人物看起来像小的站在大的肩膀上。**
+- **一个诊断法**：*"if you squint your eyes, it looks gray and flat"* —— **眯眼看，若是一片灰而平，就说明缺一个黑值和一个白值。**
+
+> **而项目里每个部位一个颜色（肤色、衣服），从来没有「前黑中灰后白」这一层。**
+> **而那个「眯眼」的诊断法，是这一整段里第一个不需要任何工具、只靠眼睛就能做的检查。**
