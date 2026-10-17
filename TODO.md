@@ -3036,3 +3036,26 @@ L8  人物构图
 
 > **而这一条值得记成一个方法**：**「七种」这样的数字是一个可数的目标** ——
 > **而项目里所有「像不像」的争论，缺的正是这种可以被数完的清单。**
+
+### 而 Hampton 的第一页给了三件东西，第三件直接指向「图僵」
+
+**`hampton-figure-drawing.pdf` 241 页、零字符（纯图片）。而 p10 那一页是整本书的核心：**
+
+> ### 身体 = 八个部分
+> **Head · Spine · Arms(2) · Pelvis · Rib Cage · Legs(2)**
+
+> ### 而所有的线只有三种
+> **「C」曲线、直线、「S」曲线。**
+> *"These lines will continuously reappear throughout the book. **In this drawing process, you will never use any other
+> type of line.**"*
+> 搭配的三个技巧：**线条的不对称、曲线的重复、线的叠压。**
+
+**而同一页底部的 TIP 直接指向这一整段最难的那个问题：**
+
+> *"When checking the proportion of the figure, **try to avoid doing any slow, methodical measuring.** Instead, base the
+> proportions off of what looks correct after establishing the figure from head to foot. If it looks incorrect, change
+> it — the drawing is still at an early stage when correction is easy. **The downside to slowly measuring out the figure
+> is that it stiffens the poses.** Focus on the activity — the proportion can be corrected later."*
+
+> **「缓慢测量会把姿态弄僵。」** —— 而这一整段我做的事，就是缓慢而系统地测量。
+> **所以「图僵」有两个原因，而它们是同一件事的两面**：**一个姿态（不变），加上一种把姿态量僵的方法（不许变）。**
