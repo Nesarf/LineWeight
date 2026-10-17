@@ -3130,3 +3130,17 @@ L8  人物构图
 
 > **而项目里的 A-pose 是三块全在中线上 —— 那正是书里点名的「常见错误」。**
 > **所以「图僵」的第四层：不是没有姿态，是三块骨头**排成了一条直线**。**
+
+**而 p26 是整本书里最直接针对「僵」的一页，标题就叫「THE "ABOUT TO..." POSE」：**
+
+> *"The following exercise will help you create a sense of impending action, and is an exercise I generally give to
+> students who are **stuck making stiff symmetrical positions.**"*
+>
+> *"Stable, symmetrical positions **keep the action in stasis**; the action has either not begun, or it has ended. An
+> **"about to..."** position engages viewers by making them **anticipate the outcome** of the action."*
+
+**而配图画了一个工具：平衡三角** —— **两只脚和重心的投影落在一个三角形里，而三角的形状随姿态变。**
+
+> **所以「僵」的最后一条诊断是时间上的，而不是形状上的**：
+> **A-pose 是「动作还没开始」，而一张画该画的是「动作进行到一半」。**
+> **那不是「姿态的选择」，是「时间点的选择」** —— 而项目里从头到尾只有同一个时间点。
