@@ -3074,3 +3074,20 @@ L8  人物构图
 > **所以「图僵」还有第三层：不只是「一个姿态」，也不只是「量僵了」，还有「那个姿态从侧面看是一条直线」。**
 > **人类从侧面看是一个大「S」，而项目里的 A-pose 从侧面看是直的。**
 > **而这一条是可测的** —— **侧面轮廓的拐点有几个、在哪些高度。**
+
+**而 gesture 那一章给了四个技巧，第一个是根本的：**
+
+> *"I tend to begin by **picturing not a line but a story** in my mind. Then I look for the shapes that will best capture
+> that story."*
+> *"Before you draw a single line, take a few moments to think about the pose **as a whole** before you begin."*
+
+| 页 | 技巧 | 内容 |
+|---|---|---|
+| p12 | 对称与不对称 | **不对称给出运动感**，对称是静态 |
+| p13 | 重复与节奏 | *"the second way to give a gesture drawing a sense of movement is to **repeat certain shapes**"* |
+| p16 | **包裹线** | **线要绕着形体弯，不是平贴在边缘** |
+| p15 | 三阶段 | 姿态 → 结构 → 完成 |
+
+> **而「包裹线」是这一整段里最具体的一条技术** —— **线不是贴着轮廓走的，是绕着体积转的。**
+> **而项目里的线全部是「贴着轮廓走」**（`contour = ring + [ring[0]]`，`ring` 就是填充多边形的边界），
+> **所以它从来不是「绕着一个体积」，而是「框住一块面积」。**
