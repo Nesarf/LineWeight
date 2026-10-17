@@ -103,11 +103,23 @@ HEAD_HEIGHT_OF_BODY = 0.361
 #: here, so a three-pixel outline leaves nothing. Where the shape is thinner than that, the contour alone is the mark.
 MIN_FILL_WIDTH = 7.0
 
+#: **Hair is what makes an arm come out from behind something instead of out of a head.** The head is a filled ellipse
+#: and the arms are laid across it, which reads as limbs emerging from inside a skull; in the corpus the sides of the
+#: head are covered by hair and the arms sit in front of it. So this is a layer **wider than the head and drawn before
+#: it**, and what shows is a band down each side.
+#:
+#: **Its width is a choice and it is named as one.** The corpus's layer order puts back hair and hair before the head
+#: and the arms after it, so the arms are in front of the hair -- a band about a third wider than the head is what that
+#: leaves visible. Nothing in the corpus measures it, because in the corpus hair is a mesh and not an ellipse.
+HAIR_WIDTH_OF_HEAD = 1.34
+HAIR_HEIGHT_OF_HEAD = 1.16
+HAIR_COLOUR = (58, 52, 74)      # the ink-blue this character is described in, and a choice rather than a measurement
+
 #: **The parts, back to front.** This is the figure's own stack order read off the rigs -- the halo behind the
 #: character, then back hair, head, arms, legs, skirt, torso, collar, hand, neck, face, front hair -- cut down to the
 #: parts a bone skeleton actually has. **The order is the picture**, and it is the one thing here that is not invented:
 #: `layers.standard_order()` is a topological sort of 46 constraints that nine lobby rigs agree on.
-DRAW_ORDER = ('head', 'leg', 'arm', 'hand', 'neck', 'torso')
+DRAW_ORDER = ('hair', 'head', 'leg', 'arm', 'hand', 'neck', 'torso')
 
 LAYER_OF = {
     'Pelvis': 'torso', 'Spine': 'torso', 'Spine1': 'torso', 'Neck': 'neck', 'Head': 'head',
@@ -385,6 +397,24 @@ def main():
             # limb across the centreline so both sides of the figure are lit from the same direction.
             a = pts[0]
             side_sign = 1 if POS[walk[0]][0] >= 0 else -1
+
+            # **The hair, drawn for the head only and as a layer of its own.** It is wider than the head and comes
+            # before it in `DRAW_ORDER`, so the head covers its middle and a band shows down each side -- which is
+            # what stops the arms from looking as if they emerge from inside a skull. It has no shadow band: hair is
+            # one flat colour here, and inventing a second one would be inventing twice.
+            if walk == ['Bip001 Head']:
+                body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
+                hh = HEAD_HEIGHT_OF_BODY * body_px
+                hx, hy = place(POS['Bip001 Head'])
+                hp_ry = hh * HAIR_HEIGHT_OF_HEAD / 2.0
+                hp_rx = hh * HEAD_WIDTH_OVER_HEIGHT * HAIR_WIDTH_OF_HEAD / 2.0
+                hp_cy = hy + hh / 2.0
+                hair_shape = [(hx + hp_rx * math.cos(i / 48.0 * 2 * math.pi),
+                               hp_cy + hp_ry * math.sin(i / 48.0 * 2 * math.pi)) for i in range(49)]
+                proj.add_fill(region_of(hair_shape), stage='colour', colour=hexed(HAIR_COLOUR),
+                              note='hair, behind the head')
+                marks += 1
+
             band_profile = [w * SHADOW_BAND for w in profile]
             band = core.stroke_record(pts, 'ink', seed=0, resolution=16, width_profile=band_profile)
             band_shape = core.outline_polygon(band)
