@@ -2820,3 +2820,34 @@ tezuka-how-to-draw            3.8 MB   手塚治虫
 
 **而这一点和「十二种类型」是同一个道理的两面**：**类型说的是她是谁，强度说的是她此刻怎样。**
 **而项目里的脸只有一个状态 —— 那个浅笑，从第一版到现在没变过。**
+
+### 而「继续找」之后，书架是十五本
+
+```
+anatomy-vol2                    72.4 MB   解剖（Imagine FX）
+anime-game-characters-vol3      13.7 MB   动作 × 球棍，七十个动作
+bishoujo-mastering              38.0 MB   美少女的十二种类型
+clothed-figure-open             13.4 MB   穿衣服的人
+comic-inking                     0.3 MB   墨线
+famous-artists-1960             14.6 MB   Famous Artists School 1960，整套二十四课
+female-figure-manga             49.8 MB   女性身体（林晃）
+figure-in-proportion            31.8 MB   比例
+framed-perspective-2            73.4 MB   透视（阴影、体积、角色）
+hampton-figure-drawing          45.4 MB   Michael Hampton，人体设计与构造
+ishiwatari-way                   5.3 MB   十三步流程
+manga-expressions               27.4 MB   表情，按情绪分页
+manga-quick-study                6.1 MB   速写
+morpho-fold-creases             16.1 MB   衣褶
+tezuka-how-to-draw               3.8 MB   手塚治虫
+```
+
+**约 420 MB，十五本，覆盖：动作、类型、表情、比例、解剖、衣褶、透视、墨线、以及一套完整的函授课。**
+
+**而搜的过程里有两个坑值得记**：
+
+- **`-I` 看到的 `HTTP/1.1 200 Connection established` 是代理隧道建立，不是服务器的答复。**
+  四本「借阅受限」的书就是这么看着像通过、实际是 401 的。
+- **文件名里的方括号 `[` `]` 在 URL 里必须转义** —— 我的转义正则处理了空格、`&`、逗号、`#`、问号，
+  **唯独漏了方括号，于是三本书静默地一页都没下来。**
+  **修法不是再补一条正则，而是用 `[uri]::EscapeDataString` 整个转义、再把 `%2F` 换回 `/`** ——
+  **让「哪一个字符需要转义」这件事不再由我列表决定。**
