@@ -2851,3 +2851,49 @@ tezuka-how-to-draw               3.8 MB   手塚治虫
   **唯独漏了方括号，于是三本书静默地一页都没下来。**
   **修法不是再补一条正则，而是用 `[uri]::EscapeDataString` 整个转义、再把 `%2F` 换回 `/`** ——
   **让「哪一个字符需要转义」这件事不再由我列表决定。**
+
+### 而读 `comic-inking.pdf`：线宽不是风格，是光照的编码
+
+**24 页、六万多字符，一个英文重写版，文字完整可读。而它的章节正好是线稿的完整教程：**
+
+```
+I     BEFORE YOU START · STUDY THE REAL THING · DO YOUR MATH
+II    TOOLS OF THE TRADE · INKING WITH A BRUSH
+III   LINE WEIGHTS · ESTABLISHING THE LIGHT SOURCE · INKING FACES · INKING HAIR
+IV    CONTOUR LINES
+V     SPOTTING BLACKS
+VI    FEATHERING
+VII   CROSS-HATCHING
+VIII  ESTABLISHING YOUR INKING STYLE
+```
+
+**而第三章的那段话是整本书的核心：**
+
+> *"The easiest way to indicate the light source is simply to use a **heavy line weight on the dark side of an object
+> and a thinner line weight on its light side.**"*
+
+**而具体到一张被上方光照亮的脸，他说该加重的五个地方：**
+
+```
+上眼睑的下侧 · 鼻下 · 上唇下 · 下唇下 · 下颌线
+```
+
+**而四分之三侧脸时，他逐部位给线宽**：**前额朝光用细线、眼窝在阴影里用重线、颧骨上缘细而下缘重、下颌线深阴影用超重线。**
+
+> **所以线宽不是风格，是光照的编码。** 而项目里 `CONTOUR_WIDTH = 3.0` 是**恒定**的 ——
+> **从上到下、从亮面到暗面，同一个数。而那正是「它不像一张画」里最便宜就可以修的一条。**
+
+**而头发那一节给的答案出乎预料：**
+
+> *"Blond hair is comparatively simple. Your lines should be **cursive and elegant, with weights determined by the
+> primary light source.**"*
+> *"With dark hair, it's especially important to follow the penciler's **white highlight patterns, or negative space**.
+> These patterns actually define the hair's shape."*
+
+**深色头发的三种技法他也点了名：干笔（柔软毛躁）、聚黑成块（湿润油亮）、羽化（沙龙感）。**
+
+> **所以深色头发不是「涂黑」，是「留住空白」** —— 而空白定义了头发的形状。
+> **而项目里的头发是一块实心深色加一条锯齿边，既没有高光，也没有负空间。**
+
+**而这两条其实是同一件事的两种说法**：**线宽编码光照，高光编码形状** ——
+**两者都是「哪里不画」比「哪里画」更要紧。**
