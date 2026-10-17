@@ -115,11 +115,15 @@ HAIR_WIDTH_OF_HEAD = 1.34
 HAIR_HEIGHT_OF_HEAD = 1.16
 HAIR_COLOUR = (58, 52, 74)      # the ink-blue this character is described in, and a choice rather than a measurement
 
+#: The iris, and the one colour on a face that carries the most weight. The character's eyes are described as blue
+#: with a violet cast, which is a description and not a measurement -- the corpus has 292 palettes and says nothing.
+EYE_COLOUR = (74, 66, 132)
+
 #: **The parts, back to front.** This is the figure's own stack order read off the rigs -- the halo behind the
 #: character, then back hair, head, arms, legs, skirt, torso, collar, hand, neck, face, front hair -- cut down to the
 #: parts a bone skeleton actually has. **The order is the picture**, and it is the one thing here that is not invented:
 #: `layers.standard_order()` is a topological sort of 46 constraints that nine lobby rigs agree on.
-DRAW_ORDER = ('hair', 'head', 'leg', 'arm', 'hand', 'neck', 'torso')
+DRAW_ORDER = ('hair', 'neck', 'torso', 'leg', 'arm', 'hand', 'head')
 
 LAYER_OF = {
     'Pelvis': 'torso', 'Spine': 'torso', 'Spine1': 'torso', 'Neck': 'neck', 'Head': 'head',
@@ -244,6 +248,71 @@ def smooth_closed(points, passes=3, keep=None):
         step = len(pts) / float(keep)
         pts = [pts[int(i * step)] for i in range(keep)]
     return pts
+
+
+def add_face(proj, cx, cy, rx, ry):
+    """Eyes, brows and a mouth on the head's own ellipse, placed by the corpus and shaped here.
+
+    **The positions are measured and the shapes are not**, and that split is deliberate. Eleven rigs give the eye at
+    (+/-0.308, -0.126) in head radii, the brow at (+/-0.299, +0.500) and the halo at (0.000, +2.003), with the brows
+    moving only a tenth of a head radius between characters. **The corpus has no data for how large an eye is**,
+    because a rig carries a bone where the eye sits and nothing where its outline goes -- so the sizes below are
+    chosen, and named as chosen.
+
+    **An eye is three marks, not one arc.** The first version drew an upward curve, which reads as a closed eye or as
+    an eyebrow; a drawn eye at this size is an upper lid, an iris under it, and a highlight in the iris. That is the
+    difference between a face and two lines on a head.
+    """
+    made = 0
+    #: sizes in head radii; chosen, since the corpus gives position and not extent
+    EYE_W, EYE_H = 0.17, 0.13
+    IRIS_W, IRIS_H = 0.15, 0.16
+    SPARK_W, SPARK_H = 0.045, 0.045
+    BROW_W, BROW_LIFT = 0.20, 0.06
+    MOUTH_W, MOUTH_DROP = 0.10, 0.26
+
+    for side in (-1, 1):
+        ex = cx + side * 0.308 * ry
+        ey = cy + 0.126 * ry            # screen y grows downward, so a negative corpus y is a positive offset
+        # the iris: a filled ellipse, the darkest thing on the face
+        iris = [(ex + IRIS_W * ry * math.cos(i / 24.0 * 2 * math.pi),
+                 ey + IRIS_H * ry * math.sin(i / 24.0 * 2 * math.pi)) for i in range(25)]
+        proj.add_fill(region_of(iris), stage='colour', colour=hexed(EYE_COLOUR), note='iris %d' % side)
+        made += 1
+        # the highlight, off-centre toward the light, which is what makes an eye look wet
+        sx = ex - side * 0.07 * ry
+        sy = ey - 0.09 * ry
+        spark = [(sx + SPARK_W * ry * math.cos(i / 16.0 * 2 * math.pi),
+                  sy + SPARK_H * ry * math.sin(i / 16.0 * 2 * math.pi)) for i in range(17)]
+        proj.add_fill(region_of(spark), stage='colour', colour='#F6F2EA', note='highlight %d' % side)
+        made += 1
+        # the upper lid: the heaviest line on a face, and it is the one that gives an eye its direction
+        lid = [(ex - EYE_W * ry, ey - 0.04 * ry),
+               (ex, ey - EYE_H * ry),
+               (ex + EYE_W * ry, ey - 0.04 * ry)]
+        rec = core.stroke_record(lid, 'fine', seed=abs(hash(('lid', side))) % 9973, resolution=16,
+                                 width_profile=[1.4, 3.2, 1.4])
+        proj.add_stroke(rec, stage='line', layer='head', note='lid %d' % side)
+        made += 1
+        # the brow, lifted above the lid by the corpus's own offset
+        bx = cx + side * 0.299 * ry
+        by = cy - 0.500 * ry
+        brow = [(bx - BROW_W * ry, by + BROW_LIFT * ry * 0.4),
+                (bx, by - BROW_LIFT * ry),
+                (bx + BROW_W * ry, by + BROW_LIFT * ry * 0.4)]
+        rec = core.stroke_record(brow, 'pencil', seed=abs(hash(('brow', side))) % 9973, resolution=16,
+                                 width_profile=[1.6, 2.6, 1.6])
+        proj.add_stroke(rec, stage='line', layer='head', note='brow %d' % side)
+        made += 1
+
+    # the mouth, a shallow curve below the eyes; its place is a ratio rather than a bone
+    mx, my = cx, cy + MOUTH_DROP * ry
+    mouth = [(mx - MOUTH_W * ry, my), (mx, my + 0.06 * ry), (mx + MOUTH_W * ry, my)]
+    rec = core.stroke_record(mouth, 'fine', seed=abs(hash('mouth')) % 9973, resolution=16,
+                             width_profile=[1.2, 2.0, 1.2])
+    proj.add_stroke(rec, stage='line', layer='head', note='mouth')
+    made += 1
+    return made
 
 
 def label_of(walk):
@@ -452,6 +521,15 @@ def main():
                                      width_profile=contour_profile)
             proj.add_stroke(rec, stage='line', layer=layer, note='contour %s' % label)
             marks += 1
+
+    # **The face comes last, after every body layer, because it is in front of all of them.** Drawn where the head is
+    # drawn, the neck and the trunk were laid over its lower half -- laid out on the crop of the head it was plain that
+    # the eyes had been buried under the shoulders. The corpus agrees: its own order puts `face` at 16, after `neck`
+    # at 14, with only `front_hair` in front of it. So this is not a preference, it is the order the asset uses.
+    body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
+    hh = HEAD_HEIGHT_OF_BODY * body_px
+    hx, hy = place(POS['Bip001 Head'])
+    marks += add_face(proj, hx, hy + hh / 2.0, hh * HEAD_WIDTH_OVER_HEIGHT / 2.0, hh / 2.0)
 
     print('  marks: %d  (fills %d, lines %d)' % (len(proj.marks), marks - (marks // 3), marks // 3))
     print('  layers in use: %s' % sorted(set(m.layer for m in proj.marks if m.layer)))
