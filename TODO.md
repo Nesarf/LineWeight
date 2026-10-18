@@ -3247,3 +3247,29 @@ CH 19  Drawing Children
 
 > **而每一种褶皱都由「布在什么形状上被压缩或拉伸」决定 —— 不是装饰，是力学。**
 > **所以衣服不是「画上去的花纹」，而是「一个形体裹着另一块布时，布被逼出来的形状」。**
+
+### 而 `framed-perspective-2` 补的是光影的几何
+
+**134 页、纯图片。而它的五章里有两章直对项目：**
+
+```
+CH 1  SHADOWS ON OBJECTS             几何体的阴影，用透视线求出来
+CH 2  SHADOWS ON CHARACTERS          人物的阴影：头部各角度、各种姿势
+CH 4  CLOTHING ON CHARACTERS         衣服的阴影
+CH 5  REINTERPRET THROUGH INTENTION  用意图重构
+```
+
+> **而 CH 4 是「衣服」的另一半**：**Bradley 那本讲布料被形体逼成什么形状，这本讲那个形状在光下投出什么影。**
+> **而两本合起来才是一套：先有布的形状，再有形状的影。**
+
+**而这一节里所有「层」现在凑齐了 —— 而它们彼此咬合：**
+
+| 层 | 谁讲 |
+|---|---|
+| gesture | Hampton |
+| skeleton | Hampton · 林晃的四重对照 |
+| volume | Hampton · 林晃 |
+| 七种褶皱 | Bradley |
+| 阴影的几何 | Framed Perspective 2 |
+| 线宽编码光照 | comic-inking |
+| 三层明度 | comic-inking |
