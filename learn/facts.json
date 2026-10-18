@@ -1,0 +1,101 @@
+{
+  "purpose": "The countable lists. Every entry here is finite and nameable, and every one is something a drawing can be checked against without measuring a distance. Proportions and measurements are deliberately absent -- they live in the prose, because a measured quantity was repeatedly misread in this project while a countable list was not.",
+
+  "body_parts": {
+    "count": 8,
+    "items": ["head", "spine", "arms (2)", "pelvis", "rib cage", "legs (2)"],
+    "source": "Hampton, Figure Drawing: Design and Invention, p10. 'It is important to be aware that you are describing the eight parts of the body.'"
+  },
+
+  "line_kinds": {
+    "count": 3,
+    "items": ["C curve", "straight", "S curve"],
+    "source": "Hampton p10. 'In this drawing process, you will never use any other type of line.'",
+    "devices": ["asymmetry of line", "repetition of curve", "overlapping lines"]
+  },
+
+  "drawing_stages": {
+    "count": 3,
+    "items": ["gesture", "skeleton", "volume"],
+    "source": "Hampton p35: looking for the skeleton is 'the second stage ... a transitional stage in developing volume'. Bradley's book adds detail and colour on top; Ishiwatari's thirteen-step pipeline splits the same whole into four of line and seven of colour."
+  },
+
+  "fold_types": {
+    "count": 7,
+    "items": ["pipe", "zigzag", "spiral", "half-lock", "diaper", "drop", "inert"],
+    "source": "Bradley, Drawing People: How to Portray the Clothed Figure, ch.13.",
+    "causes": {
+      "pipe": "fabric falls freely from a condensed area; semicylindrical or semiconical",
+      "zigzag": "the inside of a bend in tubular cloth buckles; the stiffer the fabric the more angular",
+      "spiral": "tubular cloth condensing around a tubular form; the softer the fabric the rounder"
+    }
+  },
+
+  "face_parameters": {
+    "count": 6,
+    "items": ["eye shape", "eye size", "brow weight", "mouth size", "eye-to-mouth distance", "hair shape"],
+    "source": "More How To Draw Manga vol.4, Mastering Bishoujo Characters, p11: twelve types given as six opposed pairs.",
+    "note": "These say who the character is, not whether the drawing is accurate. The eye-to-mouth distance being short is what makes a face read as a child's."
+  },
+
+  "face_parts_for_combination": {
+    "count": 4,
+    "items": ["mouth", "nose", "eyes", "eyebrows"],
+    "variants_each": 8,
+    "source": "Tezuka, How to Draw Manga, p40: a table of four parts by eight variants, combined.",
+    "note": "A face is built by combining parts, not by measuring one."
+  },
+
+  "value_layers": {
+    "count": 3,
+    "items": ["black", "gray", "white"],
+    "planes": ["foreground", "middle ground", "background"],
+    "source": "comic-inking, ch.V. Objects beside each other but on different planes must not share a value.",
+    "diagnostic": "squint: a flat grey blur means a black and a white are missing"
+  },
+
+  "contour_jobs": {
+    "count": 5,
+    "items": ["hold colour inside the shape", "delineate form", "indicate texture", "act as a design element", "create the illusion of depth"],
+    "source": "comic-inking, ch.IV. Depth rule: heavy contour on the foreground, medium on the middle ground, fine on the background."
+  },
+
+  "contour_styles": {
+    "count": 3,
+    "items": ["cursive (heaviest at the middle of a stroke)", "angular or terse (heaviest at the end)", "dead-weight (bold contour with fine interior detail)"],
+    "source": "comic-inking, ch.IV. Weights of a kind must agree with each other -- thin lines all alike, heavy lines all alike."
+  },
+
+  "light_source_rule": {
+    "summary": "heavy line weight on the dark side of an object, thin on the light side",
+    "face_places_to_weight": ["underside of the top eyelid", "under the nose", "under the top lip", "under the bottom lip", "the jaw line"],
+    "source": "comic-inking, ch.III"
+  },
+
+  "hair_rule": {
+    "light_hair": "cursive and elegant lines, weight set by the primary light source",
+    "dark_hair": "follow the white highlight patterns; the negative space defines the hair's shape",
+    "techniques": ["dry brush (soft, frizzy)", "massing the blacks (wet, slick)", "feathering (styled)"],
+    "source": "comic-inking, ch.III"
+  },
+
+  "three_dimensions_device": {
+    "summary": "draw an imaginary sphere around the subject and use it as the pivot; the camera, the light and the point of view all sit on that sphere",
+    "source": "Imagine FX Presents Anatomy vol.2, p62 (Ron Lemen). 'The circle is really a sphere. Ellipses with the long axis passing through circles center point.'"
+  },
+
+  "process_rule": {
+    "summary": "a rough sketch is a formal step: loose lines first, expressing the movement and the outline of the story, then inking and cleaning up, with the detail given by the variation of the line",
+    "source": "Super Anime Show 3: A Quick Study Book of Manga Sketching, ch.1-2"
+  },
+
+  "anti_rules": {
+    "items": [
+      "do not measure slowly -- 'the downside to slowly measuring out the figure is that it stiffens the poses' (Hampton p10)",
+      "do not let a stable symmetrical pose stand -- 'the action has either not begun, or it has ended' (Hampton p26)",
+      "do not use right angles -- 'organic shapes do not contain right angles' (comic-inking ch.VI)",
+      "do not overuse cross-hatching -- 'excessive cross-hatching is not a sign of artistic skill' (comic-inking ch.VII)",
+      "do not draw only what is necessary to describe the gesture -- 'render only what is necessary' (Hampton p28)"
+    ]
+  }
+}

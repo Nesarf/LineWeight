@@ -1,0 +1,135 @@
+[
+  {
+    "file": "hampton-figure-drawing--eight-parts-three-lines.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 10,
+    "name": "eight-parts-three-lines",
+    "why": "The eight parts of the body and the three kinds of line."
+  },
+  {
+    "file": "hampton-figure-drawing--form-and-balance.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 11,
+    "name": "form-and-balance",
+    "why": "The side is a large S; the masses counter-balance."
+  },
+  {
+    "file": "hampton-figure-drawing--centre-of-gravity.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 21,
+    "name": "centre-of-gravity",
+    "why": "Sphere, egg, horizontal egg; balanced against dynamic."
+  },
+  {
+    "file": "hampton-figure-drawing--about-to-pose.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 26,
+    "name": "about-to-pose",
+    "why": "The \"about to\" pose and the triangle of balance."
+  },
+  {
+    "file": "hampton-figure-drawing--landmarks.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 35,
+    "name": "landmarks",
+    "why": "The second stage: the skeleton landmarks."
+  },
+  {
+    "file": "hampton-figure-drawing--economy-of-line.png",
+    "book": "hampton-figure-drawing.pdf",
+    "page": 28,
+    "name": "economy-of-line",
+    "why": "Render only what is necessary to describe the gesture."
+  },
+  {
+    "file": "comic-inking--line-weights-and-light.png",
+    "book": "comic-inking.pdf",
+    "page": 10,
+    "name": "line-weights-and-light",
+    "why": "Heavy on the dark side, thin on the light side."
+  },
+  {
+    "file": "comic-inking--contour-lines.png",
+    "book": "comic-inking.pdf",
+    "page": 12,
+    "name": "contour-lines",
+    "why": "Five jobs of a contour, three styles, weights of a kind agree."
+  },
+  {
+    "file": "comic-inking--spotting-blacks.png",
+    "book": "comic-inking.pdf",
+    "page": 13,
+    "name": "spotting-blacks",
+    "why": "Black, gray and white across foreground, middle and background."
+  },
+  {
+    "file": "bishoujo-mastering--twelve-types.png",
+    "book": "bishoujo-mastering.pdf",
+    "page": 11,
+    "name": "twelve-types",
+    "why": "Twelve types as six opposed pairs; eyes, mouth and hair."
+  },
+  {
+    "file": "female-figure-manga--four-way-comparison.png",
+    "book": "female-figure-manga.pdf",
+    "page": 8,
+    "name": "four-way-comparison",
+    "why": "The same figure drawn four ways."
+  },
+  {
+    "file": "clothed-figure-open--folds-chapter.png",
+    "book": "clothed-figure-open.pdf",
+    "page": 191,
+    "name": "folds-chapter",
+    "why": "The seven types of folds with their causes."
+  },
+  {
+    "file": "framed-perspective-2--shadows-on-objects.png",
+    "book": "framed-perspective-2.pdf",
+    "page": 11,
+    "name": "shadows-on-objects",
+    "why": "Shadows constructed with perspective lines."
+  },
+  {
+    "file": "figure-in-proportion--proportion-vocabulary.png",
+    "book": "figure-in-proportion.pdf",
+    "page": 43,
+    "name": "proportion-vocabulary",
+    "why": "The names of every measurement before any number."
+  },
+  {
+    "file": "anatomy-vol2--sphere-device.png",
+    "book": "anatomy-vol2.pdf",
+    "page": 62,
+    "name": "sphere-device",
+    "why": "Draw a sphere around the subject: camera, light, point of view."
+  },
+  {
+    "file": "tezuka-how-to-draw--combination-table.png",
+    "book": "tezuka-how-to-draw.pdf",
+    "page": 40,
+    "name": "combination-table",
+    "why": "Four face parts by eight variants, combined."
+  },
+  {
+    "file": "manga-quick-study--rough-sketch-step.png",
+    "book": "manga-quick-study.pdf",
+    "page": 7,
+    "name": "rough-sketch-step",
+    "why": "Scribble first, then ink; the detail comes from the line."
+  },
+  {
+    "file": "anime-game-characters-vol3--sphere-and-stick.png",
+    "book": "anime-game-characters-vol3.pdf",
+    "page": 21,
+    "name": "sphere-and-stick",
+    "why": "Cylinders and spheres defining the torso."
+  },
+  {
+    "file": "ishiwatari-way--step-one-scribble.png",
+    "book": "ishiwatari-way.pdf",
+    "page": 3,
+    "name": "step-one-scribble",
+    "why": "Draw until the paper is completely black."
+  }
+]
