@@ -3216,3 +3216,34 @@ from another angle.**"*
 > **而林晃那本的「四重对照」是这一整段见到的最好的教学装置**：
 > **同一个姿势画四遍 —— 线稿、骨骼、肌肉、关节 —— 四张并排放着看，结构自己就现形了。**
 > **而项目里只有「骨骼」那一张，而它被当成线稿直接用了。**
+
+### 而 `clothed-figure-open` 找到了「七种褶皱」
+
+**309 页、213741 字符，文本完整。《Drawing People: How to Portray the Clothed Figure》Barbara Bradley，2003。
+而它的十九章标题本身就是一张地图：**
+
+```
+CH 6   Stretch and Compression        拉伸与压缩 —— 褶皱为什么会起
+CH 7   Wraparounds & Overlapping Forms 包裹与重叠（Hampton 的「包裹线」在这里）
+CH 11  What Folds Can Do for Your Drawings
+CH 12  Construction of Folds          褶皱的构造
+CH 13  Types of Folds                 褶皱的类型 ← 那个「七种」
+CH 14  Drawing Folds on People
+CH 15  Elements of Clothing
+CH 19  Drawing Children
+```
+
+**而第十三章开头就把那七种列了出来：**
+
+> *"In this chapter, you'll observe seven types of folds: **pipe, zigzag, spiral, half-lock, diaper, drop, inert**"*
+
+**而前三种的成因写得极清楚：**
+
+| 类型 | 成因 |
+|---|---|
+| **pipe** | 布料从压缩区**自由垂落**，半圆柱或半圆锥；分「松弛」与「拉伸」两种 |
+| **zigzag** | **管状布弯曲时的内侧起皱** —— *"the stiffer the fabric, the more angular the folds"* |
+| **spiral** | **管状布包在管状形体上压缩**（袖子包手臂）—— *"the softer the fabric, the more typically rounded are the spirals"* |
+
+> **而每一种褶皱都由「布在什么形状上被压缩或拉伸」决定 —— 不是装饰，是力学。**
+> **所以衣服不是「画上去的花纹」，而是「一个形体裹着另一块布时，布被逼出来的形状」。**
