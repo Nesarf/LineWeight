@@ -3273,3 +3273,31 @@ CH 5  REINTERPRET THROUGH INTENTION  用意图重构
 | 阴影的几何 | Framed Perspective 2 |
 | 线宽编码光照 | comic-inking |
 | 三层明度 | comic-inking |
+
+### 而 `anatomy-vol2` 是一本杂志，而它的教程页里有一个装置
+
+**116 页、纯图片，是 Imagine FX 的《Anatomy Vol.2》。前半是画廊（各艺术家的作品），后半是教程。**
+**而教程那几十页每一页都是独立的专题，而其中几页直对项目：**
+
+```
+p49  Draw the shoulders and chest      肩与胸
+p52  MASTERING DRAWING THE FIGURE
+p57  Draw clothing                     画衣服
+p62  THINK IN THREE DIMENSIONS         三维思考
+p69  DRAWING GESTURE                   画姿态
+p70  LIGHT AND FORM SKETCHING          光与形体的素描
+```
+
+**而 p62 那一页给的是一个具体装置：**
+
+> *"Draw an **imaginary sphere** around the subject … you will use the model as the **pivot**."*
+> *"**The circle is really a sphere. Ellipses with the long axis passing through circles center point.**"*
+> *"Rotate camera · Rotate light · Your P.O.V. · Select a new P.O.V. · Stage or floor"*
+
+**而它的底部把那件事说成一个可以练的技术**：
+
+> *"Imagining your subject in a sphere, and drawing the ellipses from many different points on the sphere is **a way of
+> visualizing your subject as a solid**."*
+
+> **而项目里没有球、没有相机、没有光的方向 —— 只有一张正面的平面图，**
+> **而那正是「它像火柴人」的最后一层原因：它从来没有被想成一个立体。**
