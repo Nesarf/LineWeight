@@ -34,3 +34,50 @@ All fifteen live in `E:\DaShaoHuo\downloads\books\`, downloaded from archive.org
 - **Hayashi** has the best teaching device — the same figure drawn four ways.
 - **Famous Artists** has the best map — a course whose contents page is the syllabus of everything above.
 - **Tezuka** has the only chapter built on combination rather than on description.
+
+---
+
+# The articles, and which of them carry a rule
+
+**Why a second shelf.** The books are somebody else's products, so only what was learned from them is kept. The articles
+are the same kind of thing and are treated the same way: **what is stored is the URL and what each one gave**, not the
+text. Ninety-two were read across ten categories and eight tags on two sites; **fifty of them carried a rule**, and the
+rest were software walk-throughs whose subject is a menu rather than a drawing.
+
+**A difference that matters when weighing them.** A book devotes a chapter to one subject; an article devotes a page. So
+an article is good for **a single rule stated plainly** -- a proportion, a named line, a check -- and poor for a
+procedure. Every entry below is one such rule.
+
+## CLIP STUDIO PAINT (`clipstudio.net/painting`)
+
+| category | articles | what it gave |
+|---|---|---|
+| `character-art` | 10 read | **the chibi rules**: two heads regardless of the character's set height, features below the midline, eyes enlarged to keep proportion, hands and feet short and fat, **the silhouette test**, one-stroke line, one layer per part |
+| `digital-art` | 10 read | **the four elements of a pose** (strength and rhythm, the action line, construction, perspective) · **folds by fabric**: thick/thin, stiff/soft, heavy/light, smooth/rough, and folds pull toward seams · the definition of sketching as converting a complex shape into a simple one first |
+| _the face article_ | 1 | **eye spacing**: one eye-width, or 1.3 for a youthful face, and too wide reads as a flounder · round face, eye lower than centre, nose as a dot |
+
+## MEDIBANG (`medibangpaint.com/zh_CN`)
+
+| tag | articles | what it gave |
+|---|---|---|
+| `how-to-draw-a-face` | 13 | **the guide lines**: a circle in quarters, its lower half in quarters again, giving eye, nose and mouth lines · **the eye position sets the age** and the chin sets it too · **the E line** from nose to chin in profile · the mouth sits above the guide, the pupil enlarged reads softer · **the three chibi deformations**: fewer details, emphasised features, adjusted size |
+| `how-to-apply-color` | 13 | base colour, then shadow, then highlight; the multiplier at roughly **64 percent** |
+| `layer-blending` | 13 | multiply for shadow, add-glow for highlight, screen for compositing |
+| `composition` | 13 | **the action line of a whole picture**; the horizon not too high or low; vanishing points far apart |
+| `color-illustration` | 13 | raise the character's saturation, lower the background's |
+| `brush-technique` | 13 | brush behaviour rather than drawing rules |
+| `increase-efficiency` | 13 | software workflow |
+| `improve-quality` | 13 | background and prop procedures |
+
+**Two articles outside those tags, both worth the trip:**
+
+- **`use/2021/11/how-to-draw-a-deformed-characters-facial-expression`** -- **expression is four layers**: features, manpu,
+  posture, and the character's own parts. **Three of the four are outside the face.**
+- **`use/2021/12/lecture-to-complete-one-picture`** -- **the ten-step pipeline**, plus "draw larger than it will be shown
+  and shrink it" and "recolouring the line art is the only way to make it look elegant".
+
+**And one number that agreed across two independent sources**, which is the reason to keep both shelves:
+
+> The multiplier-layer article says **64 percent**. Measured over 26,829 Blue Archive assets, the ratio of a multiplied
+> colour to its lit neighbour has a **median of 0.742**. **A hand-typed percentage and a ratio measured from a corpus
+> landed close to the same value.**

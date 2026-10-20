@@ -3,8 +3,9 @@
 
   "body_parts": {
     "count": 8,
-    "items": ["head", "spine", "arms (2)", "pelvis", "rib cage", "legs (2)"],
-    "source": "Hampton, Figure Drawing: Design and Invention, p10. 'It is important to be aware that you are describing the eight parts of the body.'"
+    "items": ["head", "spine", "right arm", "left arm", "pelvis", "rib cage", "right leg", "left leg"],
+    "source": "Hampton, Figure Drawing: Design and Invention, p10. 'It is important to be aware that you are describing the eight parts of the body.'",
+    "note": "Listed one per side so that the count matches the list. Hampton writes them as pairs -- arms (2), legs (2) -- which makes six names for eight parts, and a list whose length disagrees with its own count is the one kind of error this file must not contain."
   },
 
   "line_kinds": {
