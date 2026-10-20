@@ -30,7 +30,6 @@ from lineweight import core, project as project_mod
 SRC = pathlib.Path(r'F:\素材\图\16+\Cache_7cef975685e2f0c2.png')
 OUT = pathlib.Path(r'E:\DaShaoHuo\cache\trace-silhouette.json')
 PNG = pathlib.Path(r'E:\DaShaoHuo\cache\trace-silhouette.png')
-
 #: A pixel counts as ground when all three channels are this close to white. The reference is drawn on pure white, so the
 #: gap between paper and figure is large -- 236 was chosen by looking at the histogram, not by taste.
 GROUND = 236
@@ -147,16 +146,20 @@ def douglas_peucker(points, tol):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--src', default=str(SRC), help='the picture to trace')
+    ap.add_argument('--out', default=str(OUT), help='where to write the project')
+    ap.add_argument('--png', default=str(PNG), help='where to render, with --render')
     ap.add_argument('--render', action='store_true')
     ap.add_argument('--tol', type=float, default=2.2, help='simplification tolerance in source pixels')
     args = ap.parse_args()
 
-    if not SRC.exists():
-        print('  missing: %s' % SRC)
+    src = pathlib.Path(args.src)
+    if not src.exists():
+        print('  missing: %s' % src)
         return 1
-    mask, w, h = load_mask(SRC)
+    mask, w, h = load_mask(src)
     keep, area = largest_component(mask, w, h)
-    print('  source %s  %dx%d' % (SRC.name, w, h))
+    print('  source %s  %dx%d' % (src.name, w, h))
     print('  figure pixels: %d  (%.1f%% of the page)' % (area, 100.0 * area / (w * h)))
     ring = boundary(keep, w, h)
     print('  boundary pixels: %d' % len(ring))
@@ -185,14 +188,15 @@ def main():
                              width_profile=[3.0] * (10 * (len(pts) - 1) + 1))
     proj.add_stroke(rec, stage='line', layer='silhouette', note='traced outer boundary')
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    project_mod.save_project(proj, str(OUT))
-    print('  written to %s' % OUT)
+    out = pathlib.Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    project_mod.save_project(proj, str(out))
+    print('  written to %s' % out)
 
     if args.render:
-        subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(OUT), '--out', str(PNG)],
+        subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out), '--out', str(args.png)],
                        capture_output=True, text=True, cwd=r'E:\lineweight')
-        print('  rendered to %s' % PNG)
+        print('  rendered to %s' % args.png)
     return 0
 
 
