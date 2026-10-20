@@ -19,3 +19,26 @@ library the tool cannot use. `TODO.md` records what was tried and what went wron
 counted to the end, with a name per item. Anything that is a proportion or a measurement stays in the prose, **because
 this stretch established at length that a measured quantity is the thing that keeps being misread** -- and a countable
 list is the thing that kept being right.
+
+## How to read the file, once it grew to twenty-two lists
+
+**A count is a fact about that list, not about the world.** Twenty-two lists now sit in the file, and the number three
+appears in eight of them. **Those eight are not the same three.** They are the three line kinds, the three stages, the
+three values, the three contour styles, the three layer weights, the three background steps, the three hand steps and the
+three finger methods -- eight unrelated facts that each happen to have three parts.
+
+**And the distribution is not evenly spread across the shelf.** Each of Hampton, comic-inking, MEDIBANG and CLIP STUDIO
+contributed exactly two of those eights. **That is a fact about how tutorials are written, not about drawing**: a
+three-part page is a comfortable length, and two three-part lists per author is what four authors produced. **So a later
+reader should not treat "three" as evidence that a thing has three parts** -- the entry is worth citing for its names,
+never for its number.
+
+**Two lists may cover one subject from two angles, and that is not a contradiction.** `face_parameters` (six) and
+`face_parts_for_combination` (four) both describe a face. The first asks **what can be adjusted**; the second asks **what
+can be swapped**. Three of the six parameters are parts and three are not -- the eye-to-mouth distance and the hair shape
+have no entry in the combination table, because they are not things you pick from a row.
+
+**Where a list and a measurement disagree, that is the thing to record.** The one such case so far is the eye spacing:
+the articles give a ratio of one eye-width, or 1.3 for a youthful face, and this project's drawing measures 2.05. **The
+library holds the ratio; the disagreement lives in `TODO.md`** -- and the reason is that the ratio will still be right
+after the drawing is fixed, whereas the number 2.05 is only a fact about one draft.
