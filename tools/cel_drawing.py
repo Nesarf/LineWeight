@@ -77,9 +77,20 @@ for _n in list(POS):
         _x, _y = POS[_n]
         POS[_n.replace(' L ', ' R ')] = (-_x, _y)
 
+#: **The trunk's widths come from a silhouette, and they are three times what they were.**
+#:
+#: A rig gives bones, and a bone is a point -- it has no width. The widths here were derived from the corpus's head
+#: ratio and came out at 0.098 for the upper chest, which is **a third of the shoulder span in a real illustration**:
+#: the traced reference is 0.282 of the figure's own height across the shoulders. With a trunk that narrow the
+#: shoulders had to be carried by the clavicle, drawn as a 0.058 stroke, and the render showed exactly that -- two thick
+#: bars meeting at the sternum, reading as a spike rather than as a chest.
+#:
+#: **So the upper chest is the shoulder span minus one upper arm on each side** (0.282 - 2 x 0.05 = 0.232), and the
+#: clavicle drops to a thin bone that the chest now covers. The waist and hip below it are a pinch between two measured
+#: ends -- the reference's waist cannot be read on its own because the arms hang beside it -- and are named as a choice.
 BONE_WIDTH = {
-    'Pelvis':   (0.112, 0.105), 'Spine': (0.105, 0.098), 'Spine1': (0.098, 0.086),
-    'Neck':     (0.050, 0.044), 'Head': (0.095, 0.115), 'Clavicle': (0.058, 0.050),
+    'Pelvis':   (0.180, 0.170), 'Spine': (0.170, 0.200), 'Spine1': (0.200, 0.232),
+    'Neck':     (0.050, 0.044), 'Head': (0.095, 0.115), 'Clavicle': (0.085, 0.062),
     'UpperArm': (0.050, 0.039), 'Forearm': (0.039, 0.029), 'Hand': (0.029, 0.024),
     'Finger':   (0.011, 0.008), 'Thigh': (0.088, 0.061), 'Calf': (0.061, 0.037),
     'Foot':     (0.037, 0.029), 'Toe': (0.029, 0.022),
@@ -108,8 +119,24 @@ CONTOUR_POINTS = 240
 #: proportion and wrong in style: the corpus is drawn at about three heads tall and this was drawn at twenty. The
 #: difference is not a measurement error, it is the difference between a chibi style and a realistic one, and the style
 #: asked for is the corpus's.
+#: **The head is 0.218 of the figure, and that number came out of a silhouette rather than a rig.**
+#:
+#: The rigs gave 0.361 and it was wrong in a way that only a picture could show: with the head hanging 0.361 downward
+#: from the head bone at 0.184, the chin landed at **0.575 -- the pelvis** -- so the head covered the whole trunk, the
+#: arms came out of the lower half of a skull, and no torso was visible at all.
+#:
+#: **Two sources, independent of each other, put the chin at about 0.22 instead**: the rigs' own neck bone sits at
+#: 0.222, and the traced silhouette's narrowest point above the shoulders -- which is what a neck is -- is at 0.218 on
+#: a real full-body illustration. **A head that ends at 0.575 and a neck bone at 0.222 cannot both be right**, and the
+#: two that agree are the ones to keep. So the rig figure was measuring something other than the head's own height; it
+#: is retained here only as the record of what was read wrongly.
+HEAD_HEIGHT_OF_BODY = 0.218
+
+#: **And it hangs from the top of the figure, not from the head bone.** In the rigs the head bone sits roughly at the
+#: ear line -- 0.184 of the way down when the whole skull is 0.22 -- so anchoring to it would put the chin below the
+#: neck whichever height is used.
+HEAD_ANCHOR_OF_BODY = FIG_TOP
 HEAD_WIDTH_OVER_HEIGHT = 0.677
-HEAD_HEIGHT_OF_BODY = 0.361
 
 #: **The thinnest a limb may be and still keep its fill.** Below this the outline is wider than the shape and covers it
 #: completely, which is what turned the hands into a solid black mass. A finger's fill is about three pixels across
@@ -527,10 +554,10 @@ def main():
             if walk == ['Bip001 Head']:
                 body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
                 h = HEAD_HEIGHT_OF_BODY * body_px
-                hx, hy = place(POS['Bip001 Head'])
-                # **The corpus's 0.361 is the whole head, hair included**, and this drawing was applying it to the
-                # skin ellipse with the hair sized up from that -- so the visible head came out at 42 per cent of the
-                # figure and covered the trunk entirely. The skin is the head divided by the hair's own growth.
+                hx, hy = place((POS['Bip001 Head'][0], HEAD_ANCHOR_OF_BODY))
+                # **0.218 is the whole head, hair included**, and the skin ellipse is that divided by the hair's own
+                # growth. Applying the whole-head figure to the skin was the earlier fault: the hair was then sized
+                # up from the skin, so the visible head came out larger than the number it was given.
                 hh_skin = h / HAIR_HEIGHT_OF_HEAD
                 hy_skin = hy + (h - hh_skin) / 2.0
                 cy = hy_skin + hh_skin / 2.0
@@ -559,7 +586,7 @@ def main():
             if walk == ['Bip001 Head']:
                 body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
                 hh = HEAD_HEIGHT_OF_BODY * body_px
-                hx, hy = place(POS['Bip001 Head'])
+                hx, hy = place((POS['Bip001 Head'][0], HEAD_ANCHOR_OF_BODY))
                 hp_ry = hh * HAIR_HEIGHT_OF_HEAD / 2.0
                 hp_rx = hh * HEAD_WIDTH_OVER_HEIGHT * HAIR_WIDTH_OF_HEAD / 2.0
                 hp_cy = hy + hh / 2.0
@@ -614,7 +641,7 @@ def main():
     body_px = (FIG_BOTTOM - FIG_TOP) * SCALE
     hh = HEAD_HEIGHT_OF_BODY * body_px
     hh_skin = hh / HAIR_HEIGHT_OF_HEAD
-    hx, hy = place(POS['Bip001 Head'])
+    hx, hy = place((POS['Bip001 Head'][0], HEAD_ANCHOR_OF_BODY))
     face_cy = hy + (hh - hh_skin) / 2.0 + hh_skin / 2.0
     face_rx = hh_skin * HEAD_WIDTH_OVER_HEIGHT / 2.0
     face_ry = hh_skin / 2.0

@@ -151,6 +151,36 @@ def largest_component(mask, w, h):
     return kept, len(best), sum(len(row) and sum(row) for row in mask)
 
 
+def print_widths(mask, w, h):
+    """How wide the figure is at a set of heights, in units of its own height.
+
+    **This is the measurement the drawing needs and the silhouette can give.** A rig gives bone positions, and a bone is
+    a point; how wide the trunk is at the shoulder came out of the drawing as a fault -- a clavicle standing in for a
+    chest, thick enough to read as a spike. A silhouette is a width at every height by construction.
+    """
+    rows = [y for y in range(h) if any(mask[y])]
+    if not rows:
+        return
+    top, bottom = rows[0], rows[-1]
+    span = float(bottom - top + 1)
+    print()
+    print('  width of the figure at each height, in units of its own height:')
+    print('    %-8s %8s %8s  %s' % ('height', 'width', 'px', ''))
+    for frac in (0.11, 0.16, 0.19, 0.22, 0.26, 0.29, 0.33, 0.36, 0.40, 0.45, 0.51, 0.57, 0.65, 0.78, 0.90):
+        y = top + int(frac * span)
+        if y > bottom:
+            continue
+        row = mask[y]
+        try:
+            lo = row.index(1)
+            hi = w - 1 - row[::-1].index(1)
+        except ValueError:
+            print('    %-8.2f %8s %8s  empty' % (frac, '-', '-'))
+            continue
+        print('    %-8.2f %8.3f %8d  %s' % (frac, (hi - lo + 1) / span, hi - lo + 1,
+                                           '#' * max(1, int(40 * (hi - lo + 1) / float(w)))))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True)
@@ -159,6 +189,7 @@ def main():
     ap.add_argument('--colours', type=int, default=PALETTE)
     ap.add_argument('--max-side', type=int, default=MAX_SIDE)
     ap.add_argument('--render', action='store_true')
+    ap.add_argument('--widths', action='store_true')
     args = ap.parse_args()
 
     src = pathlib.Path(args.src)
@@ -214,6 +245,8 @@ def main():
 
     # The mask's boundary -- the same Moore walk `trace.py` uses, on a mask from a different source.
     import trace as silhouette
+    if args.widths:
+        print_widths(mask, w, h)
     ring = silhouette.boundary(mask, w, h)
     print('  boundary pixels: %d' % len(ring))
     if not ring:
