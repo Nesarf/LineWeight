@@ -116,5 +116,19 @@
     "count": 3,
     "items": ["1bpp (black and white only, for printed line art)", "8bpp (white through grey, for coloured line art and screentone)", "colour (the heaviest)"],
     "source": "MEDIBANG, 'let us finish one picture for now'"
+  },
+
+  "pose_elements": {
+    "count": 4,
+    "items": ["strength and rhythm", "the action line", "construction", "perspective"],
+    "source": "CLIP STUDIO digital-art, 'using guide lines to grasp dynamics and put a soul into a pose', by Eridey",
+    "note": "These are called the elements that do not change with style. One anti-rule sits beside them: too many action lines scatter the forces and the eye cannot settle on the most important movement, so the count is one to three, never many."
+  },
+
+  "fold_material_axes": {
+    "count": 4,
+    "pairs": ["thick / thin", "stiff / soft", "heavy / light", "smooth / rough"],
+    "source": "CLIP STUDIO digital-art, 'drawing folds by fabric: T-shirt, hoodie, shirt, suit', by miyuli",
+    "note": "Folds have no fixed shape of their own; the material decides where they land and how wide they are, and they are pulled toward the seams."
   }
 }
