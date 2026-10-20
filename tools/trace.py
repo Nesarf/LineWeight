@@ -34,6 +34,32 @@ PNG = pathlib.Path(r'E:\DaShaoHuo\cache\trace-silhouette.png')
 #: gap between paper and figure is large -- 236 was chosen by looking at the histogram, not by taste.
 GROUND = 236
 
+#: **How much of the frame's edge has to be ground before this tool is the right one.** The premise is "the figure stands
+#: on white"; a painted background breaks it, the whole background becomes the figure, and the trace comes out as a
+#: rectangle. Measured on the reference set: the flat-colour portraits sit at 95% and 100%, and the one with a room behind
+#: her sits at 24%. **Sixty percent separates them without guessing.**
+FRAME_WHITE = 0.60
+
+
+def frame_whiteness(path, step=7):
+    """The share of the frame's edge that is ground. Cheap, and it decides whether this tool applies at all."""
+    from PIL import Image
+    im = Image.open(path).convert('RGB')
+    w, h = im.size
+    px = im.load()
+    white = n = 0
+    for x in range(0, w, step):
+        for y in (0, h - 1):
+            r, g, b = px[x, y]
+            white += 1 if (r > GROUND and g > GROUND and b > GROUND) else 0
+            n += 1
+    for y in range(0, h, step):
+        for x in (0, w - 1):
+            r, g, b = px[x, y]
+            white += 1 if (r > GROUND and g > GROUND and b > GROUND) else 0
+            n += 1
+    return white / float(n) if n else 0.0
+
 
 def load_mask(path):
     """The figure as a boolean mask, and the picture's own size."""
@@ -157,6 +183,12 @@ def main():
     if not src.exists():
         print('  missing: %s' % src)
         return 1
+    white = frame_whiteness(src)
+    print('  frame edge is %.0f%% ground (needs %.0f%% for this tool to apply)' % (100 * white, 100 * FRAME_WHITE))
+    if white < FRAME_WHITE:
+        print('  this picture has a painted background, so "not near white is figure" is false here.')
+        print('  the trace would come out as a rectangle -- refusing rather than producing one.')
+        return 2
     mask, w, h = load_mask(src)
     keep, area = largest_component(mask, w, h)
     print('  source %s  %dx%d' % (src.name, w, h))
