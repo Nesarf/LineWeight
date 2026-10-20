@@ -56,7 +56,10 @@ def parse(path):
         frame, px, py, pz, qx, qy, qz, qw = struct.unpack_from('<I3f4f', data, off)
         off += 4 + 12 + 16 + 64
         angle = 2.0 * math.acos(min(1.0, abs(qw)))
-        bones.setdefault(bone, []).append((frame, angle, (px, py, pz)))
+        # **The quaternion is kept, not only the angle.** The angle is enough to say how much a joint is used and
+        # useless for placing a joint: forward kinematics needs the rotation itself, and 2 acos(w) has thrown the
+        # axis away.
+        bones.setdefault(bone, []).append((frame, angle, (px, py, pz), (qx, qy, qz, qw)))
         frames.append(frame)
     return version, model_name, bones, (min(frames) if frames else 0, max(frames) if frames else 0)
 
@@ -75,8 +78,10 @@ def main():
 
     stats = []
     for bone, recs in bones.items():
-        angles = [a for _f, a, _p in recs]
-        moves = max(p for _f, _a, p in recs)
+        # Indexed rather than unpacked: the record gained a quaternion, and a `for a, b, c in recs` would fail on
+        # every record rather than on the one place that needs it.
+        angles = [r[1] for r in recs]
+        moves = max(r[2] for r in recs)
         stats.append((bone, len(recs), min(angles), max(angles), max(angles) - min(angles), moves))
     stats.sort(key=lambda t: -t[4])
 
