@@ -131,5 +131,51 @@
     "pairs": ["thick / thin", "stiff / soft", "heavy / light", "smooth / rough"],
     "source": "CLIP STUDIO digital-art, 'drawing folds by fabric: T-shirt, hoodie, shirt, suit', by miyuli",
     "note": "Folds have no fixed shape of their own; the material decides where they land and how wide they are, and they are pulled toward the seams."
+  },
+
+  "composition_methods": {
+    "count": 5,
+    "items": ["rule of thirds", "golden ratio", "triangular (three people)", "circular (whole bodies)", "one large in front, one small behind"],
+    "source": "MEDIBANG, 'let us think about the composition of an illustration', 2021.07.14, and 'how to place several people', 2021.03.29",
+    "note": "The rule of thirds is the one stated with a failure case: the subject goes on one of the four intersections, and a picture whose subject sits nowhere near them leaves the viewer unable to tell what to look at. Composition is worked out on the greyscale silhouette, which is the same device as the chibi silhouette test."
+  },
+
+  "canvas_ratios": {
+    "count": 4,
+    "items": ["16:9", "4:3", "3:2", "1:1"],
+    "source": "MEDIBANG, 'let us think about the composition of an illustration'",
+    "note": "Each is given with the pixel size it usually appears at and what it is used for -- 16:9 for video, 4:3 for screens, 3:2 for photographs, 1:1 for avatars."
+  },
+
+  "composition_devices": {
+    "count": 4,
+    "items": ["leave a margin", "let the subject break the frame", "tilt the whole picture", "enlarge the part you most want seen"],
+    "source": "MEDIBANG, 'simple composition tips that make an illustration look better', 2021.03.15",
+    "note": "Two of the four are stated as cause and effect: the eye is drawn to the edged area, so a margin beside the figure pulls the gaze outwards; and a tilted picture reads as unstable and moving where a frontal one reads as stable and still -- which is Hampton's 'stable, symmetrical positions keep the action in stasis' said from the picture's side rather than the body's."
+  },
+
+  "head_construction_steps": {
+    "count": 10,
+    "items": [
+      "divide the head height from crown to chin in two",
+      "draw a circle for the cranium",
+      "drop a line below the circle by half its radius",
+      "draw a vertical through the middle of the circle",
+      "drop two verticals from the circle's sides to the jaw line",
+      "attach a rectangle to the lower half of the circle -- this box is eyes, nose and jaw",
+      "mark the reference line across the circle",
+      "divide the jaw line in three",
+      "draw the face line using those guides",
+      "the outline is finished"
+    ],
+    "source": "MEDIBANG, 'let us draw a front face, basic', 2021.02",
+    "note": "Ten steps rather than the four-quarter circle of the girl-face article. The two agree where they overlap -- the eye line sits in the lower half -- and this one adds the cranium-and-face split, which is the distinction the skull actually has: a brain case and a facial area."
+  },
+
+  "background_steps": {
+    "count": 3,
+    "items": ["place the buildings as a black and white silhouette, no detail", "separate each form's light, dark and middle face", "pull the tone curve so the darks go darker and the lights lighter"],
+    "source": "MEDIBANG, 'beautiful backgrounds using texture', and 'creating cool backgrounds'",
+    "note": "The middle step carries a countable fact: a cube seen as a cube shows three faces, never more, so a form of this kind has exactly three values to find. The background is built the same way as the figure -- silhouette first, then volume, then value -- which is the same order as the three stages."
   }
 }
