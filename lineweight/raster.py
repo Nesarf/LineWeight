@@ -249,7 +249,8 @@ def _density_to_alpha(numerator, denominator, cap):
 
 def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                  wet: float = 0.0, under: Layer | None = None, paper: Paper | None = None,
-                 density: bool = False, width_scale: float = 1.0) -> Layer:
+                 density: bool = False, width_scale: float = 1.0,
+                 absolute_width: bool = False) -> Layer:
     """... **`density` replaces the maximum, and it is justified by measurement -- use it for a wide stroke.**
 
     Taking the maximum of the dabs makes a stroke's darkness independent of the brush's spacing, which is why it is
@@ -340,7 +341,13 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # So the profile gives the width and the pressure gives the **relative** pressure, divided by the stroke's
             # own median. Multiplying keeps the profile's absolute scale, which is what a caller writing a width curve
             # means, and restores the variation that a hand has and a curve cannot.
-            if widths:
+            if widths and absolute_width:
+                # **The profile is the width and the hand model stays out of it.** A traced stroke's widths are
+                # measurements of a line that already exists; scaling them by a pressure would be drawing it again
+                # rather than copying it, and a taper the reference does not have would appear at every end.
+                base = float(widths[min(i, len(widths) - 1)])
+                radius = max(0.5, base * scale * 0.5 * width_scale)
+            elif widths:
                 base = float(widths[min(i, len(widths) - 1)])
                 radius = max(0.5, base * (p / median_pressure) * scale * 0.5 * width_scale)
             else:
@@ -763,6 +770,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'seed': geometry.get('seed', 0),
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
+                      'absolute_width': bool(geometry.get('absolute_width', False)),
                       'colour_int': parse_hex(mark_ink(mark))}
             # **Above `WIDE_STROKE` the deposition is integrated, below it the maximum is used.** The ripple along
             # a stroke is the same fraction of its mean at every width -- 0.37 on the ink brush at four pixels and at
@@ -772,7 +780,8 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
             profile = record.get('width_profile') or []
             widest = max(profile) if profile else BRUSHES[record['brush']]['width']
             layer = stroke_layer(record, width, height, scale, paper=paper,
-                                 density=widest >= WIDE_STROKE)
+                                 density=widest >= WIDE_STROKE,
+                                 absolute_width=record.get('absolute_width', False))
             if outlined and mark.get('layer') in outlined:
                 # **The growth is stated in width units, and a stroke's width is its brush's**, so the scale is
                 # relative to that rather than absolute -- a fine line and a wash both get the same line around them,
@@ -788,7 +797,8 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                 # it 6 times, and the picture shows a wavy rim that survives every fix applied to the fill.
                 behind = stroke_layer(grown, width, height, scale, paper=paper,
                                       density=widest >= WIDE_STROKE,
-                                      width_scale=1.0 + 2.0 * line / brush_width)
+                                      width_scale=1.0 + 2.0 * line / brush_width,
+                                      absolute_width=record.get('absolute_width', False))
                 out = blend(out, behind, 'normal', 1.0)
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)

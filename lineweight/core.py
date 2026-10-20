@@ -1046,7 +1046,8 @@ def inked_svg(svg: str, min_extent: float = 46.0, brush: str = 'ink', colour: st
 def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int = 0,
                   colour: str = '', resolution: int = 14, role: str = '',
                   width_profile: list[float] | None = None,
-                  alpha_profile: list[float] | None = None) -> dict:
+                  alpha_profile: list[float] | None = None,
+                  absolute_width: bool = False) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1096,6 +1097,11 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         #
         # They sit *before* the role's multiplier rather than after it, so assigning a role still rescales a profile
         # that was supplied by measurement -- otherwise the second pass would not reach the strokes that need it most.
+        # **`absolute_width` says the profile is the width and the hand model is not applied to it.** It exists for
+        # tracing: a reference picture gives widths and cannot give a pressure, so a profile measured off one has to
+        # reach the canvas unchanged. Without the flag the renderer multiplies it by `p / median`, which is the right
+        # thing for a stroke a hand drew and the wrong thing for one that was copied.
+        'absolute_width': bool(absolute_width),
         'width_profile': [float(w) for w in width_profile] if width_profile else [],
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],

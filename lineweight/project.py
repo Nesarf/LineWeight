@@ -330,6 +330,7 @@ class Project:
                               'pressure': record['pressure'], 'brush': record['brush'],
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
                               'role': record.get('role', ''),
+                              'absolute_width': bool(record.get('absolute_width', False)),
                               'width_profile': list(record.get('width_profile') or []),
                               'alpha_profile': list(record.get('alpha_profile') or [])},
                     # **Only a colour the caller actually chose is written down.** An absent colour is the answer
