@@ -715,12 +715,17 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
 #: number comes from rather than from a sweep here -- and it is twenty times finer than the brush table's 56.
 DENSITY_STEP = 0.025
 
-#: **The width above which the deposition method is a question worth asking.** The ripple along a stroke is the same
-#: fraction of its mean at every size -- 0.37 on the ink brush at four pixels and at eighty -- so what changes with
-#: width is only whether it can be seen. Below this a stroke is a line and the two methods are the same picture; above
-#: it a stroke is a shape and the maximum visibly beads. **It does not choose the method**: switching on it alone made
-#: the pencil five times fainter, so the caller decides and this says where deciding matters.
-WIDE_STROKE = 8.0
+#: **The width above which the deposition method is a question worth asking, and the figure it used to hold was wrong.**
+#: The reason recorded here was that below some width a stroke is a line and the two methods are the same picture. **A
+#: probe on a three-pixel stroke says they are not.** The same 161-pixel stroke carries **60 local minima of alpha on
+#: the maximum path** -- alpha swinging 99 to 254 around a mean of 197 -- and **6 on the integral**, whose middle sits
+#: at 255. A bead every 2.7 pixels is exactly what a hand-drawn line is not, and **a three-pixel stroke is what an
+#: outline is**: the maximum path will not deepen a seam, so two soft tips meeting leave only their falloff there.
+#:
+#: So the threshold comes down to where no stroke is, and every mark is deposited as an integral. The cost is dab count,
+#: and it is small here because the step has a floor of one pixel: on a fine line the step goes from 1.68 to 1.0, which
+#: is 1.7 times the dabs and not the 20 the 2.5 percent would ask for on a wide one.
+WIDE_STROKE = 1.0
 
 
 def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
