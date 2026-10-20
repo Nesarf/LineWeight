@@ -324,7 +324,15 @@ def add_face(proj, cx, cy, rx, ry):
     made = 0
     #: sizes in head radii; chosen, since the corpus gives position and not extent
     EYE_W, EYE_H = 0.17, 0.13
-    IRIS_W = 0.150
+    #: **Eye width is set by the space between the eyes, not the other way round.** The articles give the gap as one
+    #: eye-width, or 1.3 for a youthful face -- and this drawing measured 2.05, which is past the point where the
+    #: articles say the face turns into a flounder. Two constraints fix the number: the gap is 0.616 head radii, so an
+    #: iris half-width of 0.237 gives 0.616 / 0.474 = 1.30.
+    #:
+    #: **And the enlargement is the point rather than a side effect.** Half the head's width is now eye, which is what a
+    #: chibi face is; the other articles say the same thing from the other side -- make the pupil larger and the face
+    #: reads softer.
+    IRIS_W = 0.237
     #: **An almond is not a flattened ellipse.** The upper edge turns tightly and the lower one runs nearly level --
     #: two different curvatures meeting at the corners, which is what makes an eye an almond and a circle a circle.
     #: So the iris is built from those two edges rather than from one radius, and the asymmetry is the whole point.
