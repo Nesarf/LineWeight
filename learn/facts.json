@@ -177,5 +177,26 @@
     "items": ["place the buildings as a black and white silhouette, no detail", "separate each form's light, dark and middle face", "pull the tone curve so the darks go darker and the lights lighter"],
     "source": "MEDIBANG, 'beautiful backgrounds using texture', and 'creating cool backgrounds'",
     "note": "The middle step carries a countable fact: a cube seen as a cube shows three faces, never more, so a form of this kind has exactly three values to find. The background is built the same way as the figure -- silhouette first, then volume, then value -- which is the same order as the three stages."
+  },
+
+  "hand_forms": {
+    "count": 4,
+    "items": ["palm: a box as long as it is wide", "fingers: twelve parts, thumb excluded", "thumb base: a triangular box", "wrist: a narrow box that bends at the base of the palm"],
+    "source": "CLIP STUDIO, 'drawing hands without reference', by Stan Prokopenko",
+    "note": "The countable part is the fingers: twelve parts excluding the thumb, which is three per finger and is the number a hand actually has. The palm's two quirks are named too -- the bone on the little-finger side is shorter so it bends nearer, and the middle finger is the longest -- and the front edge of the palm is divided in four to place where each finger grows."
+  },
+
+  "hand_order": {
+    "count": 3,
+    "items": ["decide what the hand is doing before drawing any of it", "build the construction and place every part", "add nails, creases and shadow last"],
+    "source": "CLIP STUDIO, 'drawing hands without reference', by Stan Prokopenko",
+    "note": "Stated as a rule with its reason: 'before the basic construction is clear, no detail should be drawn, because a page crowded with nails, palm lines and shadow makes it hard to notice a mistake or correct one.' Two working tips sit beside it -- start from the little finger and the forefinger, because the other two then fall into place, and the line should stay pale and clean rather than scratched over."
+  },
+
+  "finger_methods": {
+    "count": 3,
+    "items": ["all fingers as one mitten-shaped group", "point and line from the joints only", "each finger drawn separately"],
+    "source": "CLIP STUDIO, 'drawing hands without reference'",
+    "note": "Given as a choice rather than a rule: different poses suit different methods, and a mitten group is the quickest way to check how far the fingers bend together."
   }
 }
