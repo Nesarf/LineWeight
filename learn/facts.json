@@ -94,8 +94,27 @@
       "do not measure slowly -- 'the downside to slowly measuring out the figure is that it stiffens the poses' (Hampton p10)",
       "do not let a stable symmetrical pose stand -- 'the action has either not begun, or it has ended' (Hampton p26)",
       "do not use right angles -- 'organic shapes do not contain right angles' (comic-inking ch.VI)",
-      "do not overuse cross-hatching -- 'excessive cross-hatching is not a sign of artistic skill' (comic-inking ch.VII)",
-      "do not draw only what is necessary to describe the gesture -- 'render only what is necessary' (Hampton p28)"
+      "do not overuse cross-hatching -- 'excessive cross-hatching is not a sign of artistic skill' (comic-inking ch.VII)"
     ]
+  },
+
+  "expression_layers": {
+    "count": 4,
+    "items": ["facial features", "manpu (comic icons)", "posture and gesture", "the character's own parts"],
+    "source": "MEDIBANG, 'how to draw a deformed character's facial expression' by Tsukasan, 2021.11.21",
+    "note": "The article starts from one face with only the eyes, mouth and brows changed, and says that is not enough. Manpu are sweat drops and anger marks; posture means a laughing person holds the belly; the parts means ribbons and hair move with the emotion -- 'for anger I made the ribbon and hair sharp like horns'. So hair, ribbons and ornaments are part of the face's work."
+  },
+
+  "picture_pipeline": {
+    "count": 10,
+    "items": ["canvas", "rough", "line art", "base colour", "recolour the line art", "shadow", "blend the shadow", "highlights", "background", "export"],
+    "source": "MEDIBANG, 'let us finish one picture for now' by NAKAI Nobu, 2021.12.01",
+    "note": "Two rules from the same article: draw at a larger size than the finished picture will be shown and shrink it afterwards, so the drawing can be rough; and recolouring the line art is described as the only way to make a picture look elegant."
+  },
+
+  "layer_weights": {
+    "count": 3,
+    "items": ["1bpp (black and white only, for printed line art)", "8bpp (white through grey, for coloured line art and screentone)", "colour (the heaviest)"],
+    "source": "MEDIBANG, 'let us finish one picture for now'"
   }
 }
