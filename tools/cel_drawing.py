@@ -136,7 +136,22 @@ HEAD_HEIGHT_OF_BODY = 0.218
 #: ear line -- 0.184 of the way down when the whole skull is 0.22 -- so anchoring to it would put the chin below the
 #: neck whichever height is used.
 HEAD_ANCHOR_OF_BODY = FIG_TOP
-HEAD_WIDTH_OVER_HEIGHT = 0.677
+
+#: **The head's width over its height, and the rigs were 18 per cent too narrow.**
+#:
+#: The old figure of 0.677 came from an arithmetic chain: the rigs put a head at 3.25 eye-separations tall and 2.2
+#: separations wide. **Three character meshes measured directly disagree.** Their face mesh -- the skin of the face,
+#: chin to brow -- gives width over height as 0.810, 0.853 and 0.822, and they agree with each other on everything else
+#: too: the chin sits at 0.781 to 0.797 of the figure's height, and the face is 0.131 to 0.147 of it.
+#:
+#:     Zome          face height 0.147   width 0.119   ratio 0.810   chin 0.794
+#:     Cian          face height 0.147   width 0.125   ratio 0.853   chin 0.797
+#:     RINDO         face height 0.131   width 0.108   ratio 0.822   chin 0.781
+#:
+#: **A mesh is not a chain of ratios.** The 2.2 eye-separations is a skull's width; a face as drawn carries cheeks and
+#: ears, and an anime face is wider still at the cheekbone than its eye spacing suggests. So this is the measured
+#: average of the three, and the reason it is trusted over the derivation is that it was measured on the thing itself.
+HEAD_WIDTH_OVER_HEIGHT = 0.83
 
 #: **The thinnest a limb may be and still keep its fill.** Below this the outline is wider than the shape and covers it
 #: completely, which is what turned the hands into a solid black mass. A finger's fill is about three pixels across
