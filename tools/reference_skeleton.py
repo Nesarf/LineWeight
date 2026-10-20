@@ -35,19 +35,25 @@ PNG = pathlib.Path(r'E:\DaShaoHuo\cache\skeleton-compare.png')
 #: The rig average, measured over eleven Blue Archive rigs. **Bone positions**, from the top of the figure.
 RIG = {'head': 0.184, 'rib': 0.447, 'pelvis': 0.567}
 
-#: The reference, read off `Cache_7cef975685e2f0c2.png` and `mmk.jpg`. **Outline features**, same origin.
-REF = {'neck': 0.151, 'chest_widest': 0.479, 'hem': 0.507}
+#: The reference, read off `Cache_7cef975685e2f0c2.png` -- a **full length** figure, so its height runs from the crown to
+#: the sole and the ratios are directly comparable with the rig's.
+#:
+#: **The first attempt used a half-length portrait and produced differences of 0.10 to 0.16 that meant nothing**, because
+#: its "height" ran from a rabbit ear to the bottom of the frame. The drawing that exposed it is in `TODO.md`; the lesson
+#: is that two ratios may only be subtracted when they share a ruler, and that a picture shows a shared ruler at a glance
+#: where a table does not.
+REF = {'neck': 0.218, 'widest': 0.513, 'hem': 0.533}
 
-#: The head's centre sits halfway between the top of the figure and the narrowing below it -- that is the only reading
-#: the argument supports, since the outline does not distinguish a skull from hair.
+#: The head's centre sits halfway between the top of the figure and the narrowing below it. **The narrowing includes the
+#: hair and the ears**, so this is an outline feature and the comparison says so.
 REF_HEAD = REF['neck'] / 2.0
 
-#: The rib cage's centre is placed a third of the way from the chest's widest point up towards the neck, because the
-#: widest point is where the rib cage meets the clothing and the centre of the mass is above it.
-REF_RIB = REF['neck'] + (REF['chest_widest'] - REF['neck']) * 0.42
+#: The rib cage's centre is placed a third of the way from the widest point up towards the neck: the widest point is where
+#: the rib cage meets the skirt, and the centre of the mass is above it.
+REF_RIB = REF['neck'] + (REF['widest'] - REF['neck']) * 0.42
 
-#: The pelvis sits a little below the hem, since a leotard ends above the pelvis and not at it.
-REF_PELVIS = REF['hem'] + 0.03
+#: The pelvis sits just below the hem of the clothing, since a garment ends at the pelvis and not below it.
+REF_PELVIS = REF['hem']
 
 REF_MASSES = {'head': REF_HEAD, 'rib': REF_RIB, 'pelvis': REF_PELVIS}
 
@@ -102,7 +108,7 @@ def main():
     print()
     print('  the reference heights used, and what each one measured:')
     print('    neck             %.3f   the narrowest place above the shoulder' % REF['neck'])
-    print('    chest widest     %.3f   the widest place below that' % REF['chest_widest'])
+    print('    chest widest     %.3f   the widest place below that' % REF['widest'])
     print('    hem              %.3f   where cloth gives way to skin on one column' % REF['hem'])
     print()
     print('  written to %s' % OUT)
