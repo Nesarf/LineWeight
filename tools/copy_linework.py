@@ -26,22 +26,29 @@ sys.path.insert(0, r'E:\lineweight')
 
 from lineweight import core, project
 
-#: Working size for the long side, or 0 to keep the reference's own. **Downscaling was the first attempt and it lost
-#: the drawing**: the lines are about one pixel wide at 800 across, and resampling them to 320 spread each one over
-#: two and a half pixels of white, which took the ink count from 7614 to 15. A thin line does not survive being averaged.
-MAX_SIDE = 0
+#: **The shortest the long side may be, and it may never be shorter.** Illustrations are commonly larger than this, and
+#: the trace must not shrink them: the first attempt downscaled to 480 and the ink count went from 7614 to 15, because a
+#: one-pixel line does not survive being averaged. A reference smaller than this is enlarged instead, so that the
+#: geometry is always taken at a working size where a line is a line -- **the enlargement adds no information, it keeps
+#: the scale at which the reading happens constant.**
+MIN_LONG_SIDE = 2880
 
 #: How far from white a pixel has to be to count as ink, out of 255. **A pencil line is grey, not black**: at 110 this
 #: reference kept 5036 pixels and at 180 it keeps 7614, and the difference is the line's soft edge rather than noise.
-INK = 180
+INK = 205
+
+#: The page the strokes are rendered onto, long side. **The geometry is read at 2880 and drawn at a third of that**:
+#: rendering at the reading size would make every mark's buffer nine times larger for a picture nobody views at that
+#: size, and the strokes' own coordinates are what carry the precision.
+CANVAS_SIDE = 960
 
 #: Segments shorter than this many pixels are dropped. **They are what a skeleton leaves at every junction** -- two or
 #: three pixels of a stub -- and drawn they read as dirt on the page.
 MIN_SEGMENT = 6
 
 
-def load_ink(path, max_side, ink, min_component=30):
-    """Ink as a boolean array, **with the small islands removed**.
+def load_ink(path, min_long_side, ink, min_component=30):
+    """Ink as a boolean array **at no less than `min_long_side` across**, with the small burrs removed.
 
     **The reference's own line is one connected run of hundreds of pixels; a JPEG leaves thousands of three and four
     pixel specks beside it**, and a skeleton of specks is a thousand tiny segments -- which is what the first trace
@@ -52,10 +59,10 @@ def load_ink(path, max_side, ink, min_component=30):
     from scipy import ndimage
     im = Image.open(path).convert('L')
     w, h = im.size
-    if max_side:
-        s = min(1.0, float(max_side) / max(w, h))
-        if s < 1.0:
-            im = im.resize((max(1, int(w * s)), max(1, int(h * s))), Image.LANCZOS)
+    long_side = max(w, h)
+    if long_side < min_long_side:
+        s = float(min_long_side) / long_side
+        im = im.resize((int(round(w * s)), int(round(h * s))), Image.LANCZOS)
     a = np.asarray(im, dtype=np.uint8)
     ink_mask = (a < ink).astype(np.uint8)
     # **A closing, before the thinning, because the specks are attached rather than loose.** Removing small blobs left
@@ -175,14 +182,15 @@ def main():
     ap.add_argument('--src', required=True)
     ap.add_argument('--out', default=r'E:\DaShaoHuo\cache\copy.json')
     ap.add_argument('--png', default=r'E:\DaShaoHuo\cache\copy.png')
-    ap.add_argument('--max-side', type=int, default=MAX_SIDE)
+    ap.add_argument('--min-long-side', type=int, default=MIN_LONG_SIDE)
+    ap.add_argument('--canvas-side', type=int, default=CANVAS_SIDE)
     ap.add_argument('--ink', type=int, default=INK)
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     ap.add_argument('--min-component', type=int, default=30, help='ink blobs smaller than this are specks')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
-    binary, w, h = load_ink(args.src, args.max_side, args.ink, args.min_component)
+    binary, w, h = load_ink(args.src, args.min_long_side, args.ink, args.min_component)
     print('  %s  %dx%d  ink pixels %d (%.2f%%)' % (pathlib.Path(args.src).name, w, h, int(binary.sum()),
                                                     100.0 * binary.sum() / (w * h)))
     skel = thin(binary)
@@ -197,15 +205,22 @@ def main():
         kept.append(simplify(pts, 0.9))
     print('  segments %d, kept %d, points %d' % (len(segments), len(kept), sum(len(s) for s in kept)))
 
-    proj = project.Project(width=w, height=h, title='copy of %s' % pathlib.Path(args.src).stem)
+    # **The page is a third of the reading size, and the strokes are scaled onto it.** The coordinates were read at
+    # 2880 so that a hairline is several pixels wide when it is thinned; they are drawn at 960 because a mark's buffer
+    # at the reading size would be nine times larger for a picture nobody looks at that closely.
+    s = args.canvas_side / float(max(w, h))
+    canvas_w = max(1, int(round(w * s)))
+    canvas_h = max(1, int(round(h * s)))
+    proj = project.Project(width=canvas_w, height=canvas_h, title='copy of %s' % pathlib.Path(args.src).stem)
     marks = 0
     for i, pts in enumerate(kept):
         if len(pts) < 2:
             continue
+        scaled = [(x * s, y * s) for x, y in pts]
         # **One width for now.** The reference has a taper and this does not read it yet; what is being checked here is
         # whether the paths are where the artist put them.
-        rec = core.stroke_record(pts, 'fine', seed=i, resolution=6,
-                                 width_profile=[2.2] * (6 * (len(pts) - 1) + 1))
+        rec = core.stroke_record(scaled, 'fine', seed=i, resolution=6,
+                                 width_profile=[2.2] * (6 * (len(scaled) - 1) + 1))
         proj.add_stroke(rec, stage='line', layer='ink', note='traced %d' % i)
         marks += 1
     out = pathlib.Path(args.out)
