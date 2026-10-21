@@ -79,19 +79,28 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     _version, model_name, bones, _r = parse_pmx(args.pmx)
+    # **Columnar, because the repeated keys were the file.** As one object per bone this was 35.7 KB for 279 bones,
+    # and the names of the fields -- `name`, `parent`, `pos`, 279 times each, plus indentation -- were most of it. A
+    # bone is now an index into three parallel arrays, which is the same information with the keys written once.
     skeleton = {
         'model': model_name,
         'source': args.pmx,
-        'bones': [{'name': b['name'],
-                   'parent': bones[b['parent']]['name'] if 0 <= b['parent'] < len(bones) else None,
-                   'pos': [round(v, 4) for v in b['pos']]} for b in bones],
+        'note': 'bones are indices into these arrays; parent is an index or null; y is up; units are the model\'s own',
+        'name': [b['name'] for b in bones],
+        'parent': [b['parent'] if 0 <= b['parent'] < len(bones) else None for b in bones],
+        'pos': [[round(v, 3) for v in b['pos']] for b in bones],
     }
-    (out / 'skeleton.json').write_text(json.dumps(skeleton, ensure_ascii=False, indent=1), encoding='utf-8')
+    (out / 'skeleton.json').write_text(json.dumps(skeleton, ensure_ascii=False, separators=(',', ':')),
+                                       encoding='utf-8')
     print('  skeleton.json   %d bones from %r' % (len(bones), model_name))
+
+    name_to_bone = {b['name']: i for i, b in enumerate(bones)}
+    joint_names = [n for n in POSE_BONES if n in name_to_bone]
 
     poses = []
     motions = []
     for path in args.motion:
+        motion_index = len(motions)
         _v, vmd_model, anim, span = parse_vmd(path)
         frames = list(range(span[0], span[1] + 1, args.step))
         speed = speed_curve(anim, frames)
@@ -113,23 +122,33 @@ def main():
                 if frame < span[0] or frame > span[1]:
                     continue
                 pos, _rot = pose(bones, anim, frame)
+                pts = [pos[name_to_bone[n]] for n in joint_names]
+                ys = [float(p[1]) for p in pts]
+                # **Divided by the figure's own height, in this frame.** A drawing needs a joint at 0.4 of a body, not
+                # at 9.05 model units, and a ratio survives a change of model while an absolute size does not. The
+                # divisor is stored so the absolute picture can be recovered.
+                scale = (max(ys) - min(ys)) or 1.0
                 poses.append({
-                    'motion': path,
+                    'motion': motion_index,
                     'frame': frame,
                     'role': why,
                     'speed': round(speed[i], 2),
-                    'joints': {b['name']: [round(float(p[0]), 3), round(float(p[1]), 3), round(float(p[2]), 3)]
-                               for b, p in zip(bones, pos) if p is not None and b['name'] in POSE_BONES},
+                    'scale': round(scale, 3),
+                    'xy': [[round(float(p[0]) / scale, 3), round(float(p[1]) / scale, 3),
+                            round(float(p[2]) / scale, 3)] for p in pts],
                 })
         print('  %-14s frames %d..%d, %d shared bones, peak frames %s'
               % (path.split('\\')[-1], span[0], span[1], joinable, [frames[i] for i in chosen]))
 
     (out / 'poses.json').write_text(json.dumps({
-        'source': {'pmx': args.pmx, 'skeleton': 'skeleton.json'},
-        'note': 'joint world positions per frame; y is up; the units are the model\'s own',
-        'poses': poses,
-    }, ensure_ascii=False, indent=1), encoding='utf-8')
-    (out / 'motions.json').write_text(json.dumps(motions, ensure_ascii=False, indent=1), encoding='utf-8')
+        'source': {'pmx': args.pmx, 'skeleton': 'skeleton.json', 'motions': 'motions.json'},
+        'note': 'each pose is a list of [x, y, z] in the order of `joint`, divided by that frame\'s own height '
+                '(`scale`); y is up; motion is an index into motions.json',
+        'joint': joint_names,
+        'pose': poses,
+    }, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+    (out / 'motions.json').write_text(json.dumps(motions, ensure_ascii=False, separators=(',', ':')),
+                                      encoding='utf-8')
     print('  poses.json      %d frames' % len(poses))
     print('  motions.json    %d motions' % len(motions))
     return 0

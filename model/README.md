@@ -17,21 +17,34 @@ python tools/build_model_library.py \
 
 ## The three files
 
-**`skeleton.json`** -- 279 bones: name, rest position, and the parent by name. **This is what a pose is composed
-down**; without parents a VMD's per-bone rotations have nowhere to accumulate.
+**`skeleton.json`** -- 279 bones, stored **columnar**: three parallel arrays (`name`, `parent`, `pos`) where a bone is
+an index. **This is what a pose is composed down**; without parents a VMD's per-bone rotations have nowhere to
+accumulate.
 
-**`poses.json`** -- 36 frames, each giving 20 joints as world positions. Three frames per peak of the motion's speed
-curve, named `before`, `peak` and `after`, because **the frame worth drawing is not the fastest one** -- see below.
+**`poses.json`** -- 36 frames, each a list of `[x, y, z]` in the order of the file's `joint` array, **divided by that
+frame's own height** (stored as `scale`). Three frames per peak of the motion's speed curve, named `before`, `peak` and
+`after`, because **the frame worth drawing is not the fastest one** -- see below.
 
 **`motions.json`** -- one entry per motion: frame span, how many of its bones this skeleton shares, mean and peak
 speed, and the frame numbers of the peaks. **The shared count is the thing to read first**: a motion recorded on a
 different model shares 58 or 59 of these 279 bones, which is enough for the limbs and the spine and nothing else.
 
+## Why the files are shaped this way
+
+**A drawing tool does not need a model, and that is not a figure of speech.** There are no learned weights here --
+these are coordinates, and coordinates can be measured again, so the only question is what has to stay for the library
+to be rebuildable and usable. Two answers shrank the directory from 91 KB to 33 KB without losing anything:
+
+- **Columnar instead of one object per bone.** `"name"`, `"parent"` and `"pos"` were 279 keys each, plus indentation;
+  most of `skeleton.json` was its own field names.
+- **Ratios instead of model units.** A joint at 0.4 of a body survives a change of model; a joint at 9.05 units does
+  not. The divisor is kept in `scale`, so the absolute picture can still be recovered.
+
 ## Coordinates and units
 
-`y` is up, `x` is right, and `z` points into the page. The units are the model's own -- this skeleton stands about 14
-units tall, and the motions were performed on models of a similar scale, so a ratio survives and an absolute size does
-not. **A drawing therefore uses ratios from here and sizes from its own canvas.**
+`y` is up, `x` is right, and `z` points into the page. **`skeleton.json` is in the model's own units** -- that skeleton
+stands about 14 units tall -- and **`poses.json` is not**: every pose is divided by its own frame's height, so a value
+there is a fraction of a body. A drawing uses the ratios directly and takes its sizes from its own canvas.
 
 ## Why these frames
 
