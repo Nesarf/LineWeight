@@ -19,6 +19,7 @@ lines where the artist drew one, which the project already paid for once. The sk
 import argparse
 import pathlib
 import sys
+import time
 
 import numpy as np
 
@@ -169,6 +170,42 @@ def trace(skel):
     return segments
 
 
+def prune(skel, min_len):
+    """Cut the short branches off a skeleton: a run that leaves a junction and dies within `min_len` pixels.
+
+    **This is what turns twenty-four thousand segments into hundreds.** A hand-drawn line on a JPEG has a ragged edge,
+    and thinning turns every ragged tooth into a junction with a two or three pixel spur; each spur is its own segment,
+    and each segment is its own stroke to render. **The spurs are not lines** -- they are shorter than any mark a hand
+    makes -- so they go, and what is left is the line the artist drew.
+    """
+    from scipy import ndimage
+    b = skel.copy()
+    rows, cols = b.shape
+    for _ in range(4):
+        count = ndimage.convolve(b, np.ones((3, 3), dtype=np.uint8), mode='constant') - b
+        ends = np.argwhere((b == 1) & (count == 1))
+        removed = 0
+        for y, x in ends.tolist():
+            path = [(y, x)]
+            prev = None
+            cur = (y, x)
+            while len(path) <= min_len:
+                nbs = [n for n in neighbours(b, cur[0], cur[1], rows, cols) if n != prev]
+                if len(nbs) != 1:
+                    break
+                prev, cur = cur, nbs[0]
+                path.append(cur)
+            # **The last point is left alone**: it is the junction the spur hangs from, and removing it would open a
+            # hole in the line the spur was hanging on.
+            if len(path) <= min_len:
+                for p in path[:-1]:
+                    b[p[0], p[1]] = 0
+                removed += 1
+        if not removed:
+            break
+    return b
+
+
 def simplify(points, tolerance):
     """Douglas-Peucker, the same one the silhouette tracer uses -- a run of pixels is a path with a staircase in it."""
     import trace as silhouette
@@ -186,24 +223,35 @@ def main():
     ap.add_argument('--canvas-side', type=int, default=CANVAS_SIDE)
     ap.add_argument('--ink', type=int, default=INK)
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
+    ap.add_argument('--prune', type=int, default=8, help='drop skeleton spurs shorter than this many pixels')
     ap.add_argument('--min-component', type=int, default=30, help='ink blobs smaller than this are specks')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
+    t0 = time.perf_counter()
     binary, w, h = load_ink(args.src, args.min_long_side, args.ink, args.min_component)
-    print('  %s  %dx%d  ink pixels %d (%.2f%%)' % (pathlib.Path(args.src).name, w, h, int(binary.sum()),
-                                                    100.0 * binary.sum() / (w * h)))
+    t_load = time.perf_counter()
+    print('  %s  %dx%d  ink pixels %d (%.2f%%)  load %.1fs'
+          % (pathlib.Path(args.src).name, w, h, int(binary.sum()), 100.0 * binary.sum() / (w * h), t_load - t0))
     skel = thin(binary)
-    print('  skeleton pixels %d' % int(skel.sum()))
+    t_thin = time.perf_counter()
+    print('  skeleton pixels %d   thin %.1fs' % (int(skel.sum()), t_thin - t_load))
+    skel = prune(skel, args.prune)
+    t_prune = time.perf_counter()
+    print('  after pruning spurs shorter than %d: %d pixels   prune %.1fs'
+          % (args.prune, int(skel.sum()), t_prune - t_thin))
 
     segments = trace(skel)
+    t_trace = time.perf_counter()
+    print('  segments %d   trace %.1fs' % (len(segments), t_trace - t_prune))
     kept = []
     for seg in segments:
         if len(seg) < args.min_segment:
             continue
         pts = [(float(x), float(y)) for y, x in seg]
         kept.append(simplify(pts, 0.9))
-    print('  segments %d, kept %d, points %d' % (len(segments), len(kept), sum(len(s) for s in kept)))
+    t_simplify = time.perf_counter()
+    print('  kept %d, points %d   simplify %.1fs' % (len(kept), sum(len(s) for s in kept), t_simplify - t_trace))
 
     # **The page is a third of the reading size, and the strokes are scaled onto it.** The coordinates were read at
     # 2880 so that a hairline is several pixels wide when it is thinned; they are drawn at 960 because a mark's buffer
