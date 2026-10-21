@@ -227,6 +227,32 @@ def prune(skel, min_len):
     return b
 
 
+def ink_weight(ink_mask):
+    """Half the line's width at every ink pixel: **its distance to the nearest paper.**
+
+    **This is the only place the reference's own line weight can come from.** The ink mask says where the line is; the
+    distance transform says how far it reaches, and twice that is the width the artist's pen was set to at that point.
+    A line drawn heavier on one side than the other therefore carries the difference, and the trace can reproduce it
+    without anyone deciding what the weight should be.
+    """
+    from scipy import ndimage
+    return ndimage.distance_transform_edt(ink_mask)
+
+
+def resample(values, n):
+    """`values` stretched onto `n` samples, linearly, for a width profile that matches the stroke's own sampling."""
+    m = len(values)
+    if m == 1 or n < 2:
+        return [values[0]] * n
+    out = []
+    for i in range(n):
+        t = i / float(n - 1) * (m - 1)
+        lo = int(t)
+        hi = min(lo + 1, m - 1)
+        out.append(values[lo] + (values[hi] - values[lo]) * (t - lo))
+    return out
+
+
 def simplify(points, tolerance):
     """Douglas-Peucker, the same one the silhouette tracer uses -- a run of pixels is a path with a staircase in it."""
     import trace as silhouette
@@ -245,6 +271,7 @@ def main():
     ap.add_argument('--ink', type=int, default=INK)
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     ap.add_argument('--prune', type=int, default=8, help='drop skeleton spurs shorter than this many pixels')
+    ap.add_argument('--max-width', type=float, default=6.0, help='widest a stroke may be drawn, in page pixels')
     ap.add_argument('--min-component', type=int, default=30, help='ink blobs smaller than this are specks')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -257,6 +284,10 @@ def main():
     skel = thin(binary)
     t_thin = time.perf_counter()
     print('  skeleton pixels %d   thin %.1fs' % (int(skel.sum()), t_thin - t_load))
+    weight = ink_weight(binary)
+    t_weight = time.perf_counter()
+    print('  line half-width on the ink: %.2f .. %.2f px   distance %.1fs'
+          % (float(weight[binary > 0].min()), float(weight[binary > 0].max()), t_weight - t_thin))
     skel = prune(skel, args.prune)
     t_prune = time.perf_counter()
     print('  after pruning spurs shorter than %d: %d pixels   prune %.1fs'
@@ -286,10 +317,20 @@ def main():
         if len(pts) < 2:
             continue
         scaled = [(x * s, y * s) for x, y in pts]
-        # **One width for now.** The reference has a taper and this does not read it yet; what is being checked here is
-        # whether the paths are where the artist put them.
+        # **The width comes from the ink, not from a constant.** Twice the distance transform at each point is the
+        # diameter the pen had there, scaled from the reading size to the page. The floor of one page pixel keeps a
+        # hairline visible; below that a line is not drawn, it is suggested.
+        widths = []
+        for x, y in pts:
+            half = weight[int(round(y)), int(round(x))]
+            # **Clamped, because the widest distance in a drawing is a filled area rather than a line.** The measured
+            # half-widths on this reference run from 1 to 42 pixels: the 42 is a solid patch of ink, and drawn at its
+            # own weight it becomes a black slab where the artist drew a sleeve. A line is what this is copying, so the
+            # width stops where a line ends.
+            widths.append(min(args.max_width, max(1.0, 2.0 * float(half) * s)))
+        samples = 6 * (len(scaled) - 1) + 1
         rec = core.stroke_record(scaled, 'fine', seed=i, resolution=6,
-                                 width_profile=[2.2] * (6 * (len(scaled) - 1) + 1))
+                                 width_profile=resample(widths, samples))
         proj.add_stroke(rec, stage='line', layer='ink', note='traced %d' % i)
         marks += 1
     out = pathlib.Path(args.out)
