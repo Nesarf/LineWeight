@@ -84,6 +84,14 @@ def main():
 
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    # **The pose is recorded with the profile because the profile is only comparable within one pose.** A T-pose
+    # measures 0.82 of a body across the arms and an A-pose measures 0.55, so the same figure yields two different
+    # numbers and neither is wrong. **The ratio of the arm band to the hip band is what tells them apart**: arms held
+    # out reach three or more times the hips, arms held down reach about twice.
+    arm = max([r['w'] for r in rows if 0.66 <= r['y'] / height <= 0.88] or [0.0])
+    hip = max([r['w'] for r in rows if 0.38 <= r['y'] / height <= 0.56] or [0.0])
+    arm_ratio = (arm / hip) if hip else 0.0
+    pose = 'arms out' if arm_ratio >= 3.0 else ('arms down' if arm_ratio > 0 else 'unknown')
     payload = {
         'source': args.src,
         'model': pathlib.Path(args.src).stem,
@@ -93,6 +101,8 @@ def main():
         'height': 1.0,
         'bands': len(rows),
         'vertices': int(len(pts)),
+        'pose': pose,
+        'arm_over_hip': round(arm_ratio, 2),
         'meshes': [n for n, _c in per_mesh],
         'rows': [{'y': round(r['y'] / height, 4), 'w': round(r['w'] / height, 4),
                   'd': round(r['d'] / height, 4), 'x': round(r['x'] / height, 4),
@@ -101,6 +111,8 @@ def main():
     out.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print('  %-28s %6d vertices, %d bands, %.1f KB'
           % (out.name, len(pts), len(rows), out.stat().st_size / 1024.0))
+    print('    pose %-9s arm band %.3f over hip band %.3f (ratio %.2f)'
+          % (pose, arm / height, hip / height, arm_ratio))
     widest = max(rows, key=lambda r: r['w'])
     deepest = max(rows, key=lambda r: r['d'])
     print('    widest band at y=%.2f of the height: w %.3f   deepest at y=%.2f: d %.3f'

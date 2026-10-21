@@ -67,10 +67,14 @@ POS = {
     'Bip001 L Finger11':   (0.274, 0.504),
     'Bip001 L Finger2':    (0.253, 0.477),
     'Bip001 L Finger21':   (0.269, 0.495),
-    'Bip001 L Thigh':      (0.058, 0.568),
-    'Bip001 L Calf':       (0.070, 0.776),
-    'Bip001 L Foot':       (0.074, 0.960),
-    'Bip001 L Toe0':       (0.080, 1.000),
+    # **The legs sit closer together than the rigs put them, and the number that says so is the body profile.** The
+    # drawn pair measured 0.186 of the figure across against 0.119 to 0.140 on four character meshes, and narrowing the
+    # bones themselves moved it by 0.002 -- **the width of a pair of legs is their spacing, not their thickness**. The
+    # ankle keeps its 0.074 because it already agreed with the meshes to within 0.002.
+    'Bip001 L Thigh':      (0.045, 0.568),
+    'Bip001 L Calf':       (0.048, 0.776),
+    'Bip001 L Foot':       (0.050, 0.960),
+    'Bip001 L Toe0':       (0.054, 1.000),
 }
 for _n in list(POS):
     if ' L ' in _n:
@@ -92,7 +96,7 @@ BONE_WIDTH = {
     'Pelvis':   (0.180, 0.170), 'Spine': (0.170, 0.200), 'Spine1': (0.200, 0.232),
     'Neck':     (0.050, 0.044), 'Head': (0.095, 0.115), 'Clavicle': (0.085, 0.062),
     'UpperArm': (0.050, 0.039), 'Forearm': (0.039, 0.029), 'Hand': (0.029, 0.024),
-    'Finger':   (0.011, 0.008), 'Thigh': (0.088, 0.061), 'Calf': (0.061, 0.037),
+    'Finger':   (0.011, 0.008), 'Thigh': (0.066, 0.046), 'Calf': (0.046, 0.028),
     'Foot':     (0.037, 0.029), 'Toe': (0.029, 0.022),
 }
 TIP_BONES = ('Finger01', 'Finger11', 'Finger21', 'Toe0')
