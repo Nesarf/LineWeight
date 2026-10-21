@@ -15,7 +15,7 @@ python tools/build_model_library.py \
   --out model
 ```
 
-## The three files
+## The files
 
 **`skeleton.json`** -- 279 bones, stored **columnar**: three parallel arrays (`name`, `parent`, `pos`) where a bone is
 an index. **This is what a pose is composed down**; without parents a VMD's per-bone rotations have nowhere to
@@ -28,6 +28,18 @@ frame's own height** (stored as `scale`). Three frames per peak of the motion's 
 **`motions.json`** -- one entry per motion: frame span, how many of its bones this skeleton shares, mean and peak
 speed, and the frame numbers of the peaks. **The shared count is the thing to read first**: a motion recorded on a
 different model shares 58 or 59 of these 279 bones, which is enough for the limbs and the spine and nothing else.
+
+**`shape/`** -- a volume profile per model, two of each. `<model>.json` measures every mesh, so its width is the
+silhouette's width, arms and hair included. `<model>-body.json` measures only the meshes whose name contains `body`,
+so its width is the body's. **The second one is the part a front view cannot draw**: it says how deep the trunk is as
+well as how wide, and the two are not proportional -- on the Zome model the hips are the widest band at 0.162 and the
+chest the deepest at 0.086 over 0.120 wide, so the cross-section turns from an ellipse lying down to one standing up.
+
+## The size budget
+
+**One gigabyte is the allowance and 63 KB is the use**, which is not a sign that there is nothing left to pack. A
+character's vertices are about 1.3 MB; its profile is 3.4 KB; the mesh can be measured again whenever the source is
+still on the drive. **What a drawing needs from a surface is a width at a height**, and that is 64 rows of four numbers.
 
 ## Why the files are shaped this way
 
@@ -57,8 +69,8 @@ is finished. Three different pictures of one movement, and only the middle of th
 
 ## What is not here, and each omission is deliberate
 
-- **No mesh.** Vertices are 26 MB per model and a drawing does not need them; what a drawing needs from a body is
-  where its joints are.
+- **No mesh, but its profile.** Vertices are 1.3 MB per model and the shape they make is 3.4 KB of widths and depths;
+  the mesh itself would be a copy, and a copy is the one thing a rebuildable library does not need.
 - **No inverse kinematics.** A leg driven by an IK bone is placed by that bone's target, and this composes rotations
   only -- so a knee on an IK-driven leg reads where its own rotation puts it.
 - **Interpolation is linear.** A VMD carries 64 bytes of interpolation curves per record and this does not read them.
