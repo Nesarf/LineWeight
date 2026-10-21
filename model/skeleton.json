@@ -1,0 +1,2517 @@
+{
+ "model": "RINDO_Full",
+ "source": "E:\\ANMS\\Rindo竜胆R\\PMX\\RINDO_Full.pmx",
+ "bones": [
+  {
+   "name": "全ての親",
+   "parent": null,
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "secondary",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_underwear",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_sera_top",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_sera_skirt",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_sera_shoes",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_miko_top",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_miko_sode",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_miko_skirt",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_miko_geta",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_kemono",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_hair_twin",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_hair_short",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_hair_main",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Rindo_body",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Body",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "Armature",
+   "parent": "全ての親",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "name": "センター",
+   "parent": "Armature",
+   "pos": [
+    0.0,
+    6.6905,
+    0.0
+   ]
+  },
+  {
+   "name": "下半身",
+   "parent": "センター",
+   "pos": [
+    -0.0,
+    10.3932,
+    -0.267
+   ]
+  },
+  {
+   "name": "腰",
+   "parent": "下半身",
+   "pos": [
+    -0.0,
+    10.1121,
+    -0.267
+   ]
+  },
+  {
+   "name": "右足",
+   "parent": "腰",
+   "pos": [
+    -0.7724,
+    8.8573,
+    -0.2099
+   ]
+  },
+  {
+   "name": "右ひざ",
+   "parent": "右足",
+   "pos": [
+    -0.7724,
+    5.2349,
+    -0.2286
+   ]
+  },
+  {
+   "name": "右足首",
+   "parent": "右ひざ",
+   "pos": [
+    -0.7724,
+    1.0345,
+    0.148
+   ]
+  },
+  {
+   "name": "Toe_R",
+   "parent": "右足首",
+   "pos": [
+    -0.7724,
+    0.448,
+    -1.1035
+   ]
+  },
+  {
+   "name": "左足",
+   "parent": "腰",
+   "pos": [
+    0.7724,
+    8.8573,
+    -0.2099
+   ]
+  },
+  {
+   "name": "左ひざ",
+   "parent": "左足",
+   "pos": [
+    0.7724,
+    5.2349,
+    -0.2286
+   ]
+  },
+  {
+   "name": "左足首",
+   "parent": "左ひざ",
+   "pos": [
+    0.7724,
+    1.0345,
+    0.148
+   ]
+  },
+  {
+   "name": "Toe_L",
+   "parent": "左足首",
+   "pos": [
+    0.7724,
+    0.448,
+    -1.1035
+   ]
+  },
+  {
+   "name": "Tail",
+   "parent": "腰",
+   "pos": [
+    0.0,
+    10.2233,
+    0.5031
+   ]
+  },
+  {
+   "name": "Tail.001",
+   "parent": "Tail",
+   "pos": [
+    0.0,
+    9.8644,
+    1.2373
+   ]
+  },
+  {
+   "name": "Tail.002",
+   "parent": "Tail.001",
+   "pos": [
+    0.0,
+    9.2848,
+    1.9458
+   ]
+  },
+  {
+   "name": "Tail.003",
+   "parent": "Tail.002",
+   "pos": [
+    0.0,
+    9.0272,
+    2.9027
+   ]
+  },
+  {
+   "name": "Tail.004",
+   "parent": "Tail.003",
+   "pos": [
+    0.0,
+    9.34,
+    3.7768
+   ]
+  },
+  {
+   "name": "Tail.005",
+   "parent": "Tail.004",
+   "pos": [
+    0.0,
+    9.9564,
+    4.2368
+   ]
+  },
+  {
+   "name": "Tail.005_end",
+   "parent": "Tail.005",
+   "pos": [
+    0.0,
+    10.8581,
+    4.384
+   ]
+  },
+  {
+   "name": "上半身",
+   "parent": "センター",
+   "pos": [
+    -0.0,
+    10.3932,
+    -0.267
+   ]
+  },
+  {
+   "name": "Miko_ribbonbase",
+   "parent": "上半身",
+   "pos": [
+    0.0,
+    10.968,
+    0.6686
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_R",
+   "parent": "Miko_ribbonbase",
+   "pos": [
+    -0.2481,
+    10.8047,
+    0.6686
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_R.001",
+   "parent": "Miko_ribbon_2_R",
+   "pos": [
+    -0.6726,
+    10.3345,
+    0.8776
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_R.002",
+   "parent": "Miko_ribbon_2_R.001",
+   "pos": [
+    -1.0318,
+    9.9035,
+    1.1584
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_R.003",
+   "parent": "Miko_ribbon_2_R.002",
+   "pos": [
+    -1.4693,
+    9.3289,
+    1.5959
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_R.003_end",
+   "parent": "Miko_ribbon_2_R.003",
+   "pos": [
+    -1.9694,
+    8.7035,
+    2.164
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_L",
+   "parent": "Miko_ribbonbase",
+   "pos": [
+    0.2481,
+    10.8047,
+    0.6686
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_L.001",
+   "parent": "Miko_ribbon_2_L",
+   "pos": [
+    0.6726,
+    10.3345,
+    0.8776
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_L.002",
+   "parent": "Miko_ribbon_2_L.001",
+   "pos": [
+    1.0318,
+    9.9035,
+    1.1584
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_L.003",
+   "parent": "Miko_ribbon_2_L.002",
+   "pos": [
+    1.4693,
+    9.3289,
+    1.5959
+   ]
+  },
+  {
+   "name": "Miko_ribbon_2_L.003_end",
+   "parent": "Miko_ribbon_2_L.003",
+   "pos": [
+    1.9694,
+    8.7034,
+    2.164
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_R",
+   "parent": "Miko_ribbonbase",
+   "pos": [
+    -0.2416,
+    10.9876,
+    0.6686
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_R.001",
+   "parent": "Miko_ribbon_1_R",
+   "pos": [
+    -0.8424,
+    10.9614,
+    0.7167
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_R.001_end",
+   "parent": "Miko_ribbon_1_R.001",
+   "pos": [
+    -1.5542,
+    10.857,
+    0.967
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_L",
+   "parent": "Miko_ribbonbase",
+   "pos": [
+    0.2416,
+    10.9876,
+    0.6686
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_L.001",
+   "parent": "Miko_ribbon_1_L",
+   "pos": [
+    0.8424,
+    10.9614,
+    0.7167
+   ]
+  },
+  {
+   "name": "Miko_ribbon_1_L.001_end",
+   "parent": "Miko_ribbon_1_L.001",
+   "pos": [
+    1.5542,
+    10.857,
+    0.967
+   ]
+  },
+  {
+   "name": "Miko_bell",
+   "parent": "上半身",
+   "pos": [
+    0.6253,
+    10.9398,
+    -0.9925
+   ]
+  },
+  {
+   "name": "Miko_bell.001",
+   "parent": "Miko_bell",
+   "pos": [
+    0.6806,
+    10.4633,
+    -1.0222
+   ]
+  },
+  {
+   "name": "Miko_bell.002",
+   "parent": "Miko_bell.001",
+   "pos": [
+    0.7414,
+    9.9868,
+    -1.0657
+   ]
+  },
+  {
+   "name": "Miko_bell.003",
+   "parent": "Miko_bell.002",
+   "pos": [
+    0.8243,
+    9.5102,
+    -1.1092
+   ]
+  },
+  {
+   "name": "Miko_bell.003_end",
+   "parent": "Miko_bell.003",
+   "pos": [
+    0.9127,
+    9.0337,
+    -1.1803
+   ]
+  },
+  {
+   "name": "上半身2",
+   "parent": "上半身",
+   "pos": [
+    -0.0,
+    11.234,
+    -0.267
+   ]
+  },
+  {
+   "name": "右肩",
+   "parent": "上半身2",
+   "pos": [
+    -0.5401,
+    13.0176,
+    0.2311
+   ]
+  },
+  {
+   "name": "右腕",
+   "parent": "右肩",
+   "pos": [
+    -1.0015,
+    13.0176,
+    0.2311
+   ]
+  },
+  {
+   "name": "UpperArm_R_twist",
+   "parent": "右腕",
+   "pos": [
+    -3.1537,
+    11.7751,
+    0.2311
+   ]
+  },
+  {
+   "name": "UpperArm_bell_R",
+   "parent": "右腕",
+   "pos": [
+    -2.1675,
+    12.823,
+    0.179
+   ]
+  },
+  {
+   "name": "UpperArm_bell_R.001",
+   "parent": "UpperArm_bell_R",
+   "pos": [
+    -2.4879,
+    12.9015,
+    0.179
+   ]
+  },
+  {
+   "name": "右ひじ",
+   "parent": "右腕",
+   "pos": [
+    -3.1537,
+    11.7751,
+    0.2311
+   ]
+  },
+  {
+   "name": "Sode_R",
+   "parent": "右ひじ",
+   "pos": [
+    -4.0012,
+    10.6894,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_R.001",
+   "parent": "Sode_R",
+   "pos": [
+    -3.4704,
+    9.7701,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_R.002",
+   "parent": "Sode_R.001",
+   "pos": [
+    -2.9397,
+    8.8509,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_R.003",
+   "parent": "Sode_R.002",
+   "pos": [
+    -2.4655,
+    8.0295,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_R.004",
+   "parent": "Sode_R.003",
+   "pos": [
+    -2.0307,
+    7.2764,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_R.004_end",
+   "parent": "Sode_R.004",
+   "pos": [
+    -1.551,
+    6.4456,
+    0.1746
+   ]
+  },
+  {
+   "name": "LowerArm_R_twist",
+   "parent": "右ひじ",
+   "pos": [
+    -5.1987,
+    10.5944,
+    0.1746
+   ]
+  },
+  {
+   "name": "右手首",
+   "parent": "右ひじ",
+   "pos": [
+    -5.1987,
+    10.5944,
+    0.1746
+   ]
+  },
+  {
+   "name": "右親指０",
+   "parent": "右手首",
+   "pos": [
+    -5.4431,
+    10.285,
+    -0.1366
+   ]
+  },
+  {
+   "name": "右親指１",
+   "parent": "右親指０",
+   "pos": [
+    -5.5882,
+    10.1635,
+    -0.2341
+   ]
+  },
+  {
+   "name": "右親指２",
+   "parent": "右親指１",
+   "pos": [
+    -5.7147,
+    10.0546,
+    -0.3048
+   ]
+  },
+  {
+   "name": "右薬指１",
+   "parent": "右手首",
+   "pos": [
+    -5.8298,
+    10.1951,
+    0.2572
+   ]
+  },
+  {
+   "name": "右薬指２",
+   "parent": "右薬指１",
+   "pos": [
+    -6.0551,
+    10.065,
+    0.2572
+   ]
+  },
+  {
+   "name": "右薬指３",
+   "parent": "右薬指２",
+   "pos": [
+    -6.2437,
+    9.9562,
+    0.2572
+   ]
+  },
+  {
+   "name": "右中指１",
+   "parent": "右手首",
+   "pos": [
+    -5.8541,
+    10.2063,
+    0.0924
+   ]
+  },
+  {
+   "name": "右中指２",
+   "parent": "右中指１",
+   "pos": [
+    -6.0963,
+    10.0664,
+    0.0924
+   ]
+  },
+  {
+   "name": "右中指３",
+   "parent": "右中指２",
+   "pos": [
+    -6.2938,
+    9.9524,
+    0.0924
+   ]
+  },
+  {
+   "name": "右小指１",
+   "parent": "右手首",
+   "pos": [
+    -5.7785,
+    10.1582,
+    0.4115
+   ]
+  },
+  {
+   "name": "右小指２",
+   "parent": "右小指１",
+   "pos": [
+    -5.9635,
+    10.0514,
+    0.4115
+   ]
+  },
+  {
+   "name": "右小指３",
+   "parent": "右小指２",
+   "pos": [
+    -6.118,
+    9.9622,
+    0.4115
+   ]
+  },
+  {
+   "name": "右人指１",
+   "parent": "右手首",
+   "pos": [
+    -5.8273,
+    10.195,
+    -0.0781
+   ]
+  },
+  {
+   "name": "右人指２",
+   "parent": "右人指１",
+   "pos": [
+    -6.0445,
+    10.0696,
+    -0.0781
+   ]
+  },
+  {
+   "name": "右人指３",
+   "parent": "右人指２",
+   "pos": [
+    -6.2234,
+    9.9663,
+    -0.0781
+   ]
+  },
+  {
+   "name": "左肩",
+   "parent": "上半身2",
+   "pos": [
+    0.5401,
+    13.0176,
+    0.2311
+   ]
+  },
+  {
+   "name": "左腕",
+   "parent": "左肩",
+   "pos": [
+    1.0015,
+    13.0176,
+    0.2311
+   ]
+  },
+  {
+   "name": "UpperArm_L_twist",
+   "parent": "左腕",
+   "pos": [
+    3.1537,
+    11.7751,
+    0.2311
+   ]
+  },
+  {
+   "name": "UpperArm_bell_L",
+   "parent": "左腕",
+   "pos": [
+    2.1675,
+    12.823,
+    0.179
+   ]
+  },
+  {
+   "name": "UpperArm_bell_L.001",
+   "parent": "UpperArm_bell_L",
+   "pos": [
+    2.4879,
+    12.9015,
+    0.179
+   ]
+  },
+  {
+   "name": "左ひじ",
+   "parent": "左腕",
+   "pos": [
+    3.1537,
+    11.7751,
+    0.2311
+   ]
+  },
+  {
+   "name": "Sode_L",
+   "parent": "左ひじ",
+   "pos": [
+    4.0012,
+    10.6894,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_L.001",
+   "parent": "Sode_L",
+   "pos": [
+    3.4704,
+    9.7701,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_L.002",
+   "parent": "Sode_L.001",
+   "pos": [
+    2.9397,
+    8.8509,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_L.003",
+   "parent": "Sode_L.002",
+   "pos": [
+    2.4655,
+    8.0295,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_L.004",
+   "parent": "Sode_L.003",
+   "pos": [
+    2.0307,
+    7.2764,
+    0.1746
+   ]
+  },
+  {
+   "name": "Sode_L.004_end",
+   "parent": "Sode_L.004",
+   "pos": [
+    1.551,
+    6.4456,
+    0.1746
+   ]
+  },
+  {
+   "name": "LowerArm_L_twist",
+   "parent": "左ひじ",
+   "pos": [
+    5.1987,
+    10.5944,
+    0.1746
+   ]
+  },
+  {
+   "name": "左手首",
+   "parent": "左ひじ",
+   "pos": [
+    5.1987,
+    10.5944,
+    0.1746
+   ]
+  },
+  {
+   "name": "左親指０",
+   "parent": "左手首",
+   "pos": [
+    5.4431,
+    10.285,
+    -0.1366
+   ]
+  },
+  {
+   "name": "左親指１",
+   "parent": "左親指０",
+   "pos": [
+    5.5882,
+    10.1635,
+    -0.2341
+   ]
+  },
+  {
+   "name": "左親指２",
+   "parent": "左親指１",
+   "pos": [
+    5.7147,
+    10.0546,
+    -0.3048
+   ]
+  },
+  {
+   "name": "左薬指１",
+   "parent": "左手首",
+   "pos": [
+    5.8298,
+    10.1951,
+    0.2572
+   ]
+  },
+  {
+   "name": "左薬指２",
+   "parent": "左薬指１",
+   "pos": [
+    6.0551,
+    10.065,
+    0.2572
+   ]
+  },
+  {
+   "name": "左薬指３",
+   "parent": "左薬指２",
+   "pos": [
+    6.2437,
+    9.9562,
+    0.2572
+   ]
+  },
+  {
+   "name": "左中指１",
+   "parent": "左手首",
+   "pos": [
+    5.8541,
+    10.2063,
+    0.0924
+   ]
+  },
+  {
+   "name": "左中指２",
+   "parent": "左中指１",
+   "pos": [
+    6.0963,
+    10.0664,
+    0.0924
+   ]
+  },
+  {
+   "name": "左中指３",
+   "parent": "左中指２",
+   "pos": [
+    6.2938,
+    9.9524,
+    0.0924
+   ]
+  },
+  {
+   "name": "左小指１",
+   "parent": "左手首",
+   "pos": [
+    5.7785,
+    10.1582,
+    0.4115
+   ]
+  },
+  {
+   "name": "左小指２",
+   "parent": "左小指１",
+   "pos": [
+    5.9635,
+    10.0514,
+    0.4115
+   ]
+  },
+  {
+   "name": "左小指３",
+   "parent": "左小指２",
+   "pos": [
+    6.118,
+    9.9622,
+    0.4115
+   ]
+  },
+  {
+   "name": "左人指１",
+   "parent": "左手首",
+   "pos": [
+    5.8273,
+    10.195,
+    -0.0781
+   ]
+  },
+  {
+   "name": "左人指２",
+   "parent": "左人指１",
+   "pos": [
+    6.0445,
+    10.0696,
+    -0.0781
+   ]
+  },
+  {
+   "name": "左人指３",
+   "parent": "左人指２",
+   "pos": [
+    6.2234,
+    9.9663,
+    -0.0781
+   ]
+  },
+  {
+   "name": "Sera_ribbon_R",
+   "parent": "上半身2",
+   "pos": [
+    -0.0666,
+    12.2013,
+    -1.1355
+   ]
+  },
+  {
+   "name": "Sera_ribbon_R.001",
+   "parent": "Sera_ribbon_R",
+   "pos": [
+    -0.2707,
+    11.8264,
+    -1.2376
+   ]
+  },
+  {
+   "name": "Sera_ribbon_R.002",
+   "parent": "Sera_ribbon_R.001",
+   "pos": [
+    -0.4481,
+    11.4279,
+    -1.2299
+   ]
+  },
+  {
+   "name": "Sera_ribbon_R.003",
+   "parent": "Sera_ribbon_R.002",
+   "pos": [
+    -0.5724,
+    11.0661,
+    -1.2108
+   ]
+  },
+  {
+   "name": "Sera_ribbon_R.003_end",
+   "parent": "Sera_ribbon_R.003",
+   "pos": [
+    -0.7366,
+    10.7203,
+    -1.2904
+   ]
+  },
+  {
+   "name": "Sera_ribbon_L",
+   "parent": "上半身2",
+   "pos": [
+    0.0666,
+    12.2013,
+    -1.1355
+   ]
+  },
+  {
+   "name": "Sera_ribbon_L.001",
+   "parent": "Sera_ribbon_L",
+   "pos": [
+    0.2707,
+    11.8264,
+    -1.2376
+   ]
+  },
+  {
+   "name": "Sera_ribbon_L.002",
+   "parent": "Sera_ribbon_L.001",
+   "pos": [
+    0.4481,
+    11.4279,
+    -1.2299
+   ]
+  },
+  {
+   "name": "Sera_ribbon_L.003",
+   "parent": "Sera_ribbon_L.002",
+   "pos": [
+    0.5724,
+    11.0661,
+    -1.2108
+   ]
+  },
+  {
+   "name": "Sera_ribbon_L.003_end",
+   "parent": "Sera_ribbon_L.003",
+   "pos": [
+    0.7366,
+    10.7203,
+    -1.2904
+   ]
+  },
+  {
+   "name": "首",
+   "parent": "上半身2",
+   "pos": [
+    0.0,
+    13.381,
+    0.0826
+   ]
+  },
+  {
+   "name": "頭",
+   "parent": "首",
+   "pos": [
+    0.0,
+    13.9946,
+    0.0396
+   ]
+  },
+  {
+   "name": "Tang",
+   "parent": "頭",
+   "pos": [
+    -0.0,
+    14.0176,
+    -0.9282
+   ]
+  },
+  {
+   "name": "Tang.001",
+   "parent": "Tang",
+   "pos": [
+    -0.0,
+    13.9623,
+    -0.9932
+   ]
+  },
+  {
+   "name": "Tang.001_end",
+   "parent": "Tang.001",
+   "pos": [
+    -0.0,
+    13.892,
+    -1.0083
+   ]
+  },
+  {
+   "name": "Rindo_hairbase",
+   "parent": "頭",
+   "pos": [
+    -0.0,
+    14.2809,
+    -0.0427
+   ]
+  },
+  {
+   "name": "Hair_twin_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.6178,
+    13.5787,
+    0.7141
+   ]
+  },
+  {
+   "name": "Hair_twin_R.001",
+   "parent": "Hair_twin_R",
+   "pos": [
+    -0.955,
+    12.8302,
+    0.832
+   ]
+  },
+  {
+   "name": "Hair_twin_R.002",
+   "parent": "Hair_twin_R.001",
+   "pos": [
+    -1.6583,
+    11.8035,
+    1.2032
+   ]
+  },
+  {
+   "name": "Hair_twin_R.003",
+   "parent": "Hair_twin_R.002",
+   "pos": [
+    -2.6921,
+    10.7551,
+    1.9152
+   ]
+  },
+  {
+   "name": "Hair_twin_R.004",
+   "parent": "Hair_twin_R.003",
+   "pos": [
+    -3.8413,
+    9.4874,
+    2.7755
+   ]
+  },
+  {
+   "name": "Hair_twin_R.005",
+   "parent": "Hair_twin_R.004",
+   "pos": [
+    -4.4693,
+    8.2366,
+    3.5585
+   ]
+  },
+  {
+   "name": "Hair_twin_R.006",
+   "parent": "Hair_twin_R.005",
+   "pos": [
+    -4.6523,
+    6.8762,
+    3.9517
+   ]
+  },
+  {
+   "name": "Hair_twin_R.007",
+   "parent": "Hair_twin_R.006",
+   "pos": [
+    -4.2066,
+    5.5404,
+    3.7211
+   ]
+  },
+  {
+   "name": "Hair_twin_R.007_end",
+   "parent": "Hair_twin_R.007",
+   "pos": [
+    -3.2559,
+    4.511,
+    2.8511
+   ]
+  },
+  {
+   "name": "Hair_twin_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.6178,
+    13.5787,
+    0.7141
+   ]
+  },
+  {
+   "name": "Hair_twin_L.001",
+   "parent": "Hair_twin_L",
+   "pos": [
+    0.955,
+    12.8302,
+    0.832
+   ]
+  },
+  {
+   "name": "Hair_twin_L.002",
+   "parent": "Hair_twin_L.001",
+   "pos": [
+    1.6583,
+    11.8035,
+    1.2032
+   ]
+  },
+  {
+   "name": "Hair_twin_L.003",
+   "parent": "Hair_twin_L.002",
+   "pos": [
+    2.6921,
+    10.7551,
+    1.9152
+   ]
+  },
+  {
+   "name": "Hair_twin_L.004",
+   "parent": "Hair_twin_L.003",
+   "pos": [
+    3.8413,
+    9.4874,
+    2.7755
+   ]
+  },
+  {
+   "name": "Hair_twin_L.005",
+   "parent": "Hair_twin_L.004",
+   "pos": [
+    4.4693,
+    8.2366,
+    3.5585
+   ]
+  },
+  {
+   "name": "Hair_twin_L.006",
+   "parent": "Hair_twin_L.005",
+   "pos": [
+    4.6523,
+    6.8763,
+    3.9517
+   ]
+  },
+  {
+   "name": "Hair_twin_L.007",
+   "parent": "Hair_twin_L.006",
+   "pos": [
+    4.2066,
+    5.5404,
+    3.7211
+   ]
+  },
+  {
+   "name": "Hair_twin_L.007_end",
+   "parent": "Hair_twin_L.007",
+   "pos": [
+    3.2559,
+    4.511,
+    2.8511
+   ]
+  },
+  {
+   "name": "Hair_side_2_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.8421,
+    14.2353,
+    -0.1755
+   ]
+  },
+  {
+   "name": "Hair_side_2_R.001",
+   "parent": "Hair_side_2_R",
+   "pos": [
+    -0.6505,
+    13.746,
+    -0.3551
+   ]
+  },
+  {
+   "name": "Hair_side_2_R.002",
+   "parent": "Hair_side_2_R.001",
+   "pos": [
+    -0.5621,
+    13.3645,
+    -0.5932
+   ]
+  },
+  {
+   "name": "Hair_side_2_R.002_end",
+   "parent": "Hair_side_2_R.002",
+   "pos": [
+    -0.5512,
+    13.0105,
+    -0.9326
+   ]
+  },
+  {
+   "name": "Hair_side_2_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.8421,
+    14.2353,
+    -0.1755
+   ]
+  },
+  {
+   "name": "Hair_side_2_L.001",
+   "parent": "Hair_side_2_L",
+   "pos": [
+    0.6505,
+    13.746,
+    -0.3551
+   ]
+  },
+  {
+   "name": "Hair_side_2_L.002",
+   "parent": "Hair_side_2_L.001",
+   "pos": [
+    0.5621,
+    13.3645,
+    -0.5932
+   ]
+  },
+  {
+   "name": "Hair_side_2_L.002_end",
+   "parent": "Hair_side_2_L.002",
+   "pos": [
+    0.5512,
+    13.0105,
+    -0.9326
+   ]
+  },
+  {
+   "name": "Hair_side_1_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -1.0443,
+    14.9446,
+    -0.569
+   ]
+  },
+  {
+   "name": "Hair_side_1_R.001",
+   "parent": "Hair_side_1_R",
+   "pos": [
+    -0.9876,
+    14.5125,
+    -0.577
+   ]
+  },
+  {
+   "name": "Hair_side_1_R.002",
+   "parent": "Hair_side_1_R.001",
+   "pos": [
+    -0.8496,
+    14.114,
+    -0.6494
+   ]
+  },
+  {
+   "name": "Hair_side_1_R.003",
+   "parent": "Hair_side_1_R.002",
+   "pos": [
+    -0.6708,
+    13.8075,
+    -0.7644
+   ]
+  },
+  {
+   "name": "Hair_side_1_R.003_end",
+   "parent": "Hair_side_1_R.003",
+   "pos": [
+    -0.3643,
+    13.4856,
+    -0.9347
+   ]
+  },
+  {
+   "name": "Hair_side_1_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    1.0443,
+    14.9446,
+    -0.569
+   ]
+  },
+  {
+   "name": "Hair_side_1_L.001",
+   "parent": "Hair_side_1_L",
+   "pos": [
+    0.9876,
+    14.5125,
+    -0.577
+   ]
+  },
+  {
+   "name": "Hair_side_1_L.002",
+   "parent": "Hair_side_1_L.001",
+   "pos": [
+    0.8496,
+    14.114,
+    -0.6494
+   ]
+  },
+  {
+   "name": "Hair_side_1_L.003",
+   "parent": "Hair_side_1_L.002",
+   "pos": [
+    0.6708,
+    13.8075,
+    -0.7644
+   ]
+  },
+  {
+   "name": "Hair_side_1_L.003_end",
+   "parent": "Hair_side_1_L.003",
+   "pos": [
+    0.3643,
+    13.4856,
+    -0.9347
+   ]
+  },
+  {
+   "name": "Hair_ribbonbase_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -1.1466,
+    15.4968,
+    0.0486
+   ]
+  },
+  {
+   "name": "Hair_ribbon_R",
+   "parent": "Hair_ribbonbase_R",
+   "pos": [
+    -1.1656,
+    15.4428,
+    0.0579
+   ]
+  },
+  {
+   "name": "Hair_Ribbon_1_R.001",
+   "parent": "Hair_ribbon_R",
+   "pos": [
+    -1.3565,
+    14.9287,
+    0.2883
+   ]
+  },
+  {
+   "name": "Hair_Ribbon_1_R.001_end",
+   "parent": "Hair_Ribbon_1_R.001",
+   "pos": [
+    -1.6932,
+    14.337,
+    0.5579
+   ]
+  },
+  {
+   "name": "Hair_bell_2_R",
+   "parent": "Hair_ribbonbase_R",
+   "pos": [
+    -1.1337,
+    15.5088,
+    0.068
+   ]
+  },
+  {
+   "name": "Hair_bell_2_R_end",
+   "parent": "Hair_bell_2_R",
+   "pos": [
+    -1.4476,
+    15.5565,
+    0.2877
+   ]
+  },
+  {
+   "name": "Hair_bell_1_R",
+   "parent": "Hair_ribbonbase_R",
+   "pos": [
+    -1.1376,
+    15.4887,
+    0.0191
+   ]
+  },
+  {
+   "name": "Hair_bell_1_R_end",
+   "parent": "Hair_bell_1_R",
+   "pos": [
+    -1.4571,
+    15.3127,
+    -0.1259
+   ]
+  },
+  {
+   "name": "Hair_ribbonbase_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    1.1466,
+    15.4968,
+    0.0486
+   ]
+  },
+  {
+   "name": "Hair_ribbon_L",
+   "parent": "Hair_ribbonbase_L",
+   "pos": [
+    1.1654,
+    15.4427,
+    0.0579
+   ]
+  },
+  {
+   "name": "Hair_Ribbon_1_L.001",
+   "parent": "Hair_ribbon_L",
+   "pos": [
+    1.354,
+    14.9278,
+    0.2883
+   ]
+  },
+  {
+   "name": "Hair_Ribbon_1_L.001_end",
+   "parent": "Hair_Ribbon_1_L.001",
+   "pos": [
+    1.688,
+    14.3346,
+    0.5579
+   ]
+  },
+  {
+   "name": "Hair_bell_2_L",
+   "parent": "Hair_ribbonbase_L",
+   "pos": [
+    1.1337,
+    15.5089,
+    0.068
+   ]
+  },
+  {
+   "name": "Hair_bell_2_L_end",
+   "parent": "Hair_bell_2_L",
+   "pos": [
+    1.4478,
+    15.5552,
+    0.2877
+   ]
+  },
+  {
+   "name": "Hair_bell_1_L",
+   "parent": "Hair_ribbonbase_L",
+   "pos": [
+    1.1376,
+    15.4888,
+    0.0191
+   ]
+  },
+  {
+   "name": "Hair_bell_1_L_end",
+   "parent": "Hair_bell_1_L",
+   "pos": [
+    1.4563,
+    15.3113,
+    -0.1259
+   ]
+  },
+  {
+   "name": "Hair_front_2_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.6688,
+    15.2877,
+    -0.9812
+   ]
+  },
+  {
+   "name": "Hair_front_2_R_end",
+   "parent": "Hair_front_2_R",
+   "pos": [
+    -0.9888,
+    14.7478,
+    -0.7918
+   ]
+  },
+  {
+   "name": "Hair_front_2_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.6688,
+    15.2877,
+    -0.9812
+   ]
+  },
+  {
+   "name": "Hair_front_2_L_end",
+   "parent": "Hair_front_2_L",
+   "pos": [
+    0.9888,
+    14.7478,
+    -0.7918
+   ]
+  },
+  {
+   "name": "Hair_front_1",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.0081,
+    15.2877,
+    -1.1943
+   ]
+  },
+  {
+   "name": "Hair_front_1.001",
+   "parent": "Hair_front_1",
+   "pos": [
+    0.0203,
+    14.8557,
+    -1.147
+   ]
+  },
+  {
+   "name": "Hair_front_1.001_end",
+   "parent": "Hair_front_1.001",
+   "pos": [
+    0.1137,
+    14.4768,
+    -0.9981
+   ]
+  },
+  {
+   "name": "Hair_back_4",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.0,
+    15.0934,
+    1.3881
+   ]
+  },
+  {
+   "name": "Hair_back_4.001",
+   "parent": "Hair_back_4",
+   "pos": [
+    0.0,
+    14.6477,
+    1.5856
+   ]
+  },
+  {
+   "name": "Hair_back_4.001_end",
+   "parent": "Hair_back_4.001",
+   "pos": [
+    0.0,
+    14.2066,
+    1.8464
+   ]
+  },
+  {
+   "name": "Hair_back_3_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.7737,
+    14.9753,
+    1.1972
+   ]
+  },
+  {
+   "name": "Hair_back_3_R.001",
+   "parent": "Hair_back_3_R",
+   "pos": [
+    -0.8238,
+    14.4948,
+    1.3933
+   ]
+  },
+  {
+   "name": "Hair_back_3_R.001_end",
+   "parent": "Hair_back_3_R.001",
+   "pos": [
+    -0.9464,
+    14.0902,
+    1.6144
+   ]
+  },
+  {
+   "name": "Hair_back_3_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.7737,
+    14.9753,
+    1.1972
+   ]
+  },
+  {
+   "name": "Hair_back_3_L.001",
+   "parent": "Hair_back_3_L",
+   "pos": [
+    0.8238,
+    14.4948,
+    1.3933
+   ]
+  },
+  {
+   "name": "Hair_back_3_L.001_end",
+   "parent": "Hair_back_3_L.001",
+   "pos": [
+    0.9464,
+    14.0902,
+    1.6144
+   ]
+  },
+  {
+   "name": "Hair_back_2_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -1.1463,
+    14.9203,
+    0.7517
+   ]
+  },
+  {
+   "name": "Hair_back_2_R.001",
+   "parent": "Hair_back_2_R",
+   "pos": [
+    -1.2464,
+    14.3808,
+    0.868
+   ]
+  },
+  {
+   "name": "Hair_back_2_R.001_end",
+   "parent": "Hair_back_2_R.001",
+   "pos": [
+    -1.4137,
+    13.8356,
+    1.1321
+   ]
+  },
+  {
+   "name": "Hair_back_2_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    1.1463,
+    14.9203,
+    0.7517
+   ]
+  },
+  {
+   "name": "Hair_back_2_L.001",
+   "parent": "Hair_back_2_L",
+   "pos": [
+    1.2464,
+    14.3808,
+    0.868
+   ]
+  },
+  {
+   "name": "Hair_back_2_L.001_end",
+   "parent": "Hair_back_2_L.001",
+   "pos": [
+    1.4137,
+    13.8356,
+    1.1321
+   ]
+  },
+  {
+   "name": "Hair_back_1_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -1.2686,
+    14.8751,
+    0.3115
+   ]
+  },
+  {
+   "name": "Hair_back_1_R.001",
+   "parent": "Hair_back_1_R",
+   "pos": [
+    -1.3588,
+    14.3111,
+    0.3083
+   ]
+  },
+  {
+   "name": "Hair_back_1_R.001_end",
+   "parent": "Hair_back_1_R.001",
+   "pos": [
+    -1.5555,
+    13.7637,
+    0.2146
+   ]
+  },
+  {
+   "name": "Hair_back_1_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    1.2686,
+    14.8751,
+    0.3115
+   ]
+  },
+  {
+   "name": "Hair_back_1_L.001",
+   "parent": "Hair_back_1_L",
+   "pos": [
+    1.3588,
+    14.3111,
+    0.3083
+   ]
+  },
+  {
+   "name": "Hair_back_1_L.001_end",
+   "parent": "Hair_back_1_L.001",
+   "pos": [
+    1.5555,
+    13.7637,
+    0.2146
+   ]
+  },
+  {
+   "name": "Hair_ahoge",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.0211,
+    16.1217,
+    -0.7124
+   ]
+  },
+  {
+   "name": "Hair_ahoge.001",
+   "parent": "Hair_ahoge",
+   "pos": [
+    -0.0565,
+    16.2959,
+    -0.8049
+   ]
+  },
+  {
+   "name": "Hair_ahoge.002",
+   "parent": "Hair_ahoge.001",
+   "pos": [
+    -0.0855,
+    16.4826,
+    -0.8417
+   ]
+  },
+  {
+   "name": "Hair_ahoge.003",
+   "parent": "Hair_ahoge.002",
+   "pos": [
+    -0.0657,
+    16.6606,
+    -0.7959
+   ]
+  },
+  {
+   "name": "Hair_ahoge.004",
+   "parent": "Hair_ahoge.003",
+   "pos": [
+    0.015,
+    16.7627,
+    -0.6792
+   ]
+  },
+  {
+   "name": "Hair_ahoge.004_end",
+   "parent": "Hair_ahoge.004",
+   "pos": [
+    0.1265,
+    16.7821,
+    -0.5293
+   ]
+  },
+  {
+   "name": "Ear_R",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    -0.7766,
+    16.097,
+    -0.0184
+   ]
+  },
+  {
+   "name": "Ear_R.001",
+   "parent": "Ear_R",
+   "pos": [
+    -0.989,
+    16.5294,
+    -0.1511
+   ]
+  },
+  {
+   "name": "Ear_R.002",
+   "parent": "Ear_R.001",
+   "pos": [
+    -1.1736,
+    17.0277,
+    -0.2677
+   ]
+  },
+  {
+   "name": "Ear_R.002_end",
+   "parent": "Ear_R.002",
+   "pos": [
+    -1.3102,
+    17.6091,
+    -0.3524
+   ]
+  },
+  {
+   "name": "Ear_L",
+   "parent": "Rindo_hairbase",
+   "pos": [
+    0.7766,
+    16.097,
+    -0.0184
+   ]
+  },
+  {
+   "name": "Ear_L.001",
+   "parent": "Ear_L",
+   "pos": [
+    0.989,
+    16.5294,
+    -0.1511
+   ]
+  },
+  {
+   "name": "Ear_L.002",
+   "parent": "Ear_L.001",
+   "pos": [
+    1.1736,
+    17.0277,
+    -0.2677
+   ]
+  },
+  {
+   "name": "Ear_L.002_end",
+   "parent": "Ear_L.002",
+   "pos": [
+    1.3102,
+    17.6091,
+    -0.3524
+   ]
+  },
+  {
+   "name": "右目",
+   "parent": "頭",
+   "pos": [
+    -0.3622,
+    14.5993,
+    -0.2569
+   ]
+  },
+  {
+   "name": "左目",
+   "parent": "頭",
+   "pos": [
+    0.3622,
+    14.5993,
+    -0.2569
+   ]
+  },
+  {
+   "name": "Breast_R",
+   "parent": "上半身2",
+   "pos": [
+    -0.4566,
+    12.3021,
+    -0.5509
+   ]
+  },
+  {
+   "name": "Breast_R_end",
+   "parent": "Breast_R",
+   "pos": [
+    -0.6072,
+    12.2393,
+    -1.0152
+   ]
+  },
+  {
+   "name": "Breast_L",
+   "parent": "上半身2",
+   "pos": [
+    0.4566,
+    12.3021,
+    -0.5509
+   ]
+  },
+  {
+   "name": "Breast_L_end",
+   "parent": "Breast_L",
+   "pos": [
+    0.6072,
+    12.2393,
+    -1.0152
+   ]
+  },
+  {
+   "name": "Skirt_root",
+   "parent": "腰",
+   "pos": [
+    -0.0,
+    10.1202,
+    -0.2704
+   ]
+  },
+  {
+   "name": "Skirt_06",
+   "parent": "Skirt_root",
+   "pos": [
+    0.0,
+    10.2433,
+    0.9841
+   ]
+  },
+  {
+   "name": "Skirt_06.001",
+   "parent": "Skirt_06",
+   "pos": [
+    0.0,
+    9.3056,
+    1.581
+   ]
+  },
+  {
+   "name": "Skirt_06.001_end",
+   "parent": "Skirt_06.001",
+   "pos": [
+    0.0,
+    8.0131,
+    2.2473
+   ]
+  },
+  {
+   "name": "Skirt_05_R",
+   "parent": "Skirt_root",
+   "pos": [
+    -0.7301,
+    10.198,
+    0.8361
+   ]
+  },
+  {
+   "name": "Skirt_05_R.001",
+   "parent": "Skirt_05_R",
+   "pos": [
+    -0.934,
+    9.2416,
+    1.354
+   ]
+  },
+  {
+   "name": "Skirt_05_R.001_end",
+   "parent": "Skirt_05_R.001",
+   "pos": [
+    -1.1675,
+    7.9578,
+    1.9533
+   ]
+  },
+  {
+   "name": "Skirt_05_L",
+   "parent": "Skirt_root",
+   "pos": [
+    0.7301,
+    10.198,
+    0.8361
+   ]
+  },
+  {
+   "name": "Skirt_05_L.001",
+   "parent": "Skirt_05_L",
+   "pos": [
+    0.934,
+    9.2416,
+    1.354
+   ]
+  },
+  {
+   "name": "Skirt_05_L.001_end",
+   "parent": "Skirt_05_L.001",
+   "pos": [
+    1.1675,
+    7.9578,
+    1.9533
+   ]
+  },
+  {
+   "name": "Skirt_04_R",
+   "parent": "Skirt_root",
+   "pos": [
+    -1.2113,
+    10.1085,
+    0.4591
+   ]
+  },
+  {
+   "name": "Skirt_04_R.001",
+   "parent": "Skirt_04_R",
+   "pos": [
+    -1.5499,
+    9.1282,
+    0.8321
+   ]
+  },
+  {
+   "name": "Skirt_04_R.001_end",
+   "parent": "Skirt_04_R.001",
+   "pos": [
+    -1.9377,
+    7.8657,
+    1.2888
+   ]
+  },
+  {
+   "name": "Skirt_04_L",
+   "parent": "Skirt_root",
+   "pos": [
+    1.2113,
+    10.1085,
+    0.4591
+   ]
+  },
+  {
+   "name": "Skirt_04_L.001",
+   "parent": "Skirt_04_L",
+   "pos": [
+    1.5499,
+    9.1282,
+    0.8321
+   ]
+  },
+  {
+   "name": "Skirt_04_L.001_end",
+   "parent": "Skirt_04_L.001",
+   "pos": [
+    1.9377,
+    7.8657,
+    1.2888
+   ]
+  },
+  {
+   "name": "Skirt_03_R",
+   "parent": "Skirt_root",
+   "pos": [
+    -1.3897,
+    9.9712,
+    -0.2952
+   ]
+  },
+  {
+   "name": "Skirt_03_R.001",
+   "parent": "Skirt_03_R",
+   "pos": [
+    -1.7778,
+    8.9705,
+    -0.1951
+   ]
+  },
+  {
+   "name": "Skirt_03_R.001_end",
+   "parent": "Skirt_03_R.001",
+   "pos": [
+    -2.2391,
+    7.6731,
+    -0.0582
+   ]
+  },
+  {
+   "name": "Skirt_03_L",
+   "parent": "Skirt_root",
+   "pos": [
+    1.3897,
+    9.9712,
+    -0.2952
+   ]
+  },
+  {
+   "name": "Skirt_03_L.001",
+   "parent": "Skirt_03_L",
+   "pos": [
+    1.7778,
+    8.9705,
+    -0.1951
+   ]
+  },
+  {
+   "name": "Skirt_03_L.001_end",
+   "parent": "Skirt_03_L.001",
+   "pos": [
+    2.2391,
+    7.6731,
+    -0.0582
+   ]
+  },
+  {
+   "name": "Skirt_02_R",
+   "parent": "Skirt_root",
+   "pos": [
+    -1.0985,
+    9.8961,
+    -0.7366
+   ]
+  },
+  {
+   "name": "Skirt_02_R.001",
+   "parent": "Skirt_02_R",
+   "pos": [
+    -1.3927,
+    8.8693,
+    -0.7946
+   ]
+  },
+  {
+   "name": "Skirt_02_R.001_end",
+   "parent": "Skirt_02_R.001",
+   "pos": [
+    -1.7697,
+    7.5838,
+    -0.8774
+   ]
+  },
+  {
+   "name": "Skirt_02_L",
+   "parent": "Skirt_root",
+   "pos": [
+    1.0985,
+    9.8961,
+    -0.7366
+   ]
+  },
+  {
+   "name": "Skirt_02_L.001",
+   "parent": "Skirt_02_L",
+   "pos": [
+    1.3927,
+    8.8693,
+    -0.7946
+   ]
+  },
+  {
+   "name": "Skirt_02_L.001_end",
+   "parent": "Skirt_02_L.001",
+   "pos": [
+    1.7697,
+    7.5838,
+    -0.8773
+   ]
+  },
+  {
+   "name": "Skirt_01_R",
+   "parent": "Skirt_root",
+   "pos": [
+    -0.5558,
+    9.8461,
+    -1.0291
+   ]
+  },
+  {
+   "name": "Skirt_01_R.001",
+   "parent": "Skirt_01_R",
+   "pos": [
+    -0.7108,
+    8.8255,
+    -1.2025
+   ]
+  },
+  {
+   "name": "Skirt_01_R.001_end",
+   "parent": "Skirt_01_R.001",
+   "pos": [
+    -0.8951,
+    7.5238,
+    -1.4219
+   ]
+  },
+  {
+   "name": "Skirt_01_L",
+   "parent": "Skirt_root",
+   "pos": [
+    0.5558,
+    9.8461,
+    -1.0291
+   ]
+  },
+  {
+   "name": "Skirt_01_L.001",
+   "parent": "Skirt_01_L",
+   "pos": [
+    0.7108,
+    8.8255,
+    -1.2024
+   ]
+  },
+  {
+   "name": "Skirt_01_L.001_end",
+   "parent": "Skirt_01_L.001",
+   "pos": [
+    0.8951,
+    7.5237,
+    -1.4217
+   ]
+  },
+  {
+   "name": "Skirt_00",
+   "parent": "Skirt_root",
+   "pos": [
+    -0.0,
+    9.8327,
+    -1.1069
+   ]
+  },
+  {
+   "name": "Skirt_00.001",
+   "parent": "Skirt_00",
+   "pos": [
+    -0.0,
+    8.8099,
+    -1.3098
+   ]
+  },
+  {
+   "name": "Skirt_00.001_end",
+   "parent": "Skirt_00.001",
+   "pos": [
+    -0.0,
+    7.5076,
+    -1.5672
+   ]
+  },
+  {
+   "name": "Butt_R",
+   "parent": "腰",
+   "pos": [
+    -0.6334,
+    9.2959,
+    -0.0356
+   ]
+  },
+  {
+   "name": "Butt_R_end",
+   "parent": "Butt_R",
+   "pos": [
+    -0.7709,
+    9.1993,
+    0.3867
+   ]
+  },
+  {
+   "name": "Butt_L",
+   "parent": "腰",
+   "pos": [
+    0.6334,
+    9.2959,
+    -0.0356
+   ]
+  },
+  {
+   "name": "Butt_L_end",
+   "parent": "Butt_L",
+   "pos": [
+    0.7709,
+    9.1993,
+    0.3867
+   ]
+  },
+  {
+   "name": "左足ＩＫ",
+   "parent": "全ての親",
+   "pos": [
+    0.7724,
+    1.0345,
+    0.148
+   ]
+  },
+  {
+   "name": "左つま先ＩＫ",
+   "parent": "左足ＩＫ",
+   "pos": [
+    0.8671,
+    0.4955,
+    -2.2479
+   ]
+  },
+  {
+   "name": "右足ＩＫ",
+   "parent": "全ての親",
+   "pos": [
+    -0.7724,
+    1.0345,
+    0.148
+   ]
+  },
+  {
+   "name": "右つま先ＩＫ",
+   "parent": "右足ＩＫ",
+   "pos": [
+    -0.8671,
+    0.4955,
+    -2.2479
+   ]
+  },
+  {
+   "name": "両目",
+   "parent": "頭",
+   "pos": [
+    0.0,
+    20.992,
+    0.0
+   ]
+  }
+ ]
+}

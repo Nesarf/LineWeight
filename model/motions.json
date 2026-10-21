@@ -1,0 +1,70 @@
+[
+ {
+  "path": "G:\\KKS\\[VMD]\\zod整合\\Apple Pie\\Motion.vmd",
+  "model": "Izumi Shimizu",
+  "bones_in_motion": 237,
+  "bones_this_skeleton_shares": 59,
+  "frames": [
+   0,
+   4125
+  ],
+  "mean_speed": 37.83,
+  "peak_speed": 198.08,
+  "peak_frames": [
+   970,
+   2306,
+   1726
+  ]
+ },
+ {
+  "path": "G:\\KKS\\[VMD]\\古风\\211——牵丝戏\\211——牵丝戏\\动作_牵丝戏新版 by 呆喵挠琴.vmd",
+  "model": "PMD from Metaseq",
+  "bones_in_motion": 90,
+  "bones_this_skeleton_shares": 58,
+  "frames": [
+   0,
+   7220
+  ],
+  "mean_speed": 44.58,
+  "peak_speed": 169.57,
+  "peak_frames": [
+   5984,
+   6654,
+   4420
+  ]
+ },
+ {
+  "path": "G:\\KKS\\[VMD]\\古风\\如见MMD\\动作.vmd",
+  "model": "Lan Ruo",
+  "bones_in_motion": 511,
+  "bones_this_skeleton_shares": 59,
+  "frames": [
+   0,
+   8642
+  ],
+  "mean_speed": 47.28,
+  "peak_speed": 199.35,
+  "peak_frames": [
+   816,
+   4592,
+   1670
+  ]
+ },
+ {
+  "path": "G:\\KKS\\[VMD]\\古风\\霜雪千年MMD\\霜雪千年_P2.vmd",
+  "model": "À¼Èô",
+  "bones_in_motion": 479,
+  "bones_this_skeleton_shares": 59,
+  "frames": [
+   0,
+   7200
+  ],
+  "mean_speed": 61.49,
+  "peak_speed": 224.57,
+  "peak_frames": [
+   3856,
+   5880,
+   862
+  ]
+ }
+]

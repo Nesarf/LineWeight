@@ -27,6 +27,25 @@ BONE_RECORD = 111
 NAME = 15
 
 
+#: Name in, name out. **A motion has one bone name per record and forty thousand records**, so the same fifteen bytes
+#: are decoded forty thousand times when they repeat a few hundred ways. Measured on a four motion build: 112 seconds
+#: before this cache, 91 after -- so the cache is worth having and **the remaining cost is the unpacking, not the
+#: names**, which is worth knowing before optimizing the wrong loop twice.
+_NAME_CACHE = {}
+
+
+def bone_name(raw):
+    hit = _NAME_CACHE.get(raw)
+    if hit is not None:
+        return hit
+    try:
+        name = raw.split(b'\x00')[0].decode('cp932')
+    except UnicodeDecodeError:
+        name = raw.split(b'\x00')[0].decode('latin-1')
+    _NAME_CACHE[raw] = name
+    return name
+
+
 def parse(path):
     with open(path, 'rb') as f:
         data = f.read()
@@ -49,10 +68,7 @@ def parse(path):
     for _ in range(count):
         raw = data[off:off + NAME]
         off += NAME
-        try:
-            bone = raw.split(b'\x00')[0].decode('cp932')
-        except UnicodeDecodeError:
-            bone = raw.split(b'\x00')[0].decode('latin-1')
+        bone = bone_name(raw)
         frame, px, py, pz, qx, qy, qz, qw = struct.unpack_from('<I3f4f', data, off)
         off += 4 + 12 + 16 + 64
         angle = 2.0 * math.acos(min(1.0, abs(qw)))
