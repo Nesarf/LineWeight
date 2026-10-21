@@ -269,24 +269,53 @@ def region_of(points):
     return core.Region(points=[tuple(p) for p in points], d=d)
 
 
-def fill_shapes(binary, weight, threshold, min_area, spacing=3):
-    """The filled patches, as **an outline and the lines across it**.
+def form_lines(blob, spacing, max_layers=64):
+    """Closed lines inside a patch, each parallel to the one outside it.
+
+    **This is what "follow the form" means as a procedure.** A patch is eroded a few pixels at a time and the boundary
+    of each step is kept, so every line is the same distance inside its neighbour and **the direction of the hatching is
+    whatever the shape's edge says it is**. A horizontal sweep is easy to generate and tells the eye nothing; these are
+    the lines a hand draws when it shades a shape inward from its contour.
+    """
+    from scipy import ndimage
+    import trace as silhouette
+    rings = []
+    cur = blob.astype(bool)
+    structure = np.ones((3, 3), dtype=bool)
+    for _ in range(max_layers):
+        if not cur.any():
+            break
+        ys, xs = np.nonzero(cur)
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        x0, x1 = int(xs.min()), int(xs.max()) + 1
+        local = cur[y0:y1, x0:x1].astype(np.uint8)
+        ring = silhouette.boundary(local, x1 - x0, y1 - y0)
+        if len(ring) >= 6:
+            rings.append([(x + x0, y + y0) for x, y in ring])
+        cur = ndimage.binary_erosion(cur, structure=structure, iterations=max(1, spacing))
+        if int(cur.sum()) < spacing * spacing:
+            break
+    return rings
+
+
+def fill_shapes(binary, weight, threshold, min_area, spacing=3, style='form'):
+    """The filled patches, as **an outline and the lines inside it**.
 
     **A patch in this kind of drawing is hatched, not poured.** The ink of a shadow or a solid area is a density of
     curves, and pouring a flat colour over the shape throws away the one thing the reference has to teach. So a patch
-    yields two things: its boundary, which is a line like any other, and a set of parallel lines across its inside --
-    **shape first, then lines, which is also the order a person works in.**
+    yields two things: its boundary, which is a line like any other, and the lines that fill its inside -- **shape first,
+    then lines, which is also the order a person works in.**
 
-    **The spacing is the density.** At three work pixels apart a patch reads as dark at drawing size; wider and it
-    reads as shading. Only a patch too small to hold a single line falls back to a flat fill.
+    `style='form'` draws each inner line parallel to the contour, which is what shading a shape from its edge looks
+    like; `style='lines'` sweeps the patch horizontally, which is cheaper and tells the eye less.
     """
     from scipy import ndimage
     mask = ((binary > 0) & (weight > threshold)).astype(np.uint8)
     mask = ndimage.binary_closing(mask, structure=np.ones((3, 3), dtype=bool)).astype(np.uint8)
     labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
     import trace as silhouette
-    rings = []
-    lines = []
+    outlines = []
+    inner = []
     for i in range(1, count + 1):
         blob = (labels == i)
         if int(blob.sum()) < min_area:
@@ -297,24 +326,25 @@ def fill_shapes(binary, weight, threshold, min_area, spacing=3):
         local = blob[y0:y1, x0:x1].astype(np.uint8)
         ring = silhouette.boundary(local, x1 - x0, y1 - y0)
         if len(ring) >= 8:
-            rings.append([(x + x0, y + y0) for x, y in ring])
-        # **One run per contiguous span of the row**, so a patch with a hole in it gets two segments rather than a
-        # line straight across the hole.
-        for y in range(y0, y1, max(1, spacing)):
-            row = np.nonzero(blob[y])[0]
-            if not len(row):
-                continue
-            start = prev = int(row[0])
-            for x in row[1:]:
-                x = int(x)
-                if x != prev + 1:
-                    if prev > start:
-                        lines.append(((start, y), (prev, y)))
-                    start = x
-                prev = x
-            if prev > start:
-                lines.append(((start, y), (prev, y)))
-    return rings, lines, int(mask.sum())
+            outlines.append([(x + x0, y + y0) for x, y in ring])
+        if style == 'form':
+            inner.extend(form_lines(blob, spacing)[1:])
+        else:
+            for y in range(y0, y1, max(1, spacing)):
+                row = np.nonzero(blob[y])[0]
+                if not len(row):
+                    continue
+                start = prev = int(row[0])
+                for x in row[1:]:
+                    x = int(x)
+                    if x != prev + 1:
+                        if prev > start:
+                            inner.append([(start, y), (prev, y)])
+                        start = x
+                    prev = x
+                if prev > start:
+                    inner.append([(start, y), (prev, y)])
+    return outlines, inner, int(mask.sum())
 
 
 def simplify(points, tolerance):
@@ -341,6 +371,8 @@ def main():
     ap.add_argument('--min-fill', type=int, default=MIN_FILL)
     ap.add_argument('--hatch-spacing', type=int, default=3,
                     help='work pixels between the lines inside a filled patch; smaller is darker')
+    ap.add_argument('--hatch-style', default='form', choices=('form', 'lines'),
+                    help='form follows the contour inward; lines sweeps horizontally')
     ap.add_argument('--min-component', type=int, default=30, help='ink blobs smaller than this are specks')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -358,7 +390,8 @@ def main():
     # **The ink is cut in two before anything is drawn.** What is thin is a line and is traced; what is thick is a
     # filled shape and is outlined. Tracing a patch turns it into a heavy line through its middle, which is the one
     # thing the reference never did.
-    rings, hatch_lines, patch_px = fill_shapes(binary, weight, args.fill_half, args.min_fill, args.hatch_spacing)
+    rings, hatch_lines, patch_px = fill_shapes(binary, weight, args.fill_half, args.min_fill,
+                                               args.hatch_spacing, args.hatch_style)
     line_ink = ((binary > 0) & (weight <= args.fill_half)).astype(np.uint8)
     print('  filled patches: %d outlines, %d hatch lines, %d px (%.2f%% of the ink); lines keep %d px'
           % (len(rings), len(hatch_lines), patch_px,
@@ -402,10 +435,14 @@ def main():
                                      width_profile=[1.6] * (6 * (len(scaled) - 1) + 1))
         proj.add_stroke(outline, stage='line', layer='ink', note='patch outline %d' % i)
         marks += 1
-    for i, (a, b) in enumerate(hatch_lines):
-        seg = [(a[0] * s, a[1] * s), (b[0] * s, b[1] * s)]
-        rec = core.stroke_record(seg, 'fine', seed=200 + i, resolution=2, width_profile=[1.1] * 3)
-        proj.add_stroke(rec, stage='line', layer='hatch', note='hatch %d' % i)
+    for i, pts in enumerate(hatch_lines):
+        scaled = [(x * s, y * s) for x, y in pts]
+        if len(scaled) < 2:
+            continue
+        samples = 4 * (len(scaled) - 1) + 1
+        rec = core.stroke_record(scaled, 'fine', seed=200 + i, resolution=4,
+                                 width_profile=[1.2] * samples)
+        proj.add_stroke(rec, stage='line', layer='hatch', note='inner line %d' % i)
         marks += 1
     for i, pts in enumerate(kept):
         if len(pts) < 2:
