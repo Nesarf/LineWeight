@@ -253,6 +253,51 @@ def resample(values, n):
     return out
 
 
+#: Half-width, in work pixels, above which a mark is a filled patch rather than a line. **A pen is one to four pixels
+#: across at the reading size; a pupil, a hatched sleeve or a solid shadow grows past ten.** Measured over six
+#: references, the four clean line drawings hold 0.3 to 1.6 per cent of their ink above this and one dynamic drawing
+#: holds 20 -- **which is what a heavy pen had been hiding.**
+FILL_HALF = 6.0
+
+#: A patch smaller than this many work pixels is a spot on the paper, not a shape.
+MIN_FILL = 400
+
+
+def region_of(points):
+    """A `Region` from a closed polygon -- points and a path, which is all a fill mark needs."""
+    d = 'M ' + ' L '.join('%.2f %.2f' % (x, y) for x, y in points) + ' Z'
+    return core.Region(points=[tuple(p) for p in points], d=d)
+
+
+def fill_shapes(binary, weight, threshold, min_area):
+    """The filled patches, each as **the outline of the patch** rather than as its skeleton.
+
+    **This is the part a thick pen cannot do.** A patch's skeleton is a line running through its middle, and drawing
+    that with the patch's own width makes a blob; what the reference shows is an outline with ink inside it. So the
+    patch is measured as a region, its boundary is walked, and the boundary becomes a thin line with a fill behind it --
+    **the same order a person works in: the shape first, then the bucket.**
+    """
+    from scipy import ndimage
+    mask = ((binary > 0) & (weight > threshold)).astype(np.uint8)
+    mask = ndimage.binary_closing(mask, structure=np.ones((3, 3), dtype=bool)).astype(np.uint8)
+    labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
+    import trace as silhouette
+    shapes = []
+    for i in range(1, count + 1):
+        blob = (labels == i)
+        if int(blob.sum()) < min_area:
+            continue
+        ys, xs = np.nonzero(blob)
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        x0, x1 = int(xs.min()), int(xs.max()) + 1
+        local = blob[y0:y1, x0:x1].astype(np.uint8)
+        ring = silhouette.boundary(local, x1 - x0, y1 - y0)
+        if len(ring) < 8:
+            continue
+        shapes.append([(x + x0, y + y0) for x, y in ring])
+    return shapes, int(mask.sum())
+
+
 def simplify(points, tolerance):
     """Douglas-Peucker, the same one the silhouette tracer uses -- a run of pixels is a path with a staircase in it."""
     import trace as silhouette
@@ -272,6 +317,9 @@ def main():
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     ap.add_argument('--prune', type=int, default=8, help='drop skeleton spurs shorter than this many pixels')
     ap.add_argument('--max-width', type=float, default=6.0, help='widest a stroke may be drawn, in page pixels')
+    ap.add_argument('--fill-half', type=float, default=FILL_HALF,
+                    help='half-width above which a mark is a filled patch rather than a line')
+    ap.add_argument('--min-fill', type=int, default=MIN_FILL)
     ap.add_argument('--min-component', type=int, default=30, help='ink blobs smaller than this are specks')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -281,13 +329,22 @@ def main():
     t_load = time.perf_counter()
     print('  %s  %dx%d  ink pixels %d (%.2f%%)  load %.1fs'
           % (pathlib.Path(args.src).name, w, h, int(binary.sum()), 100.0 * binary.sum() / (w * h), t_load - t0))
-    skel = thin(binary)
-    t_thin = time.perf_counter()
-    print('  skeleton pixels %d   thin %.1fs' % (int(skel.sum()), t_thin - t_load))
     weight = ink_weight(binary)
     t_weight = time.perf_counter()
     print('  line half-width on the ink: %.2f .. %.2f px   distance %.1fs'
-          % (float(weight[binary > 0].min()), float(weight[binary > 0].max()), t_weight - t_thin))
+          % (float(weight[binary > 0].min()), float(weight[binary > 0].max()), t_weight - t_load))
+
+    # **The ink is cut in two before anything is drawn.** What is thin is a line and is traced; what is thick is a
+    # filled shape and is outlined. Tracing a patch turns it into a heavy line through its middle, which is the one
+    # thing the reference never did.
+    fills, patch_px = fill_shapes(binary, weight, args.fill_half, args.min_fill)
+    line_ink = ((binary > 0) & (weight <= args.fill_half)).astype(np.uint8)
+    print('  filled patches: %d covering %d px (%.2f%% of the ink); lines keep %d px'
+          % (len(fills), patch_px, 100.0 * patch_px / max(1, int(binary.sum())), int(line_ink.sum())))
+    t_split = time.perf_counter()
+    skel = thin(line_ink)
+    t_lines = time.perf_counter()
+    print('  line skeleton %d px   thin %.1fs' % (int(skel.sum()), t_lines - t_split))
     skel = prune(skel, args.prune)
     t_prune = time.perf_counter()
     print('  after pruning spurs shorter than %d: %d pixels   prune %.1fs'
@@ -313,6 +370,17 @@ def main():
     canvas_h = max(1, int(round(h * s)))
     proj = project.Project(width=canvas_w, height=canvas_h, title='copy of %s' % pathlib.Path(args.src).stem)
     marks = 0
+    # **Patches first, lines over them**, which is the order a drawing is made in: the filled shape is laid down and
+    # then its own outline is drawn on top. The other order would put the fill over the line that defines it.
+    for i, pts in enumerate(fills):
+        scaled = [(x * s, y * s) for x, y in pts]
+        if len(scaled) < 3:
+            continue
+        proj.add_fill(region_of(scaled), stage='colour', colour='#2b2630', note='filled patch %d' % i)
+        outline = core.stroke_record(scaled, 'fine', seed=100 + i, resolution=6,
+                                     width_profile=[1.6] * (6 * (len(scaled) - 1) + 1))
+        proj.add_stroke(outline, stage='line', layer='ink', note='patch outline %d' % i)
+        marks += 2
     for i, pts in enumerate(kept):
         if len(pts) < 2:
             continue
