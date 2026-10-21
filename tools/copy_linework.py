@@ -120,53 +120,74 @@ def neighbours(skel, y, x, h, w):
 
 
 def trace(skel):
-    """Every run between an end point or a junction, as a list of (x, y) in page order."""
-    h, w = skel.shape
-    ends, junctions = set(), set()
-    # **Only the skeleton's own pixels are visited.** Walking every pixel of a page to find a few thousand set ones
-    # cost most of a 46 second trace; `nonzero` hands the list over instead.
-    ys, xs = np.nonzero(skel)
-    for y, x in zip(ys.tolist(), xs.tolist()):
-        n = len(neighbours(skel, y, x, h, w))
-        if n == 1:
-            ends.add((y, x))
-        elif n > 2:
-            junctions.add((y, x))
+    """Every run between end points, **walking on through the junctions**.
 
-    stops = ends | junctions
-    visited = set()
-    segments = []
+    **A junction is where two lines cross, not where a line stops.** The first trace treated every junction as a wall,
+    so a long line passing through four crossings became five short segments -- and each segment is a stroke with its
+    own entry and exit taper, which on a twenty pixel segment means the whole thing is taper. That is why the result
+    read as a dotted line: the gaps were not missing ink, they were the two ends of every fragment thinning away.
+
+    So at a junction the walk takes the neighbour that continues the current direction most nearly straight, which is
+    what a hand does and what the line means. Every edge is used once, so nothing is drawn twice and nothing is skipped.
+    """
+    h, w = skel.shape
+    ys, xs = np.nonzero(skel)
+    points = set(zip(ys.tolist(), xs.tolist()))
+
+    def nbrs(p):
+        y, x = p
+        out = []
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy == 0 and dx == 0:
+                    continue
+                q = (y + dy, x + dx)
+                if q in points:
+                    out.append(q)
+        return out
+
+    ends = [p for p in points if len(nbrs(p)) == 1]
+    used = set()
+
+    def take(a, b):
+        used.add((a, b))
+        used.add((b, a))
 
     def walk(start, first):
         path = [start, first]
-        visited.add((start, first))
-        visited.add((first, start))
-        cur, prev = first, start
+        take(start, first)
+        prev, cur = start, first
         while True:
-            if cur in stops:
+            cand = [q for q in nbrs(cur) if q != prev and (cur, q) not in used]
+            if not cand:
                 break
-            nxt = [n for n in neighbours(skel, cur[0], cur[1], h, w) if n != prev]
-            if len(nxt) != 1:
+            if len(cand) == 1:
+                nxt = cand[0]
+            else:
+                # **Straightest first, because that is the line's own continuation.** The dot product of the step we
+                # arrived on with each candidate step is the cheapest way to say "which of these looks like more of
+                # the same line".
+                ay, ax = cur[0] - prev[0], cur[1] - prev[1]
+                nxt = max(cand, key=lambda q: ay * (q[0] - cur[0]) + ax * (q[1] - cur[1]))
+            take(cur, nxt)
+            path.append(nxt)
+            prev, cur = cur, nxt
+            if cur == start:
                 break
-            n2 = nxt[0]
-            visited.add((cur, n2))
-            visited.add((n2, cur))
-            path.append(n2)
-            prev, cur = cur, n2
         return path
 
-    for node in sorted(ends):
-        for first in neighbours(skel, node[0], node[1], h, w):
-            if (node, first) in visited:
+    segments = []
+    for start in ends:
+        for first in nbrs(start):
+            if (start, first) in used:
                 continue
-            segments.append(walk(node, first))
-    # **What is left is a closed loop with no end and no junction** -- a circle, or a shape whose outline never forks.
-    ys, xs = np.nonzero(skel)
-    for y, x in zip(ys.tolist(), xs.tolist()):
-        for first in neighbours(skel, y, x, h, w):
-            if ((y, x), first) in visited:
+            segments.append(walk(start, first))
+    # **What is left is a closed loop with no end point**, so it has to be started from any of its own pixels.
+    for p in sorted(points):
+        for first in nbrs(p):
+            if (p, first) in used:
                 continue
-            segments.append(walk((y, x), first))
+            segments.append(walk(p, first))
     return segments
 
 

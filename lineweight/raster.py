@@ -22,6 +22,15 @@ import math
 import os
 from dataclasses import dataclass
 
+#: **numpy is optional and the difference is two orders of magnitude.** The density path keeps one float per pixel of
+#: the page and sums a falloff into it; as a Python list that is 3.7 million boxed floats and a loop over every one of
+#: them per stroke, which measured 0.7 seconds for a single hairline on a 960 page. As an array the same work is a few
+#: milliseconds. Without numpy the code below still runs, only slowly, so the library keeps working on a bare install.
+try:
+    import numpy as _np
+except ImportError:  # pragma: no cover - exercised only on a machine without numpy
+    _np = None
+
 from .core import BRUSHES, mark_ink
 from .roles import DEFAULT_INK
 
@@ -286,10 +295,14 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     colour = record.get('colour_int') or (26, 22, 32)
     layer = Layer(width, height, paper=paper)
     if density:
-        layer.density = [0.0] * (width * height)
-        # **The same sum without the alpha**, so the ratio is an average rather than a magnitude that depends on how
-        # finely the path happened to be sampled.
-        layer.density_ref = [0.0] * (width * height)
+        if _np is not None:
+            layer.density = _np.zeros(width * height, dtype=_np.float32)
+            layer.density_ref = _np.zeros(width * height, dtype=_np.float32)
+        else:
+            layer.density = [0.0] * (width * height)
+            # **The same sum without the alpha**, so the ratio is an average rather than a magnitude that depends on how
+            # finely the path happened to be sampled.
+            layer.density_ref = [0.0] * (width * height)
         layer.density_colour = colour
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
@@ -450,6 +463,33 @@ def _resolve_density(layer, width: int, height: int, brush) -> None:
     """Density to coverage, once, at the end -- and the colour laid down with it."""
     cap = min(1.0, brush.get('opacity', 1.0))
     colour = layer.density_colour or (26, 22, 32)
+    if _np is not None:
+        # **The whole page at once, because the per-pixel form below walked 3.7 million indices per stroke.** That loop
+        # is the other half of the 0.7 seconds a hairline cost: the sum is spent whether a pixel is covered or not.
+        buf = layer.density
+        ref = layer.density_ref
+        active = _np.flatnonzero(buf > 0.0)
+        if not len(active):
+            return
+        denom = ref[active]
+        keep = denom > 0.0
+        active = active[keep]
+        denom = denom[keep]
+        if not len(active):
+            return
+        alpha = _np.minimum(cap, buf[active] / denom)
+        keep = alpha > 0.0
+        active = active[keep]
+        alpha = alpha[keep]
+        if not len(active):
+            return
+        data = _np.frombuffer(layer.data, dtype=_np.uint8)
+        idx = active * 4
+        data[idx] = colour[0]
+        data[idx + 1] = colour[1]
+        data[idx + 2] = colour[2]
+        data[idx + 3] = _np.clip(alpha * 255.0, 0, 255).astype(_np.uint8)
+        return
     buf = layer.density
     ref = layer.density_ref
     data = layer.data
@@ -478,6 +518,36 @@ def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -
         raise ValueError('layers must be the same size: %sx%s vs %sx%s'
                          % (base.width, base.height, top.width, top.height))
     out = Layer(base.width, base.height)
+    if _np is not None:
+        # **The whole buffer at once, and this was the largest cost in a trace of a drawing.** Blending one mark is a
+        # loop over every pixel of the page: 3.7 million iterations for a mark that covers two hundred of them, and a
+        # traced drawing has hundreds of marks. Measured, a hundred marks took 69 seconds with the density path already
+        # vectorised and 0.7 of that was here.
+        b = _np.frombuffer(base.data, dtype=_np.uint8).reshape(-1, 4).astype(_np.float32) / 255.0
+        t = _np.frombuffer(top.data, dtype=_np.uint8).reshape(-1, 4).astype(_np.float32) / 255.0
+        ba = b[:, 3]
+        ta = t[:, 3] * opacity
+        if mode == 'multiply':
+            mixed = b[:, :3] * t[:, :3]
+        elif mode == 'screen':
+            mixed = 1.0 - (1.0 - b[:, :3]) * (1.0 - t[:, :3])
+        elif mode == 'overlay':
+            mixed = _np.where(b[:, :3] < 0.5, 2 * b[:, :3] * t[:, :3],
+                              1.0 - 2 * (1.0 - b[:, :3]) * (1.0 - t[:, :3]))
+        else:
+            mixed = t[:, :3]
+        res = b[:, :3] * (1.0 - ta)[:, None] + mixed * ta[:, None]
+        # **Where the base is empty the top goes down as it is**, which is the documented case and not a special one:
+        # multiplying with nothing gives the thing.
+        empty = (ba <= 0.004)[:, None]
+        laid = t[:, :3] * opacity if opacity < 1.0 else t[:, :3]
+        res = _np.where(empty, laid, res)
+        alpha = _np.maximum(ba, ta)
+        buf = _np.empty((b.shape[0], 4), dtype=_np.float32)
+        buf[:, :3] = _np.clip(res, 0.0, 1.0)
+        buf[:, 3] = alpha
+        out.data = bytearray((buf * 255.0).astype(_np.uint8).tobytes())
+        return out
     for index in range(0, len(base.data), 4):
         ba = base.data[index + 3] / 255.0
         ta = top.data[index + 3] / 255.0 * opacity
