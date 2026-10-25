@@ -36,6 +36,31 @@ PAPER = 0.93
 BANDS = ((0.86, (0.86, None)), (0.58, (0.58, None)), (0.28, (0.28, None)))
 
 
+def kmeans_1d(values, k, iterations=24):
+    """The brightnesses the reference actually clusters on, lightest first.
+
+    **Three bands was a guess and it read like cut paper.** The procedure says the value is decided once, and that is
+    about *when*, not about *how many*: a face, a shaded sleeve and a dark skirt are three brightnesses in one drawing
+    and five in another. So the count comes from the picture -- a one dimensional k-means over the figure's own greys,
+    which puts a band wherever the histogram has a cluster instead of at a fraction somebody chose.
+    """
+    sample = values if values.size < 60000 else values[:: max(1, values.size // 60000)]
+    centres = np.quantile(sample, [(i + 0.5) / k for i in range(k)]).astype(np.float64)
+    for _ in range(iterations):
+        idx = np.abs(sample[:, None] - centres[None, :]).argmin(axis=1)
+        moved = False
+        for j in range(k):
+            part = sample[idx == j]
+            if part.size:
+                new = float(part.mean())
+                if abs(new - centres[j]) > 1e-4:
+                    moved = True
+                centres[j] = new
+        if not moved:
+            break
+    return np.sort(centres)
+
+
 def person_mask(gray):
     """The figure's interior: **the region a closed outline encloses**, not the ink itself.
 
@@ -57,6 +82,10 @@ def person_mask(gray):
             continue
         sizes = ndimage.sum(filled, labels, range(1, count + 1))
         piece = labels == (int(np.argmax(sizes)) + 1)
+        # **An opening after the fill, because closing is a dilation.** The closing that makes the outline a loop also
+        # pushes the silhouette outward by its own width, and the strip it gains outside the figure becomes a patch of
+        # pale grey with no body under it. An opening of the same size takes that back.
+        piece = ndimage.binary_opening(piece, structure=structure, iterations=2)
         biggest = piece
         # **A flood is not a figure.** Past three quarters of the page the outline never closed and the fill escaped; a
         # wider closing is the only thing that can help, and past the last one the ink itself is returned.
@@ -107,6 +136,7 @@ def main():
     ap.add_argument('--project', required=True)
     ap.add_argument('--reference', required=True)
     ap.add_argument('--out', required=True)
+    ap.add_argument('--bands', type=int, default=4, help='how many brightness clusters the picture is measured into')
     args = ap.parse_args()
 
     doc = json.loads(pathlib.Path(args.project).read_text(encoding='utf-8'))
@@ -123,17 +153,21 @@ def main():
     print('  %s at %dx%d; person covers %.1f%% of the page'
           % (pathlib.Path(args.reference).name, w, h, 100.0 * person.sum() / (w * h)))
 
+    inside = gray[person]
+    centres = kmeans_1d(inside, args.bands)
+    print('  bands from the histogram, light to dark: %s'
+          % ', '.join('%.2f' % c for c in centres[::-1]))
+    # **Every pixel assigned to its nearest band's brightness**, which turns the clusters back into regions.
+    flat = np.abs(gray.reshape(-1, 1) - centres.reshape(1, -1)).argmin(axis=1).reshape(gray.shape)
     fills = []
-    for lo, (grey, _unused) in ((0.0, BANDS[0]), (0.45, BANDS[1]), (0.72, BANDS[2])):
-        if lo == 0.0:
-            mask = person.copy()
-        else:
-            mask = person & (gray < lo)
+    # **Drawn light to dark**, so the dark band lands on top of the others the way ink would.
+    for i in range(len(centres) - 1, -1, -1):
+        mask = person & (flat == i)
         rings = outline_of(mask)
-        level = int(round(grey * 255))
+        level = int(round(float(centres[i]) * 255))
         for ring in rings:
             fills.append({'ring': ring, 'grey': level})
-        print('    band at %.2f grey: %d shapes' % (grey, len(rings)))
+        print('    band at %.2f grey: %d shapes' % (float(centres[i]), len(rings)))
 
     # **The fills go under the lines.** A project is drawn in order, so the new marks are placed first and the existing
     # strokes after them; appending would put flat grey over the drawing that defines the shapes.
