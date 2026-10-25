@@ -366,6 +366,8 @@ def main():
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     ap.add_argument('--prune', type=int, default=8, help='drop skeleton spurs shorter than this many pixels')
     ap.add_argument('--max-width', type=float, default=6.0, help='widest a stroke may be drawn, in page pixels')
+    ap.add_argument('--width-scale', type=float, default=1.0,
+                    help='multiplies every width; calibrated against the reference\'s own amount of ink')
     ap.add_argument('--fill-half', type=float, default=FILL_HALF,
                     help='half-width above which a mark is a filled patch rather than a line')
     ap.add_argument('--min-fill', type=int, default=MIN_FILL)
@@ -458,7 +460,10 @@ def main():
             # half-widths on this reference run from 1 to 42 pixels: the 42 is a solid patch of ink, and drawn at its
             # own weight it becomes a black slab where the artist drew a sleeve. A line is what this is copying, so the
             # width stops where a line ends.
-            widths.append(min(args.max_width, max(1.0, 2.0 * float(half) * s)))
+            # **A floor of half a pixel, not one.** The floor exists so a faint line still marks the page; at one pixel
+            # it also stops the width calibration dead, because every hairline hits the same number and the ink stops
+            # responding to the setting.
+            widths.append(min(args.max_width, max(0.5, 2.0 * float(half) * s * args.width_scale)))
         samples = 6 * (len(scaled) - 1) + 1
         rec = core.stroke_record(scaled, 'fine', seed=i, resolution=6,
                                  width_profile=resample(widths, samples))
