@@ -196,26 +196,39 @@ def end_direction(pts, at_start):
     return (dx / n, dy / n)
 
 
-def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0):
-    """Drop the short strokes that **do not continue anything**, and only those.
+def is_closed(pts, tolerance=8.0):
+    """Whether a polyline comes back to where it started -- **the one thing a break and an eye do not share**."""
+    if len(pts) < 3:
+        return False
+    return math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= tolerance
 
-    **The problem a length threshold cannot solve.** A lash and a speck of noise are both thirty pixels long, so every
-    threshold on length trades one for the other. What differs is their relationship to the rest of the drawing: a lash
-    continues a hairline, and noise continues nothing. So a short stroke is kept when one of its ends is close to an end
-    of a long stroke *and the two point opposite ways* -- that is, when the short one is the continuation of a break in
-    the long one -- and dropped when no such continuation exists.
 
-    The three numbers are deliberately loose: `reach` is how far across a gap a break may be, and `angle_deg` how far
-    the two may disagree. A continuation that is fifteen pixels away and forty degrees off is not a continuation, and
-    the test is built to say no to it.
+def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
+                    ring_min=20.0, ring_max=600.0):
+    """Drop the short strokes that **neither continue anything nor close on themselves**, and only those.
+
+    **Two problems, two different questions.** A length threshold cannot tell a lash from a speck, because both are
+    thirty pixels. What separates them is relationship: a lash continues a hairline, and noise continues nothing. So a
+    short stroke is kept when one of its ends is close to an end of a long stroke and the two point opposite ways.
+
+    **An eye answers neither.** It is a ring of twenty to forty pixels that closes on itself and touches nothing, so
+    the continuation test throws it away along with the debris -- which is exactly what a face with no pupils in it
+    looked like. A third question is therefore asked: does the stroke return to its own start? A ring within a size
+    band is a feature -- a pupil, a button, an earring -- and a short open stroke is not, whatever its length.
+
+    The ring band matters: below `ring_min` a loop is a knot in the skeleton, and above `ring_max` it is a contour,
+    which is kept by the length rule already.
     """
     longs = [l for l in lines if polyline_length(l) >= long_length]
-    if not longs:
-        return lines
     keep_long = math.cos(math.radians(angle_deg))
     out = []
     for line in lines:
-        if polyline_length(line) >= long_length:
+        span = polyline_length(line)
+        if span >= long_length:
+            out.append(line)
+            continue
+        if is_closed(line, close_tolerance) and ring_min <= span <= ring_max:
+            # **A closed ring of feature size is kept on its own authority**, without needing to continue anything.
             out.append(line)
             continue
         joined = False
@@ -258,6 +271,12 @@ def main():
                     help='how far across a gap a stroke may be to count as a continuation')
     ap.add_argument('--prune-angle', type=float, default=35.0,
                     help='how many degrees a continuation may deviate')
+    ap.add_argument('--close-tolerance', type=float, default=8.0,
+                    help='how near a stroke\'s two ends must be for it to count as a ring')
+    ap.add_argument('--ring-min', type=float, default=20.0,
+                    help='shortest ring kept for being a feature; below this a loop is a skeleton knot')
+    ap.add_argument('--ring-max', type=float, default=600.0,
+                    help='longest ring kept for being a feature; longer than this it is a contour')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -301,7 +320,8 @@ def main():
           % (len(lines), sum(len(l) for l in lines)))
     if args.prune_length:
         before = len(lines)
-        lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle)
+        lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle,
+                                args.close_tolerance, args.ring_min, args.ring_max)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
 
