@@ -41,7 +41,33 @@ WEAK_PCT = 96.0
 MIN_SEGMENT = 10
 
 
-def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0):
+def region_edges(rgb, levels=8, blur=2.0, tolerance=2):
+    """Where **one area of colour becomes another**, which is where a form has a boundary.
+
+    **The distinction this makes is the one colour alone could not.** An eye and a brow's shine are both pale edges on
+    skin, so no amount of chroma separates them; but an eye is a *different colour area* from the skin around it, while
+    a shine is the same area lit. Quantising the picture into a few levels per channel and keeping the pixels where the
+    level changes gives exactly the boundaries between areas of material -- and a highlight, being the same material,
+    falls inside one area and leaves no boundary behind.
+
+    Quantisation rather than clustering because the picture is five million pixels: a k-means over that is minutes,
+    while a blur and a shift is a second and answers the same question -- is the colour on this side the same as the
+    colour on that. `tolerance` widens the boundary so a structure line that wanders a pixel off it is not lost.
+    """
+    from scipy import ndimage
+    soft = ndimage.gaussian_filter(rgb.astype(np.float32), blur)
+    step = 256.0 / float(max(2, levels))
+    q = (soft / step).astype(np.int32)
+    key = (q[:, :, 0] * levels + q[:, :, 1]) * levels + q[:, :, 2]
+    edge = np.zeros(key.shape, dtype=bool)
+    edge[:, 1:] |= key[:, 1:] != key[:, :-1]
+    edge[1:, :] |= key[1:, :] != key[:-1, :]
+    if tolerance:
+        edge = ndimage.binary_dilation(edge, iterations=tolerance)
+    return edge
+
+
+def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0, regions=None):
     """A one-pixel structure mask: Canny on tone, with colour used as a **veto** rather than as weight.
 
     **Brightness alone cannot tell a contour from a highlight.** A thigh's silhouette and the pale band running down
@@ -115,6 +141,12 @@ def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0
         chroma_scale = float(chroma_mag.max()) or 1.0
         kept &= ~((mag >= tone_top) & (chroma_mag < chroma_guard * chroma_scale))
 
+    if regions is not None:
+        # **A structure line has to lie on a boundary between areas of colour.** Everything else -- a highlight inside one
+        # material, a gradient on a cheek, the sheen along a stocking -- is a change of light within a form, and a form
+        # with no boundary there does not have a line there.
+        kept &= regions
+
     if pair_distance > 0:
         h, w = tone.shape
         ys, xs = np.mgrid[0:h, 0:w]
@@ -162,6 +194,10 @@ def main():
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
     ap.add_argument('--chroma-guard', type=float, default=0.0,
                     help='veto edges this strong in tone but this weak in colour; 0 turns the veto off')
+    ap.add_argument('--regions', type=int, default=0,
+                    help='keep only edges on a boundary between colour areas, quantised to this many levels; 0 off')
+    ap.add_argument('--region-tolerance', type=int, default=2,
+                    help='how far an edge may sit from the colour boundary and still count')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
@@ -183,7 +219,13 @@ def main():
     print('  %s  work %dx%d, page %dx%d'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s)))
 
-    mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance, args.chroma_guard)
+    edges = None
+    if args.regions:
+        edges = region_edges(rgb, args.regions, args.blur * 1.5, args.region_tolerance)
+        print('  colour area boundaries %d px (%.2f%% of the page)'
+              % (int(edges.sum()), 100.0 * edges.sum() / edges.size))
+    mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
+                     args.chroma_guard, edges)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
