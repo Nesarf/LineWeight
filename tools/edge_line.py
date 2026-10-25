@@ -467,8 +467,8 @@ def main():
                     help='unused: connectivity groups the whole drawing, see local_support')
     ap.add_argument('--support-radius', type=float, default=30.0,
                     help='how near other strokes must be to support a short one')
-    ap.add_argument('--support-min', type=float, default=150.0,
-                    help='total length of neighbouring strokes that makes a short one part of a form; 0 off')
+    ap.add_argument('--support-min', type=float, default=0.0,
+                    help='total length of neighbouring strokes needed to keep a short one; 0 off, and measured to fail')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -480,6 +480,8 @@ def main():
                     help='how far an edge may sit from the colour boundary and still count')
     ap.add_argument('--region-blur', type=float, default=3.0,
                     help='smoothing before the areas are cut; 0 follows the structure blur, larger cuts fewer areas')
+    ap.add_argument('--dump-lines', default='',
+                    help='write the pre-pruning strokes to this json file, for comparing two runs as data')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
@@ -520,6 +522,15 @@ def main():
     lines = walks(mask, max(1, int(round(args.min_segment * k))))
     print('  %d structure lines, %d points'
           % (len(lines), sum(len(l) for l in lines)))
+    if args.dump_lines:
+        # **The strokes as data, so two runs can be compared rather than described.** A count that disagrees between the
+        # tool and a direct call to the same function is not a matter of opinion; it is two different lists.
+        import json as _json
+        dump = pathlib.Path(args.dump_lines)
+        dump.parent.mkdir(parents=True, exist_ok=True)
+        with open(dump, 'w', encoding='utf-8') as handle:
+            _json.dump([[list(p) for p in line] for line in lines], handle)
+        print('  lines dumped to %s' % args.dump_lines)
     if args.prune_length:
         before = len(lines)
         enclosures = None
