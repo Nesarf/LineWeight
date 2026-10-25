@@ -245,7 +245,10 @@ class Project:
                 continue
             pts = []
             geometry = m.geometry or {}
-            for key in ('centre', 'control'):
+            # **A fill carries `points`, a stroke carries `centre`.** Reading only the stroke's two keys made a
+            # project of nothing but filled shapes report "none of them carrying any points" -- which is true of every
+            # mark it looked at, and false of the drawing. Found by tracing an outline into fills and rendering it.
+            for key in ('centre', 'control', 'points'):
                 for p in geometry.get(key) or []:
                     if isinstance(p, (list, tuple)) and len(p) >= 2:
                         pts.append(p)
