@@ -4878,6 +4878,29 @@ tools/colourise.py   hue 0.050，sat 0.300
 
 **至此四段全部走通**：线（1175 段）、值（138 形四档）、色（hue 与 sat）、细（按明度分配饱和度）。
 
+### 而四段现在是一条命令
+
+```
+python tools/pipeline.py --reference <彩图> --out-dir <目录>
+```
+
+**每一步只回一行，而那一行是它的验收数**：
+
+```
+trace    1175 strokes written
+value    138 value shapes under 1175 line marks
+colour   within the limit: the colour went on and the light stayed where it was
+refine   within the limit: colour was redistributed, the light was not
+render   extent: 468 x 950, 77.12% of the page
+```
+
+**而它与手动分四步跑出来的 PNG 逐字节相同**（同一个 sha）——
+**这说明「一条命令」不是「另一条路」，只是把同一条路写下来。**
+
+> **而这一步的意义在于**：需要四条正确的命令行、顺序不能错的流程，**没有人会跑第二次**。
+> **而现在它是一行。**
+
+
 
 
 
