@@ -443,11 +443,11 @@ def main():
     ap.add_argument('--strong', type=float, default=90.0)
     ap.add_argument('--weak', type=float, default=99.5)
     ap.add_argument('--min-segment', type=int, default=5)
-    ap.add_argument('--prune-length', type=float, default=40.0,
+    ap.add_argument('--prune-length', type=float, default=20.0,
                     help='strokes shorter than this must continue a longer one to be kept; 0 turns it off')
     ap.add_argument('--hysteresis', action='store_true',
                     help='grow strong edges through weak ones; measured to disable the threshold on painted pictures')
-    ap.add_argument('--prune-reach', type=float, default=9.0,
+    ap.add_argument('--prune-reach', type=float, default=25.0,
                     help='how far across a gap a stroke may be to count as a continuation')
     ap.add_argument('--prune-angle', type=float, default=20.0,
                     help='how many degrees a continuation may deviate')
