@@ -138,6 +138,12 @@ def main():
     print('  %d shapes, %d points, %d holes'
           % (len(shapes), sum(len(o) for o, _h in shapes), sum(len(h) for _o, h in shapes)))
 
+    # **The ink's own tone, not a chosen black.** The reference's line is a grey around 150; drawing it at 20 makes
+    # every mark differ from its original by half a tone, which is most of a brightness comparison and none of a shape.
+    ink_grey = int(np.median(arr[binary > 0])) if binary.any() else 150
+    colour = '#%02x%02x%02x' % (ink_grey, ink_grey, ink_grey)
+    print('  ink drawn at grey %d' % ink_grey)
+
     proj = project.Project(width=int(round(w * s)), height=int(round(h * s)),
                            title='vector trace of %s' % pathlib.Path(args.src).stem)
     for i, (ring, holes) in enumerate(shapes):
@@ -147,7 +153,7 @@ def main():
         d = 'M ' + ' L '.join('%.2f %.2f' % p for p in pts) + ' Z'
         hole_pts = [[tuple(p) for p in ((x * s, y * s) for x, y in h)] for h in holes if len(h) >= 3]
         proj.add_fill(core.Region(points=[tuple(p) for p in pts], d=d, holes=hole_pts),
-                      stage='colour', colour='#141018', note='ink outline %d' % i)
+                      stage='colour', colour=colour, note='ink outline %d' % i)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     project.save_project(proj, str(out))

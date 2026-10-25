@@ -63,10 +63,35 @@ def main():
     ap.add_argument('--line-only', action='store_true',
                     help='compare lines against lines: drop the reference\'s filled patches')
     ap.add_argument('--limit', type=float, default=0.01)
+    ap.add_argument('--grey', action='store_true',
+                    help='compare brightness pixel by pixel instead of comparing ink masks')
     args = ap.parse_args()
 
     ref_img = Image.open(args.reference)
     size = ref_img.size
+    if args.grey:
+        # **The tone as it is, on both sides.** A binary mask throws away the half-tone edge of an antialiased line and
+        # then counts each edge pixel as entirely right or entirely wrong, which puts a floor under the difference that
+        # no amount of geometry can lower. Comparing brightness keeps the edge as what it is -- a number between paper
+        # and ink -- and the difference becomes the average of those numbers' misses rather than a count of pixels that
+        # fell on the wrong side of one threshold.
+        from PIL import Image as _Image
+        ref_g = np.asarray(_Image.open(args.reference).convert('L').resize(size, _Image.LANCZOS),
+                           dtype=np.float32) / 255.0
+        drawn_g = np.asarray(_Image.open(args.render).convert('L').resize(size, _Image.LANCZOS),
+                             dtype=np.float32) / 255.0
+        delta = np.abs(ref_g - drawn_g)
+        mean = float(delta.mean())
+        worst = float(delta.max())
+        over = float((delta > 0.5).mean())
+        print('  brightness difference: mean %.5f   worst %.3f   pixels off by more than half: %.5f'
+              % (mean, worst, over))
+        print('  mean against the limit %.5f' % args.limit)
+        if mean <= args.limit:
+            print('  within the limit')
+            return 0
+        print('  over the limit by %.5f' % (mean - args.limit))
+        return 2
     ref = ink_mask(args.reference, size, line_only=args.line_only)
     drawn = ink_mask(args.render, size)
     if args.tolerance:
