@@ -508,6 +508,43 @@ def _resolve_density(layer, width: int, height: int, brush) -> None:
     layer.density_ref = None
 
 
+def blend_at(base: Layer, top: Layer, x0: int, y0: int) -> Layer:
+    """Blends `top` into `base` with `top`'s top-left corner at (x0, y0), and returns the base.
+
+    **The offset form exists because a mark does not need the page.** `stroke_layer` allocates a layer the size of the
+    whole page and draws a stroke a few hundred pixels long into it; at four thousand strokes that is thirty gigabytes
+    of allocation for a picture whose ink covers a twentieth of the page. Drawing into a box the size of the mark and
+    blending it at an offset is the same arithmetic over a smaller rectangle -- and the same rule, so a mark rendered
+    this way and a mark rendered the old way agree pixel for pixel.
+    """
+    if _np is None:
+        raise RuntimeError('blend_at needs numpy')
+    h, w = base.height, base.width
+    th, tw = top.height, top.width
+    x1 = min(w, x0 + tw)
+    y1 = min(h, y0 + th)
+    x0c = max(0, x0)
+    y0c = max(0, y0)
+    if x1 <= x0c or y1 <= y0c:
+        return base
+    b = _np.frombuffer(base.data, dtype=_np.uint8).reshape(h, w, 4)
+    t = _np.frombuffer(top.data, dtype=_np.uint8).reshape(th, tw, 4)
+    tx0, ty0 = x0c - x0, y0c - y0
+    sub_t = t[ty0:ty0 + (y1 - y0c), tx0:tx0 + (x1 - x0c)].astype(_np.float32) / 255.0
+    sub_b = b[y0c:y1, x0c:x1].astype(_np.float32) / 255.0
+    ba = sub_b[:, :, 3]
+    ta = sub_t[:, :, 3]
+    res = sub_b[:, :, :3] * (1.0 - ta)[:, :, None] + sub_t[:, :, :3] * ta[:, :, None]
+    empty = (ba <= 0.004)[:, :, None]
+    res = _np.where(empty, sub_t[:, :, :3], res)
+    alpha = _np.maximum(ba, ta)
+    block = _np.empty(sub_t.shape, dtype=_np.float32)
+    block[:, :, :3] = _np.clip(res, 0.0, 1.0)
+    block[:, :, 3] = alpha
+    b[y0c:y1, x0c:x1] = (block * 255.0).astype(_np.uint8)
+    return base
+
+
 def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -> Layer:
     """Combines two layers. Four modes, because four is what a drawing needs.
 
@@ -873,7 +910,26 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
             # 169/176, 243/245, 85/86) and the residual ripple on pencil and wash is their own paper grain.
             profile = record.get('width_profile') or []
             widest = max(profile) if profile else BRUSHES[record['brush']]['width']
-            layer = stroke_layer(record, width, height, scale, paper=paper,
+            # **The mark's own box, not the page.** A page-sized allocation per mark is what made a twelve thousand
+            # stroke structure render take ten minutes; the arithmetic is identical inside a box the size of the mark,
+            # and `blend_at` puts it back at the right offset.
+            centre = geometry.get('centre') or []
+            if not centre:
+                continue
+            pad = int(widest * scale) + 4
+            xs = [p[0] * scale for p in centre]
+            ys = [p[1] * scale for p in centre]
+            x0 = max(0, int(min(xs)) - pad)
+            y0 = max(0, int(min(ys)) - pad)
+            x1 = min(width, int(max(xs)) + pad + 1)
+            y1 = min(height, int(max(ys)) + pad + 1)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            shifted = [[p[0] - x0 / scale, p[1] - y0 / scale] for p in centre]
+            box_w, box_h = x1 - x0, y1 - y0
+            local = dict(record)
+            local['centre'] = shifted
+            layer = stroke_layer(local, box_w, box_h, scale, paper=paper,
                                  density=widest >= WIDE_STROKE,
                                  absolute_width=record.get('absolute_width', False))
             if outlined and mark.get('layer') in outlined:
@@ -881,7 +937,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                 # relative to that rather than absolute -- a fine line and a wash both get the same line around them,
                 # which is what the art does: the outline's width does not follow the fill's.
                 brush_width = max(0.5, BRUSHES[record['brush']]['width'])
-                grown = dict(record)
+                grown = dict(local)
                 grown['colour_int'] = outline_colour(record['colour_int'], tint)
                 # **The outline takes the same deposition rule as the fill, and leaving it out is what kept the
                 # beads after everything else was fixed.** It is drawn wider than the shape it surrounds, so it is
@@ -889,11 +945,17 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                 # wider tip means a wider spacing and therefore a scalloped rim standing proud of a smooth fill.
                 # Measured on a bone: with the rule the left edge reverses direction 0 times over 66 rows, without
                 # it 6 times, and the picture shows a wavy rim that survives every fix applied to the fill.
-                behind = stroke_layer(grown, width, height, scale, paper=paper,
+                behind = stroke_layer(grown, box_w, box_h, scale, paper=paper,
                                       density=widest >= WIDE_STROKE,
                                       width_scale=1.0 + 2.0 * line / brush_width,
                                       absolute_width=record.get('absolute_width', False))
-                out = blend(out, behind, 'normal', 1.0)
+                blend_at(out, behind, x0, y0)
+                out = blend_at(out, layer, x0, y0)
+            else:
+                out = blend_at(out, layer, x0, y0)
+            # **The stroke is already on the page.** Falling through to the shared blend below would composite it a
+            # second time, over the whole page, which is both a wrong picture and the cost this branch exists to avoid.
+            continue
         elif kind == 'fill':
             layer = fill_layer(mark, width, height, scale)
         else:
