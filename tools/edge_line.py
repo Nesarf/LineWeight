@@ -498,6 +498,14 @@ def main():
     rgb = np.asarray(img, dtype=np.float32)
     w, h = work
     s = canvas_long / float(max(w, h))
+    # **Every pixel quantity is quoted at a standard working size and scaled from it.** Measured: the same reference at a
+    # working long side of 1600 gives 1012 strokes and at 3541 gives 3931, on a mask of identical coverage -- one line
+    # is cut into more pieces when there are more pixels to cut it in. So a length floor of forty pixels means one thing
+    # at 1600 and another at 3541, and a default tuned at one size is wrong at the other. The reference size is 2880,
+    # the floor this tool requires; everything in pixels is multiplied by how far the actual working size is from it.
+    k = work_long / 2880.0
+    if abs(k - 1.0) > 0.01:
+        print('  pixel thresholds quoted at 2880, scaled by %.2f for this working size' % k)
     print('  %s  work %dx%d, page %dx%d'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s)))
 
@@ -509,27 +517,27 @@ def main():
     mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
                      args.chroma_guard, edges, args.hysteresis)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
-    lines = walks(mask, args.min_segment)
+    lines = walks(mask, max(1, int(round(args.min_segment * k))))
     print('  %d structure lines, %d points'
           % (len(lines), sum(len(l) for l in lines)))
     if args.prune_length:
         before = len(lines)
         enclosures = None
         if args.rings:
-            enclosures = ring_regions(mask, args.ring_area_min, args.ring_area_max)
+            enclosures = ring_regions(mask, args.ring_area_min * k * k, args.ring_area_max * k * k)
             print('  enclosed feature areas %d px in %d pieces'
                   % (int(enclosures.sum()), int(np.count_nonzero(np.diff(enclosures.astype(np.int8), axis=0)))))
-        lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle,
-                                args.close_tolerance, args.ring_min, args.ring_max, enclosures,
-                                args.support_radius, args.support_min)
+        lines = prune_fragments(lines, args.prune_length * k, args.prune_reach * k, args.prune_angle,
+                                args.close_tolerance * k, args.ring_min * k, args.ring_max * k, enclosures,
+                                args.support_radius * k, args.support_min)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
 
     # **The debris figure the objective is measured on.** A speck is short and alone: under fifteen pixels with nothing
-    # else within twenty-five. Reported on every run rather than judged by eye, so "almost none" has a number.
-    supports = local_support(lines, 25.0)
+    # else within twenty-five, both quoted at the 2880 reference size and scaled like every other length.
+    supports = local_support(lines, 25.0 * k)
     debris = sum(1 for line, support in zip(lines, supports)
-                 if polyline_length(line) < 15.0 and support < 5.0)
+                 if polyline_length(line) < 15.0 * k and support < 5.0 * k)
     print('  debris: %d of %d strokes are short and alone (%.2f%%)'
           % (debris, len(lines), 100.0 * debris / max(1, len(lines))))
 
