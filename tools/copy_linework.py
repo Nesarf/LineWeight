@@ -38,10 +38,13 @@ MIN_LONG_SIDE = 2880
 #: reference kept 5036 pixels and at 180 it keeps 7614, and the difference is the line's soft edge rather than noise.
 INK = 205
 
-#: The page the strokes are rendered onto, long side. **The geometry is read at 2880 and drawn at a third of that**:
-#: rendering at the reading size would make every mark's buffer nine times larger for a picture nobody views at that
-#: size, and the strokes' own coordinates are what carry the precision.
-CANVAS_SIDE = 960
+#: The page the strokes are rendered onto, long side. **2880 is a floor, not a default.**
+#:
+#: Two rules meet here. The long side of a drawing from this tool is never below 2880, which is also the size the
+#: reference is read at, so the two are on the same grid and no resampling stands between them. And when a reference
+#: happens to be smaller than that, its own smaller size is what the comparison is made at: the drawing is scaled down
+#: to the reference, and the difference there is what the one per cent standard is measured on.
+CANVAS_SIDE = 2880
 
 #: Segments shorter than this many pixels are dropped. **They are what a skeleton leaves at every junction** -- two or
 #: three pixels of a stub -- and drawn they read as dirt on the page.
@@ -419,10 +422,16 @@ def main():
     t_simplify = time.perf_counter()
     print('  kept %d, points %d   simplify %.1fs' % (len(kept), sum(len(s) for s in kept), t_simplify - t_trace))
 
-    # **The page is a third of the reading size, and the strokes are scaled onto it.** The coordinates were read at
-    # 2880 so that a hairline is several pixels wide when it is thinned; they are drawn at 960 because a mark's buffer
-    # at the reading size would be nine times larger for a picture nobody looks at that closely.
-    s = args.canvas_side / float(max(w, h))
+    # **The page is at least 2880 across and at least 1.2 times the reference.** Three rules meet here: a drawing from
+    # this tool never has a long side below 2880; it is never smaller than the picture it copies, and not by a hair
+    # either -- a tenth more would be a copy at the same size, and the point of a larger page is that shrinking it back
+    # for comparison costs nothing; and `--canvas-side` can ask for more, up to the absurd (a ten thousand pixel page is
+    # allowed and will simply take a while). A reference of ten thousand square would therefore be traced at twelve
+    # thousand, and one of eight hundred by twelve hundred is traced at 2880.
+    from PIL import Image as _Image
+    ref_long = float(max(_Image.open(args.src).size))
+    canvas_long = max(2880.0, ref_long * 1.2, float(args.canvas_side or 0))
+    s = canvas_long / float(max(w, h))
     canvas_w = max(1, int(round(w * s)))
     canvas_h = max(1, int(round(h * s)))
     proj = project.Project(width=canvas_w, height=canvas_h, title='copy of %s' % pathlib.Path(args.src).stem)

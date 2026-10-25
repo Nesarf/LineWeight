@@ -519,34 +519,47 @@ def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -
                          % (base.width, base.height, top.width, top.height))
     out = Layer(base.width, base.height)
     if _np is not None:
-        # **The whole buffer at once, and this was the largest cost in a trace of a drawing.** Blending one mark is a
-        # loop over every pixel of the page: 3.7 million iterations for a mark that covers two hundred of them, and a
-        # traced drawing has hundreds of marks. Measured, a hundred marks took 69 seconds with the density path already
-        # vectorised and 0.7 of that was here.
-        b = _np.frombuffer(base.data, dtype=_np.uint8).reshape(-1, 4).astype(_np.float32) / 255.0
-        t = _np.frombuffer(top.data, dtype=_np.uint8).reshape(-1, 4).astype(_np.float32) / 255.0
-        ba = b[:, 3]
-        ta = t[:, 3] * opacity
+        # **Only the rectangle the top layer actually touches.** Blending one mark used to sweep every pixel of the
+        # page: 3.7 million of them for a mark covering two hundred, and a traced drawing has a thousand marks. The
+        # rectangle around the top's non-transparent pixels is found once and the arithmetic happens there; the rest of
+        # the result is the base, copied. At 2880 across, the full sweep was minutes per mark and this is a few
+        # milliseconds.
+        w, h = base.width, base.height
+        whole_top = _np.frombuffer(top.data, dtype=_np.uint8).reshape(h, w, 4)
+        alpha_top = whole_top[:, :, 3]
+        occupied = _np.flatnonzero(alpha_top.ravel())
+        out.data = bytearray(base.data)
+        if not occupied.size:
+            return out
+        rows = occupied // w
+        cols = occupied % w
+        y0, y1 = int(rows.min()), int(rows.max()) + 1
+        x0, x1 = int(cols.min()), int(cols.max()) + 1
+        b = _np.frombuffer(base.data, dtype=_np.uint8).reshape(h, w, 4)[y0:y1, x0:x1].astype(_np.float32) / 255.0
+        t = whole_top[y0:y1, x0:x1].astype(_np.float32) / 255.0
+        ba = b[:, :, 3]
+        ta = t[:, :, 3] * opacity
         if mode == 'multiply':
-            mixed = b[:, :3] * t[:, :3]
+            mixed = b[:, :, :3] * t[:, :, :3]
         elif mode == 'screen':
-            mixed = 1.0 - (1.0 - b[:, :3]) * (1.0 - t[:, :3])
+            mixed = 1.0 - (1.0 - b[:, :, :3]) * (1.0 - t[:, :, :3])
         elif mode == 'overlay':
-            mixed = _np.where(b[:, :3] < 0.5, 2 * b[:, :3] * t[:, :3],
-                              1.0 - 2 * (1.0 - b[:, :3]) * (1.0 - t[:, :3]))
+            mixed = _np.where(b[:, :, :3] < 0.5, 2 * b[:, :, :3] * t[:, :, :3],
+                              1.0 - 2 * (1.0 - b[:, :, :3]) * (1.0 - t[:, :, :3]))
         else:
-            mixed = t[:, :3]
-        res = b[:, :3] * (1.0 - ta)[:, None] + mixed * ta[:, None]
+            mixed = t[:, :, :3]
+        res = b[:, :, :3] * (1.0 - ta)[:, :, None] + mixed * ta[:, :, None]
         # **Where the base is empty the top goes down as it is**, which is the documented case and not a special one:
         # multiplying with nothing gives the thing.
-        empty = (ba <= 0.004)[:, None]
-        laid = t[:, :3] * opacity if opacity < 1.0 else t[:, :3]
+        empty = (ba <= 0.004)[:, :, None]
+        laid = t[:, :, :3] * opacity if opacity < 1.0 else t[:, :, :3]
         res = _np.where(empty, laid, res)
         alpha = _np.maximum(ba, ta)
-        buf = _np.empty((b.shape[0], 4), dtype=_np.float32)
-        buf[:, :3] = _np.clip(res, 0.0, 1.0)
-        buf[:, 3] = alpha
-        out.data = bytearray((buf * 255.0).astype(_np.uint8).tobytes())
+        block = _np.empty((y1 - y0, x1 - x0, 4), dtype=_np.float32)
+        block[:, :, :3] = _np.clip(res, 0.0, 1.0)
+        block[:, :, 3] = alpha
+        view = _np.frombuffer(out.data, dtype=_np.uint8).reshape(h, w, 4)
+        view[y0:y1, x0:x1] = (block * 255.0).astype(_np.uint8)
         return out
     for index in range(0, len(base.data), 4):
         ba = base.data[index + 3] / 255.0
