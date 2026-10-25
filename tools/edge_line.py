@@ -236,6 +236,45 @@ def ring_regions(mask, min_area=120, max_area=20000, min_hole=20):
     return keep
 
 
+def local_support(lines, radius=30.0, min_support=0.0):
+    """How much other stroke lies near each stroke: **support measured locally, because connectivity does not work.**
+
+    **Why the group test failed.** A real drawing's lines touch each other -- a contour meets the hair that crosses it,
+    which meets the shoulder -- so the connected groups of an honest structure mask are one group of twelve hundred and
+    seventy-six strokes and three hundred small ones. Asking "is this stroke in a large group" is then asking "is this
+    stroke in the drawing", and the answer is always yes.
+
+    What separates a lash from a speck is not connectivity but **density**: within thirty pixels a lash has the rest of
+    the eye around it, and a speck of noise has nothing. So for every stroke the total length of other strokes within
+    `radius` of its middle is summed.
+
+    Returns a list of supports, one per stroke, in the same order.
+    """
+    cell = max(radius, 1.0)
+    buckets = {}
+    for i, line in enumerate(lines):
+        for x, y in line:
+            buckets.setdefault((int(x // cell), int(y // cell)), set()).add(i)
+    lengths = [polyline_length(l) for l in lines]
+    supports = []
+    for i, line in enumerate(lines):
+        mx = sum(p[0] for p in line) / len(line)
+        my = sum(p[1] for p in line) / len(line)
+        total = 0.0
+        seen = set()
+        cx, cy = int(mx // cell), int(my // cell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for j in buckets.get((cx + dx, cy + dy), ()):
+                    if j == i or j in seen:
+                        continue
+                    seen.add(j)
+                    if any(math.hypot(p[0] - mx, p[1] - my) <= radius for p in lines[j]):
+                        total += lengths[j]
+        supports.append(total)
+    return supports
+
+
 def group_lines(lines, reach=20.0, angle_deg=35.0):
     """Which strokes belong to one form: **the level at which an eye can be told from a speck.**
 
@@ -306,7 +345,7 @@ def linkable(a, b, reach, keep_long):
 
 
 def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
-                    ring_min=20.0, ring_max=600.0, enclosures=None, group_min=3):
+                    ring_min=20.0, ring_max=600.0, enclosures=None, support_radius=30.0, support_min=0.0):
     """Drop the short strokes that **neither continue anything, nor close, nor belong to a group of them.**
 
     **Three different questions, and the third is the one a face needs.** A length threshold cannot tell a lash from a
@@ -316,18 +355,16 @@ def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolera
     important feature. So the strokes are grouped first (`group_lines`), and a group holding at least `group_min` of
     them is kept whole: several small strokes that meet each other are a form, and one is not.
     """
-    groups = group_lines(lines, reach, angle_deg) if group_min > 1 else {}
-    grouped = set()
-    for members in groups.values():
-        if len(members) >= group_min:
-            grouped.update(members)
+    groups = {}
+    supports = local_support(lines, support_radius) if support_min > 0 else None
     longs = [l for l in lines if polyline_length(l) >= long_length]
     keep_long = math.cos(math.radians(angle_deg))
     out = []
     for index, line in enumerate(lines):
         span = polyline_length(line)
-        if index in grouped:
-            # **Several strokes that meet are a form**, whatever their individual lengths say.
+        if supports is not None and supports[index] >= support_min:
+            # **Supported locally**: the rest of a form lies within a thirty pixel radius, which a speck of noise
+            # cannot say.
             out.append(line)
             continue
         if span >= long_length:
@@ -409,8 +446,12 @@ def main():
                     help='smallest enclosed area treated as a feature')
     ap.add_argument('--ring-area-max', type=float, default=20000.0,
                     help='largest enclosed area treated as a feature')
-    ap.add_argument('--group-min', type=int, default=3,
-                    help='how many connected short strokes make a form worth keeping; 1 turns grouping off')
+    ap.add_argument('--group-min', type=int, default=0,
+                    help='unused: connectivity groups the whole drawing, see local_support')
+    ap.add_argument('--support-radius', type=float, default=30.0,
+                    help='how near other strokes must be to support a short one')
+    ap.add_argument('--support-min', type=float, default=150.0,
+                    help='total length of neighbouring strokes that makes a short one part of a form; 0 off')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -461,7 +502,7 @@ def main():
                   % (int(enclosures.sum()), int(np.count_nonzero(np.diff(enclosures.astype(np.int8), axis=0)))))
         lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle,
                                 args.close_tolerance, args.ring_min, args.ring_max, enclosures,
-                                args.group_min)
+                                args.support_radius, args.support_min)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
 
