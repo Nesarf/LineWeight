@@ -203,8 +203,41 @@ def is_closed(pts, tolerance=8.0):
     return math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= tolerance
 
 
+def ring_regions(mask, min_area=120, max_area=20000, min_hole=20):
+    """The small areas a closed run encloses: **a pupil is a hole, not a pair of nearby endpoints.**
+
+    **Why this cannot be done on the polylines.** The walker cuts a ring open at the point where it starts, so a closed
+    loop of pixels comes back as an open path whose two ends have drifted apart -- measured, only eleven of eighteen
+    hundred strokes looked closed by their endpoints. The mask still knows: a ring is a connected component that
+    encloses a hole, and its size says whether that hole is a feature or the inside of a contour.
+
+    Returns the filled areas, not the rings themselves, so a stroke belonging to a feature can be recognised by lying in
+    one of them.
+    """
+    from scipy import ndimage
+    labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
+    keep = np.zeros(mask.shape, dtype=bool)
+    # **Each component measured inside its own box.** Filling holes on the full page for every component is a full page
+    # of work per component, and a structure mask has thousands; the box is the size of the stroke.
+    for i, window in enumerate(ndimage.find_objects(labels), start=1):
+        if window is None:
+            continue
+        blob = (labels[window] == i)
+        filled = ndimage.binary_fill_holes(blob)
+        enclosed = int(filled.sum()) - int(blob.sum())
+        if enclosed < min_hole:
+            continue
+        if not (min_area <= int(filled.sum()) <= max_area):
+            continue
+        # **The ring itself, not what it encloses.** A stroke belonging to a pupil runs *along* the ring, so asking
+        # whether a point is inside the enclosed area asks the wrong question -- the answer was six strokes in eighteen
+        # hundred. The ring's own pixels are where the stroke is.
+        keep[window] |= blob
+    return keep
+
+
 def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
-                    ring_min=20.0, ring_max=600.0):
+                    ring_min=20.0, ring_max=600.0, enclosures=None):
     """Drop the short strokes that **neither continue anything nor close on themselves**, and only those.
 
     **Two problems, two different questions.** A length threshold cannot tell a lash from a speck, because both are
@@ -231,6 +264,26 @@ def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolera
             # **A closed ring of feature size is kept on its own authority**, without needing to continue anything.
             out.append(line)
             continue
+        if enclosures is not None:
+            # **The mask's own answer about what is enclosed.** A stroke lying on a small ring is the edge of a feature
+            # -- a pupil, a button -- and it is a feature whether or not it closes or continues.
+            h, w = enclosures.shape
+            inside = False
+            for x, y in line:
+                ix, iy = int(round(x)), int(round(y))
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        jy, jx = iy + dy, ix + dx
+                        if 0 <= jy < h and 0 <= jx < w and enclosures[jy, jx]:
+                            inside = True
+                            break
+                    if inside:
+                        break
+                if inside:
+                    break
+            if inside:
+                out.append(line)
+                continue
         joined = False
         for at_start in (True, False):
             px, py = line[0] if at_start else line[-1]
@@ -277,6 +330,12 @@ def main():
                     help='shortest ring kept for being a feature; below this a loop is a skeleton knot')
     ap.add_argument('--ring-max', type=float, default=600.0,
                     help='longest ring kept for being a feature; longer than this it is a contour')
+    ap.add_argument('--rings', action='store_true', default=True,
+                    help='keep strokes inside a small enclosed area, which is what a pupil is')
+    ap.add_argument('--ring-area-min', type=float, default=120.0,
+                    help='smallest enclosed area treated as a feature')
+    ap.add_argument('--ring-area-max', type=float, default=20000.0,
+                    help='largest enclosed area treated as a feature')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -320,8 +379,13 @@ def main():
           % (len(lines), sum(len(l) for l in lines)))
     if args.prune_length:
         before = len(lines)
+        enclosures = None
+        if args.rings:
+            enclosures = ring_regions(mask, args.ring_area_min, args.ring_area_max)
+            print('  enclosed feature areas %d px in %d pieces'
+                  % (int(enclosures.sum()), int(np.count_nonzero(np.diff(enclosures.astype(np.int8), axis=0)))))
         lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle,
-                                args.close_tolerance, args.ring_min, args.ring_max)
+                                args.close_tolerance, args.ring_min, args.ring_max, enclosures)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
 
