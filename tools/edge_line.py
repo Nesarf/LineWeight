@@ -68,7 +68,8 @@ def region_edges(rgb, levels=8, blur=2.0, tolerance=2):
     return edge
 
 
-def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0, regions=None):
+def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0, regions=None,
+              hysteresis=True):
     """A one-pixel structure mask: Canny on tone, with colour used as a **veto** rather than as weight.
 
     **Brightness alone cannot tell a contour from a highlight.** A thigh's silhouette and the pale band running down
@@ -120,19 +121,30 @@ def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0
     positive = thinned[thinned > 0]
     if not positive.size:
         return np.zeros_like(mag, dtype=bool)
-    hi = float(np.percentile(positive, 100.0 - strong_pct))
-    lo = float(np.percentile(positive, 100.0 - weak_pct))
+    # **`strong_pct` is where the threshold sits, not what it excludes.** It reads as "97" meaning the ninety-seventh
+    # percentile, and the first version wrote `100 - 97` and took the third percentile -- so the threshold was at the
+    # *weakest* three per cent of the gradient and almost every edge cleared it. That is why raising the number from
+    # ninety-seven to ninety-nine point six changed the mask by 0.01 per cent: both settings were near the floor.
+    hi = float(np.percentile(positive, strong_pct))
+    lo = float(np.percentile(positive, weak_pct))
     strong = thinned >= hi
     weak = thinned >= lo
-    labels, count = ndimage.label(weak, structure=np.ones((3, 3), dtype=np.uint8))
-    if not count:
-        return strong
-    # **An edge is kept if any part of its connected run is strong.** This is the hysteresis: it lets a contour continue
-    # through the soft places instead of stopping wherever the paint got light.
-    attached = np.zeros(count + 1, dtype=bool)
-    attached[np.unique(labels[strong])] = True
-    attached[0] = False
-    kept = attached[labels]
+    if hysteresis:
+        labels, count = ndimage.label(weak, structure=np.ones((3, 3), dtype=np.uint8))
+        if not count:
+            return strong
+        # **An edge is kept if any part of its connected run is strong.** This is the hysteresis: it lets a contour
+        # continue through the soft places instead of stopping wherever the paint got light.
+        attached = np.zeros(count + 1, dtype=bool)
+        attached[np.unique(labels[strong])] = True
+        attached[0] = False
+        kept = attached[labels]
+    else:
+        # **Threshold alone.** Measured on a painted reference: raising the strong percentile from ninety-seven to
+        # ninety-nine point six left the mask at 2.82 per cent both times, because with hysteresis a run survives
+        # whole as soon as one edge in it is strong -- and in a painted picture strong edges are everywhere, so
+        # nothing is ever dropped. Thresholds that cannot change the answer are not thresholds.
+        kept = strong
 
     if chroma_guard > 0 and kept.any():
         # **The veto.** Among the edges kept, those whose tone change is in the top tenth while their colour change is
@@ -430,6 +442,8 @@ def main():
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     ap.add_argument('--prune-length', type=float, default=0.0,
                     help='strokes shorter than this must continue a longer one to be kept; 0 turns it off')
+    ap.add_argument('--no-hysteresis', action='store_true',
+                    help='keep only edges above the strong percentile, without growing runs through weak ones')
     ap.add_argument('--prune-reach', type=float, default=14.0,
                     help='how far across a gap a stroke may be to count as a continuation')
     ap.add_argument('--prune-angle', type=float, default=35.0,
@@ -490,7 +504,7 @@ def main():
         print('  colour area boundaries %d px (%.2f%% of the page)'
               % (int(edges.sum()), 100.0 * edges.sum() / edges.size))
     mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
-                     args.chroma_guard, edges)
+                     args.chroma_guard, edges, not args.no_hysteresis)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
