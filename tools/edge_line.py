@@ -471,8 +471,11 @@ def main():
         if len(pts) < 2:
             continue
         scaled = [(x * s, y * s) for x, y in pts]
-        rec = core.stroke_record(scaled, 'fine', seed=i, resolution=4,
-                                 width_profile=[args.width] * (4 * (len(scaled) - 1) + 1))
+        # **No Catmull expansion on a structure line.** The polylines here already come from a skeleton and a finer walk
+        # than a hand ever draws, so interpolating four points between every two adds marks and adds no shape -- and a
+        # dozen thousand marks is minutes of rasterising. Resolution one means the stored centre line is the polyline.
+        rec = core.stroke_record(scaled, 'fine', seed=i, resolution=1,
+                                 width_profile=[args.width] * len(scaled))
         proj.add_stroke(rec, stage='line', layer='ink', note='structure %d' % i)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
