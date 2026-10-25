@@ -41,20 +41,35 @@ WEAK_PCT = 96.0
 MIN_SEGMENT = 10
 
 
-def structure(gray, blur, strong_pct, weak_pct, pair_distance=4):
-    """A one-pixel structure mask: Canny, on the reference's own gradient distribution.
+def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0):
+    """A one-pixel structure mask: Canny on tone, with colour used as a **veto** rather than as weight.
 
-    **Two sides of one band become one line.** A painted highlight is a pale band between two dark ones, so the gradient
-    peaks on each of its sides and non-maximum suppression keeps both -- which is right for the gradient and wrong for a
-    drawing, where a highlight is one line and not two. Where a structure pixel finds another within `pair_distance`
-    across its own gradient, the weaker of the two goes. That is the light rule from the library finally doing work: of
-    a band's two edges, the one that survives is the one whose change is greater, and a line is thickened on the side the
-    light does not reach.
+    **Brightness alone cannot tell a contour from a highlight.** A thigh's silhouette and the pale band running down
+    that same thigh are both sharp changes in tone. What separates them is colour: crossing a silhouette moves from skin
+    to cloth or to background, while crossing a highlight stays on one material and merely gets lighter.
+
+    **Adding colour to the gradient was tried and it is wrong.** A colour gradient is large wherever skin reddens or
+    cloth changes dye, so weighting it in multiplied the line count with texture -- freckles, blush, the folds of a
+    stocking -- while leaving the very highlights it was meant to remove. The colour is therefore used only to veto: an
+    edge that is extremely strong in tone and very weak in colour is a change of light, not of material, and it goes.
+    `chroma_guard` at zero turns the veto off.
+
+    **Two sides of one band become one line**, by removing the weaker of two structure pixels found across the gradient
+    within `pair_distance`.
     """
     from scipy import ndimage
-    g = ndimage.gaussian_filter(gray.astype(np.float32), blur)
-    gy, gx = np.gradient(g)
+    rgb = rgb.astype(np.float32)
+    tone = ndimage.gaussian_filter(rgb.mean(axis=2), blur)
+    # **The two colour differences that carry hue**, green against red and blue against green. A pure brightness edge has
+    # none of either; a change of material has both.
+    rg = ndimage.gaussian_filter(rgb[:, :, 0] - rgb[:, :, 1], blur)
+    gb = ndimage.gaussian_filter(rgb[:, :, 1] - rgb[:, :, 2], blur)
+    ty, tx = np.gradient(tone)
+    ay, ax = np.gradient(rg)
+    by, bx = np.gradient(gb)
+    gy, gx = ty, tx
     mag = np.hypot(gx, gy)
+    chroma_mag = np.hypot(ax + bx, ay + by)
     angle = (np.rad2deg(np.arctan2(gy, gx)) + 180.0) % 180.0
     octant = ((angle + 22.5) // 45.0).astype(np.int32) % 4
 
@@ -92,8 +107,16 @@ def structure(gray, blur, strong_pct, weak_pct, pair_distance=4):
     attached[0] = False
     kept = attached[labels]
 
+    if chroma_guard > 0 and kept.any():
+        # **The veto.** Among the edges kept, those whose tone change is in the top tenth while their colour change is
+        # among the smallest are changes of light, not of material -- the pale band down a thigh, the sheen on a
+        # stocking. A silhouette crosses a change of material and always has colour under it.
+        tone_top = float(np.percentile(mag[kept], 90.0))
+        chroma_scale = float(chroma_mag.max()) or 1.0
+        kept &= ~((mag >= tone_top) & (chroma_mag < chroma_guard * chroma_scale))
+
     if pair_distance > 0:
-        h, w = g.shape
+        h, w = tone.shape
         ys, xs = np.mgrid[0:h, 0:w]
         ux = gx / (mag + 1e-6)
         uy = gy / (mag + 1e-6)
@@ -137,11 +160,15 @@ def main():
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
+    ap.add_argument('--chroma-guard', type=float, default=0.0,
+                    help='veto edges this strong in tone but this weak in colour; 0 turns the veto off')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
     from PIL import Image
-    img = Image.open(args.src).convert('L')
+    # **Colour, not grey.** The distinction between a contour and a highlight lives in hue; dropping to luminance at the
+    # door is what makes the two indistinguishable for everything downstream.
+    img = Image.open(args.src).convert('RGB')
     ref_size = img.size
     ref_long = float(max(ref_size))
     canvas_long = max(2880.0, ref_long * 1.2, args.canvas_side)
@@ -150,13 +177,13 @@ def main():
     work = (int(round(ref_size[0] * scale)), int(round(ref_size[1] * scale)))
     if work != ref_size:
         img = img.resize(work, Image.LANCZOS)
-    gray = np.asarray(img, dtype=np.float32)
+    rgb = np.asarray(img, dtype=np.float32)
     w, h = work
     s = canvas_long / float(max(w, h))
     print('  %s  work %dx%d, page %dx%d'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s)))
 
-    mask = structure(gray, args.blur, args.strong, args.weak, args.pair_distance)
+    mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance, args.chroma_guard)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
