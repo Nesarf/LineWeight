@@ -461,6 +461,8 @@ def main():
                     help='keep only edges on a boundary between colour areas, quantised to this many levels; 0 off')
     ap.add_argument('--region-tolerance', type=int, default=2,
                     help='how far an edge may sit from the colour boundary and still count')
+    ap.add_argument('--region-blur', type=float, default=0.0,
+                    help='smoothing before the areas are cut; 0 follows the structure blur, larger cuts fewer areas')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
@@ -484,7 +486,7 @@ def main():
 
     edges = None
     if args.regions:
-        edges = region_edges(rgb, args.regions, args.blur * 1.5, args.region_tolerance)
+        edges = region_edges(rgb, args.regions, args.region_blur or args.blur * 1.5, args.region_tolerance)
         print('  colour area boundaries %d px (%.2f%% of the page)'
               % (int(edges.sum()), 100.0 * edges.sum() / edges.size))
     mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
