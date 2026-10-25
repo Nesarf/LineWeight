@@ -69,7 +69,7 @@ def region_edges(rgb, levels=8, blur=2.0, tolerance=2):
 
 
 def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0, regions=None,
-              hysteresis=True):
+              hysteresis=True, faint_at=0.0):
     """A one-pixel structure mask: Canny on tone, with colour used as a **veto** rather than as weight.
 
     **Brightness alone cannot tell a contour from a highlight.** A thigh's silhouette and the pale band running down
@@ -159,6 +159,18 @@ def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0
         # material, a gradient on a cheek, the sheen along a stocking -- is a change of light within a form, and a form
         # with no boundary there does not have a line there.
         kept &= regions
+
+    if faint_at > 0.0 and regions is not None:
+        # **The lines an out-of-focus edge took away.** A painted background is blurred and a soft edge has a gradient
+        # below any threshold that would keep a contour; the areas are still there and the boundary between them is
+        # still a boundary. So a colour boundary carrying only a faint gradient is kept at `faint_at` of the strong
+        # threshold -- which is where a window frame or a floral pattern in a defocused corner comes back.
+        # **A fraction of the strong threshold, not of the median gradient.** Measured against the median it admitted
+        # ten per cent of the page -- the median of a painted picture's gradient is near zero, so "half the median" is
+        # almost no threshold at all. Against `hi` the number means what it says: half as strong as a contour.
+        floor = hi * faint_at
+        faint = regions & (mag < hi) & (mag >= floor)
+        kept |= faint
 
     if pair_distance > 0:
         h, w = tone.shape
@@ -482,6 +494,8 @@ def main():
                     help='smoothing before the areas are cut; 0 follows the structure blur, larger cuts fewer areas')
     ap.add_argument('--dump-lines', default='',
                     help='write the pre-pruning strokes to this json file, for comparing two runs as data')
+    ap.add_argument('--faint', type=float, default=0.5,
+                    help='keep colour boundaries down to this fraction of the median gradient, for defocused areas; 0 off')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
@@ -517,7 +531,7 @@ def main():
         print('  colour area boundaries %d px (%.2f%% of the page)'
               % (int(edges.sum()), 100.0 * edges.sum() / edges.size))
     mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
-                     args.chroma_guard, edges, args.hysteresis)
+                     args.chroma_guard, edges, args.hysteresis, args.faint)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, max(1, int(round(args.min_segment * k))))
     print('  %d structure lines, %d points'
