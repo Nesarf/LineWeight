@@ -457,8 +457,8 @@ def main():
                     help='shortest ring kept for being a feature; below this a loop is a skeleton knot')
     ap.add_argument('--ring-max', type=float, default=600.0,
                     help='longest ring kept for being a feature; longer than this it is a contour')
-    ap.add_argument('--rings', action='store_true', default=True,
-                    help='keep strokes inside a small enclosed area, which is what a pupil is')
+    ap.add_argument('--rings', action='store_false', default=False,
+                    help='keep strokes lying on a small enclosed area; measured to be a hole rather than a help')
     ap.add_argument('--ring-area-min', type=float, default=120.0,
                     help='smallest enclosed area treated as a feature')
     ap.add_argument('--ring-area-max', type=float, default=20000.0,
@@ -532,6 +532,10 @@ def main():
                                 args.support_radius * k, args.support_min)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
+        long_count = sum(1 for l in lines if polyline_length(l) >= args.prune_length * k)
+        print('    prune: length %.1f reach %.2f angle %.0f close %.1f rings %s long %d of %d'
+              % (args.prune_length * k, args.prune_reach * k, args.prune_angle,
+                 args.close_tolerance * k, args.rings, long_count, len(lines)))
 
     # **The debris figure the objective is measured on.** A speck is short and alone: under fifteen pixels with nothing
     # else within twenty-five, both quoted at the 2880 reference size and scaled like every other length.
