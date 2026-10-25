@@ -41,8 +41,16 @@ WEAK_PCT = 96.0
 MIN_SEGMENT = 10
 
 
-def structure(gray, blur, strong_pct, weak_pct):
-    """A one-pixel structure mask: Canny, on the reference's own gradient distribution."""
+def structure(gray, blur, strong_pct, weak_pct, pair_distance=4):
+    """A one-pixel structure mask: Canny, on the reference's own gradient distribution.
+
+    **Two sides of one band become one line.** A painted highlight is a pale band between two dark ones, so the gradient
+    peaks on each of its sides and non-maximum suppression keeps both -- which is right for the gradient and wrong for a
+    drawing, where a highlight is one line and not two. Where a structure pixel finds another within `pair_distance`
+    across its own gradient, the weaker of the two goes. That is the light rule from the library finally doing work: of
+    a band's two edges, the one that survives is the one whose change is greater, and a line is thickened on the side the
+    light does not reach.
+    """
     from scipy import ndimage
     g = ndimage.gaussian_filter(gray.astype(np.float32), blur)
     gy, gx = np.gradient(g)
@@ -82,7 +90,23 @@ def structure(gray, blur, strong_pct, weak_pct):
     attached = np.zeros(count + 1, dtype=bool)
     attached[np.unique(labels[strong])] = True
     attached[0] = False
-    return attached[labels]
+    kept = attached[labels]
+
+    if pair_distance > 0:
+        h, w = g.shape
+        ys, xs = np.mgrid[0:h, 0:w]
+        ux = gx / (mag + 1e-6)
+        uy = gy / (mag + 1e-6)
+        drop = np.zeros_like(kept)
+        for sign in (1, -1):
+            sx = np.clip((xs + sign * pair_distance * ux).round().astype(np.int32), 0, w - 1)
+            sy = np.clip((ys + sign * pair_distance * uy).round().astype(np.int32), 0, h - 1)
+            # **A partner across the gradient that is stronger, and the two are near enough to be one band's two sides.**
+            # Distance is measured against the gradient, so "across" means across the edge, not along it.
+            partner = kept[sy, sx] & (mag[sy, sx] > mag)
+            drop |= partner & kept
+        kept &= ~drop
+    return kept
 
 
 def walks(mask, min_segment):
@@ -110,6 +134,8 @@ def main():
     ap.add_argument('--strong', type=float, default=STRONG_PCT)
     ap.add_argument('--weak', type=float, default=WEAK_PCT)
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
+    ap.add_argument('--pair-distance', type=float, default=4.0,
+                    help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -130,7 +156,7 @@ def main():
     print('  %s  work %dx%d, page %dx%d'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s)))
 
-    mask = structure(gray, args.blur, args.strong, args.weak)
+    mask = structure(gray, args.blur, args.strong, args.weak, args.pair_distance)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
