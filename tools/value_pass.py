@@ -62,34 +62,38 @@ def kmeans_1d(values, k, iterations=24):
 
 
 def person_mask(gray):
-    """The figure's interior: **the region a closed outline encloses**, not the ink itself.
+    """The figure: **a painted reference needs no closing at all**, and a line drawing needs one and pays for it.
 
-    **A line drawing is almost all paper by area**, so "not paper" is a few thousand pixels of line and putting a value
-    under that paints the lines rather than the person. What has to be found is what the outline encloses, which is a
-    hole-filling problem: close the gaps enough that the outline is a loop, fill what it holds, and take the largest
-    piece. If the loop does not close, the fill leaks and covers the page -- so the closing is tried at three widths and
-    the first result that is still a figure rather than a flood is the one used.
+    **The ghost came from the closing, not from the filling.** A painted figure is one continuous region of non-paper,
+    so filling what it encloses gives the figure exactly -- and filling can only fill holes, so nothing outside can be
+    swallowed. A line drawing is the opposite: its ink is a thin net with gaps, so the outline has to be closed before
+    it holds anything, and the closing widens the silhouette outward by its own width. That is where a strip of pale
+    grey with no body under it comes from, and it is a price only line drawings pay.
+
+    **So the cheap criterion is tried first.** If the non-paper region is a plausible figure, it is the answer; the
+    closing is a fallback for references whose ink is all the figure there is.
     """
     from scipy import ndimage
-    ink = (gray < PAPER).astype(np.uint8)
+    ink = (gray < PAPER)
     structure = np.ones((3, 3), dtype=bool)
-    biggest = ink.astype(bool)
+
+    painted = ndimage.binary_fill_holes(ink.astype(np.uint8)).astype(bool)
+    share = painted.sum() / float(gray.size)
+    if 0.05 < share < 0.80:
+        return painted
+
+    ink_u8 = ink.astype(np.uint8)
+    biggest = ink
     for iterations in (3, 8, 16):
-        closed = ndimage.binary_closing(ink, structure=structure, iterations=iterations).astype(np.uint8)
+        closed = ndimage.binary_closing(ink_u8, structure=structure, iterations=iterations).astype(np.uint8)
         filled = ndimage.binary_fill_holes(closed).astype(np.uint8)
         labels, count = ndimage.label(filled, structure=np.ones((3, 3), dtype=np.uint8))
         if not count:
             continue
         sizes = ndimage.sum(filled, labels, range(1, count + 1))
         piece = labels == (int(np.argmax(sizes)) + 1)
-        # **An opening scaled to the closing that made the overhang.** The closing that turns the outline into a loop
-        # is a dilation, and it pushes the silhouette out by its own width; an opening of an unrelated constant leaves
-        # that strip behind, which is a patch of pale grey above the ear with no body under it. Half the closing's own
-        # width takes the overhang back without eating the fingers, which a full-width opening would.
         piece = ndimage.binary_opening(piece, structure=structure, iterations=max(1, iterations // 2))
         biggest = piece
-        # **A flood is not a figure.** Past three quarters of the page the outline never closed and the fill escaped; a
-        # wider closing is the only thing that can help, and past the last one the ink itself is returned.
         if piece.sum() < 0.75 * gray.size:
             return piece
     return biggest
