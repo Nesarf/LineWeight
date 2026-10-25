@@ -82,10 +82,11 @@ def person_mask(gray):
             continue
         sizes = ndimage.sum(filled, labels, range(1, count + 1))
         piece = labels == (int(np.argmax(sizes)) + 1)
-        # **An opening after the fill, because closing is a dilation.** The closing that makes the outline a loop also
-        # pushes the silhouette outward by its own width, and the strip it gains outside the figure becomes a patch of
-        # pale grey with no body under it. An opening of the same size takes that back.
-        piece = ndimage.binary_opening(piece, structure=structure, iterations=2)
+        # **An opening scaled to the closing that made the overhang.** The closing that turns the outline into a loop
+        # is a dilation, and it pushes the silhouette out by its own width; an opening of an unrelated constant leaves
+        # that strip behind, which is a patch of pale grey above the ear with no body under it. Half the closing's own
+        # width takes the overhang back without eating the fingers, which a full-width opening would.
+        piece = ndimage.binary_opening(piece, structure=structure, iterations=max(1, iterations // 2))
         biggest = piece
         # **A flood is not a figure.** Past three quarters of the page the outline never closed and the fill escaped; a
         # wider closing is the only thing that can help, and past the last one the ink itself is returned.
