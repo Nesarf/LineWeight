@@ -236,27 +236,100 @@ def ring_regions(mask, min_area=120, max_area=20000, min_hole=20):
     return keep
 
 
-def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
-                    ring_min=20.0, ring_max=600.0, enclosures=None):
-    """Drop the short strokes that **neither continue anything nor close on themselves**, and only those.
+def group_lines(lines, reach=20.0, angle_deg=35.0):
+    """Which strokes belong to one form: **the level at which an eye can be told from a speck.**
 
-    **Two problems, two different questions.** A length threshold cannot tell a lash from a speck, because both are
-    thirty pixels. What separates them is relationship: a lash continues a hairline, and noise continues nothing. So a
-    short stroke is kept when one of its ends is close to an end of a long stroke and the two point opposite ways.
+    **A filter decides one stroke at a time, and that is the wrong unit for a face.** An eye is five to eight short runs
+    -- a lash, both lids, the pupil's edge -- each five to ten pixels; a piece of noise is one run of the same length.
+    So the strokes are the same size and the forms are not, and no threshold on a stroke can separate them. What
+    separates them is how many strokes are joined to each other, which needs the strokes to be grouped before anything
+    is judged.
 
-    **An eye answers neither.** It is a ring of twenty to forty pixels that closes on itself and touches nothing, so
-    the continuation test throws it away along with the debris -- which is exactly what a face with no pupils in it
-    looked like. A third question is therefore asked: does the stroke return to its own start? A ring within a size
-    band is a feature -- a pupil, a button, an earring -- and a short open stroke is not, whatever its length.
-
-    The ring band matters: below `ring_min` a loop is a knot in the skeleton, and above `ring_max` it is a contour,
-    which is kept by the length rule already.
+    Two strokes are joined when an end of one is within `reach` of an end of the other and the two point opposite ways,
+    the same test a continuation uses -- so a group is a set of strokes that would draw one connected figure. Grouping
+    is by connected components over that relation, found through a grid so that thousands of strokes do not become
+    millions of comparisons.
     """
+    count = len(lines)
+    parent = list(range(count))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    cell = max(reach, 1.0)
+    buckets = {}
+    for i, line in enumerate(lines):
+        for x, y in line:
+            key = (int(x // cell), int(y // cell))
+            buckets.setdefault(key, set()).add(i)
+
+    keep_long = math.cos(math.radians(angle_deg))
+    for (cx, cy), members in buckets.items():
+        neighbours = set()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                neighbours |= buckets.get((cx + dx, cy + dy), set())
+        for i in members:
+            for j in neighbours:
+                if j <= i or find(i) == find(j):
+                    continue
+                if linkable(lines[i], lines[j], reach, keep_long):
+                    union(i, j)
+
+    groups = {}
+    for i in range(count):
+        groups.setdefault(find(i), []).append(i)
+    return groups
+
+
+def linkable(a, b, reach, keep_long):
+    """Whether two strokes would meet: an end near an end, with the two outward directions facing."""
+    for at_start in (True, False):
+        px, py = a[0] if at_start else a[-1]
+        dx, dy = end_direction(a, at_start)
+        for other_start in (True, False):
+            qx, qy = b[0] if other_start else b[-1]
+            if math.hypot(qx - px, qy - py) > reach:
+                continue
+            ox, oy = end_direction(b, other_start)
+            if -(dx * ox + dy * oy) >= keep_long:
+                return True
+    return False
+
+
+def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
+                    ring_min=20.0, ring_max=600.0, enclosures=None, group_min=3):
+    """Drop the short strokes that **neither continue anything, nor close, nor belong to a group of them.**
+
+    **Three different questions, and the third is the one a face needs.** A length threshold cannot tell a lash from a
+    speck, because both are thirty pixels. A continuation test keeps a lash that continues a hairline. A ring test keeps
+    a pupil that closes on itself. **But an eye is none of those**: it is five to eight short runs, each five to ten
+    pixels, none of them continuing a long stroke and none closing alone -- and together they are a face's most
+    important feature. So the strokes are grouped first (`group_lines`), and a group holding at least `group_min` of
+    them is kept whole: several small strokes that meet each other are a form, and one is not.
+    """
+    groups = group_lines(lines, reach, angle_deg) if group_min > 1 else {}
+    grouped = set()
+    for members in groups.values():
+        if len(members) >= group_min:
+            grouped.update(members)
     longs = [l for l in lines if polyline_length(l) >= long_length]
     keep_long = math.cos(math.radians(angle_deg))
     out = []
-    for line in lines:
+    for index, line in enumerate(lines):
         span = polyline_length(line)
+        if index in grouped:
+            # **Several strokes that meet are a form**, whatever their individual lengths say.
+            out.append(line)
+            continue
         if span >= long_length:
             out.append(line)
             continue
@@ -336,6 +409,8 @@ def main():
                     help='smallest enclosed area treated as a feature')
     ap.add_argument('--ring-area-max', type=float, default=20000.0,
                     help='largest enclosed area treated as a feature')
+    ap.add_argument('--group-min', type=int, default=3,
+                    help='how many connected short strokes make a form worth keeping; 1 turns grouping off')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -385,7 +460,8 @@ def main():
             print('  enclosed feature areas %d px in %d pieces'
                   % (int(enclosures.sum()), int(np.count_nonzero(np.diff(enclosures.astype(np.int8), axis=0)))))
         lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle,
-                                args.close_tolerance, args.ring_min, args.ring_max, enclosures)
+                                args.close_tolerance, args.ring_min, args.ring_max, enclosures,
+                                args.group_min)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
 
