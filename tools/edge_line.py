@@ -358,16 +358,19 @@ def linkable(a, b, reach, keep_long):
 
 def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolerance=8.0,
                     ring_min=20.0, ring_max=600.0, enclosures=None, support_radius=30.0, support_min=0.0):
-    """Drop the short strokes that **neither continue anything, nor close, nor belong to a group of them.**
+    """Drop the short strokes that **neither continue anything, nor close, nor lie on a small ring.**
 
     **Three different questions, and the third is the one a face needs.** A length threshold cannot tell a lash from a
     speck, because both are thirty pixels. A continuation test keeps a lash that continues a hairline. A ring test keeps
     a pupil that closes on itself. **But an eye is none of those**: it is five to eight short runs, each five to ten
     pixels, none of them continuing a long stroke and none closing alone -- and together they are a face's most
-    important feature. So the strokes are grouped first (`group_lines`), and a group holding at least `group_min` of
-    them is kept whole: several small strokes that meet each other are a form, and one is not.
+    important feature.
+
+    **`support_min` and the grouping path are kept and default off.** Measured on this reference, a connected group is
+    the whole figure (twelve hundred of two thousand strokes) and local support is high for debris because debris comes
+    in fields, so neither can tell a lash from a speck. They stay because the measurement may differ on another
+    picture, and a tool that forgot why it stopped trying would try again for no reason.
     """
-    groups = {}
     supports = local_support(lines, support_radius) if support_min > 0 else None
     longs = [l for l in lines if polyline_length(l) >= long_length]
     keep_long = math.cos(math.radians(angle_deg))
@@ -437,16 +440,16 @@ def main():
     ap.add_argument('--min-long-side', type=int, default=2880)
     ap.add_argument('--canvas-side', type=float, default=0)
     ap.add_argument('--blur', type=float, default=BLUR)
-    ap.add_argument('--strong', type=float, default=STRONG_PCT)
-    ap.add_argument('--weak', type=float, default=WEAK_PCT)
-    ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
-    ap.add_argument('--prune-length', type=float, default=0.0,
+    ap.add_argument('--strong', type=float, default=90.0)
+    ap.add_argument('--weak', type=float, default=99.5)
+    ap.add_argument('--min-segment', type=int, default=5)
+    ap.add_argument('--prune-length', type=float, default=40.0,
                     help='strokes shorter than this must continue a longer one to be kept; 0 turns it off')
-    ap.add_argument('--no-hysteresis', action='store_true',
-                    help='keep only edges above the strong percentile, without growing runs through weak ones')
-    ap.add_argument('--prune-reach', type=float, default=14.0,
+    ap.add_argument('--hysteresis', action='store_true',
+                    help='grow strong edges through weak ones; measured to disable the threshold on painted pictures')
+    ap.add_argument('--prune-reach', type=float, default=9.0,
                     help='how far across a gap a stroke may be to count as a continuation')
-    ap.add_argument('--prune-angle', type=float, default=35.0,
+    ap.add_argument('--prune-angle', type=float, default=20.0,
                     help='how many degrees a continuation may deviate')
     ap.add_argument('--close-tolerance', type=float, default=8.0,
                     help='how near a stroke\'s two ends must be for it to count as a ring')
@@ -471,11 +474,11 @@ def main():
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
     ap.add_argument('--chroma-guard', type=float, default=0.0,
                     help='veto edges this strong in tone but this weak in colour; 0 turns the veto off')
-    ap.add_argument('--regions', type=int, default=0,
+    ap.add_argument('--regions', type=int, default=16,
                     help='keep only edges on a boundary between colour areas, quantised to this many levels; 0 off')
-    ap.add_argument('--region-tolerance', type=int, default=2,
+    ap.add_argument('--region-tolerance', type=int, default=1,
                     help='how far an edge may sit from the colour boundary and still count')
-    ap.add_argument('--region-blur', type=float, default=0.0,
+    ap.add_argument('--region-blur', type=float, default=3.0,
                     help='smoothing before the areas are cut; 0 follows the structure blur, larger cuts fewer areas')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -504,7 +507,7 @@ def main():
         print('  colour area boundaries %d px (%.2f%% of the page)'
               % (int(edges.sum()), 100.0 * edges.sum() / edges.size))
     mask = structure(rgb, args.blur, args.strong, args.weak, args.pair_distance,
-                     args.chroma_guard, edges, not args.no_hysteresis)
+                     args.chroma_guard, edges, args.hysteresis)
     print('  structure pixels %d (%.2f%% of the page)' % (int(mask.sum()), 100.0 * mask.sum() / (w * h)))
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
@@ -521,6 +524,14 @@ def main():
                                 args.support_radius, args.support_min)
         print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
               % (len(lines), before, before - len(lines)))
+
+    # **The debris figure the objective is measured on.** A speck is short and alone: under fifteen pixels with nothing
+    # else within twenty-five. Reported on every run rather than judged by eye, so "almost none" has a number.
+    supports = local_support(lines, 25.0)
+    debris = sum(1 for line, support in zip(lines, supports)
+                 if polyline_length(line) < 15.0 and support < 5.0)
+    print('  debris: %d of %d strokes are short and alone (%.2f%%)'
+          % (debris, len(lines), 100.0 * debris / max(1, len(lines))))
 
     proj = project.Project(width=int(round(w * s)), height=int(round(h * s)),
                            title='structure of %s' % pathlib.Path(args.src).stem)
