@@ -15,6 +15,7 @@ The result is a one-pixel structure line which is then walked into polylines and
     python tools/edge_line.py --src "...jpg" --out out.json --png out.png --render
 """
 import argparse
+import math
 import pathlib
 import sys
 
@@ -178,6 +179,68 @@ def walks(mask, min_segment):
     return out
 
 
+def polyline_length(pts):
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:]))
+
+
+def end_direction(pts, at_start):
+    """The direction a polyline leaves from one of its ends, pointing **outward**."""
+    if len(pts) < 2:
+        return (0.0, 0.0)
+    if at_start:
+        a, b = pts[0], pts[1]
+    else:
+        a, b = pts[-1], pts[-2]
+    dx, dy = a[0] - b[0], a[1] - b[1]
+    n = math.hypot(dx, dy) or 1.0
+    return (dx / n, dy / n)
+
+
+def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0):
+    """Drop the short strokes that **do not continue anything**, and only those.
+
+    **The problem a length threshold cannot solve.** A lash and a speck of noise are both thirty pixels long, so every
+    threshold on length trades one for the other. What differs is their relationship to the rest of the drawing: a lash
+    continues a hairline, and noise continues nothing. So a short stroke is kept when one of its ends is close to an end
+    of a long stroke *and the two point opposite ways* -- that is, when the short one is the continuation of a break in
+    the long one -- and dropped when no such continuation exists.
+
+    The three numbers are deliberately loose: `reach` is how far across a gap a break may be, and `angle_deg` how far
+    the two may disagree. A continuation that is fifteen pixels away and forty degrees off is not a continuation, and
+    the test is built to say no to it.
+    """
+    longs = [l for l in lines if polyline_length(l) >= long_length]
+    if not longs:
+        return lines
+    keep_long = math.cos(math.radians(angle_deg))
+    out = []
+    for line in lines:
+        if polyline_length(line) >= long_length:
+            out.append(line)
+            continue
+        joined = False
+        for at_start in (True, False):
+            px, py = line[0] if at_start else line[-1]
+            dx, dy = end_direction(line, at_start)
+            for other in longs:
+                for other_start in (True, False):
+                    qx, qy = other[0] if other_start else other[-1]
+                    if math.hypot(qx - px, qy - py) > reach:
+                        continue
+                    ox, oy = end_direction(other, other_start)
+                    # **Facing each other**: the two outward directions are opposed, so the pieces would meet.
+                    if -(dx * ox + dy * oy) >= keep_long:
+                        joined = True
+                        break
+                if joined:
+                    break
+            if joined:
+                break
+        if joined:
+            out.append(line)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True)
@@ -189,6 +252,12 @@ def main():
     ap.add_argument('--strong', type=float, default=STRONG_PCT)
     ap.add_argument('--weak', type=float, default=WEAK_PCT)
     ap.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
+    ap.add_argument('--prune-length', type=float, default=0.0,
+                    help='strokes shorter than this must continue a longer one to be kept; 0 turns it off')
+    ap.add_argument('--prune-reach', type=float, default=14.0,
+                    help='how far across a gap a stroke may be to count as a continuation')
+    ap.add_argument('--prune-angle', type=float, default=35.0,
+                    help='how many degrees a continuation may deviate')
     ap.add_argument('--pair-distance', type=float, default=4.0,
                     help='how far across the gradient to look for the other side of one band; 0 keeps both')
     ap.add_argument('--width', type=float, default=2.4, help='pen width on the page')
@@ -230,6 +299,11 @@ def main():
     lines = walks(mask, args.min_segment)
     print('  %d structure lines, %d points'
           % (len(lines), sum(len(l) for l in lines)))
+    if args.prune_length:
+        before = len(lines)
+        lines = prune_fragments(lines, args.prune_length, args.prune_reach, args.prune_angle)
+        print('  fragments: %d kept of %d, %d dropped as continuation of nothing'
+              % (len(lines), before, before - len(lines)))
 
     proj = project.Project(width=int(round(w * s)), height=int(round(h * s)),
                            title='structure of %s' % pathlib.Path(args.src).stem)
