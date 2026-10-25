@@ -363,7 +363,8 @@ class Project:
         commit = (not self.incremental) if commit is None else commit
         self.counter = _highest_id(self) + 1
         mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
-                    geometry={'points': [list(p) for p in region.points], 'd': region.d},
+                    geometry={'points': [list(p) for p in region.points], 'd': region.d,
+                              'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])]},
                     appearance={'fill': colour, 'opacity': opacity, 'blend': blend},
                     provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)

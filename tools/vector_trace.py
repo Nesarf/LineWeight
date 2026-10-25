@@ -36,13 +36,16 @@ MIN_AREA = 20
 
 
 def outlines(mask, tolerance, min_area, gray=None, inset=0.5):
-    """The boundary of every blob, **moved half a pixel inward along the greyscale's own gradient**.
+    """Every blob as **an outside and its insides**: the boundary plus the holes it encloses.
 
-    **Why the half pixel is not a refinement but the whole correction.** A Moore walk travels along pixel edges, and
-    filling the ring it returns includes those edge pixels -- so every outline sits about half a pixel outside the
-    shape it came from. On a one-pixel line that is a doubling of area, measured as 448 per cent of the reference's ink.
-    The gradient of the greyscale points across the edge at sub-pixel accuracy, so moving each point `inset` along it
-    puts the boundary where the ink actually stops instead of where the grid happens to say it does.
+    **The holes are the difference between a silhouette and a shape.** A dark garment with pale patterning is one
+    outside and many insides; filled as a single polygon it becomes a black slab carrying far more ink than the
+    reference had. The insides are the regions of paper the blob surrounds -- found by labelling the background *inside
+    the blob's own box* and keeping the pieces that touch no side of it, since a piece that touches a side is the
+    outside rather than a hole.
+
+    Each ring is moved `inset` pixels along the greyscale's gradient, which points across the edge at sub-pixel
+    accuracy; the walk itself travels along pixel edges and so leaves every boundary half a pixel out.
     """
     from scipy import ndimage
     labels, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=np.uint8))
@@ -51,7 +54,20 @@ def outlines(mask, tolerance, min_area, gray=None, inset=0.5):
         gy, gx = np.gradient(gray.astype(np.float32))
         mag = np.hypot(gx, gy) + 1e-6
         normal = (gx / mag, gy / mag)
-    rings = []
+
+    def nudged(ring, x0, y0):
+        pts = []
+        for x, y in ring:
+            fx, fy = float(x + x0), float(y + y0)
+            if normal is not None:
+                iy = int(min(gray.shape[0] - 1, max(0, round(fy))))
+                ix = int(min(gray.shape[1] - 1, max(0, round(fx))))
+                fx -= inset * float(normal[0][iy, ix])
+                fy -= inset * float(normal[1][iy, ix])
+            pts.append((fx, fy))
+        return silhouette.douglas_peucker(pts, tolerance)
+
+    shapes = []
     for i in range(1, count + 1):
         blob = (labels == i)
         if int(blob.sum()) < min_area:
@@ -63,18 +79,24 @@ def outlines(mask, tolerance, min_area, gray=None, inset=0.5):
         ring = silhouette.boundary(local, x1 - x0, y1 - y0)
         if len(ring) < 4:
             continue
-        pts = []
-        for x, y in ring:
-            fx, fy = float(x + x0), float(y + y0)
-            if normal is not None:
-                iy = int(min(gray.shape[0] - 1, max(0, round(fy))))
-                ix = int(min(gray.shape[1] - 1, max(0, round(fx))))
-                # **Against the gradient**, which points from dark to light, so this moves inward.
-                fx -= inset * float(normal[0][iy, ix])
-                fy -= inset * float(normal[1][iy, ix])
-            pts.append((fx, fy))
-        rings.append(silhouette.douglas_peucker(pts, tolerance))
-    return rings
+        outer = nudged(ring, x0, y0)
+        holes = []
+        inner = (1 - local).astype(np.uint8)
+        inner_labels, inner_count = ndimage.label(inner, structure=np.ones((3, 3), dtype=np.uint8))
+        for k in range(1, inner_count + 1):
+            piece = (inner_labels == k)
+            if int(piece.sum()) < 30:
+                continue
+            py, px = np.nonzero(piece)
+            # **A piece touching the box's edge is the outside, not a hole.**
+            if py.min() == 0 or px.min() == 0 or py.max() == local.shape[0] - 1 or px.max() == local.shape[1] - 1:
+                continue
+            hole_ring = silhouette.boundary(piece.astype(np.uint8), local.shape[1], local.shape[0])
+            if len(hole_ring) < 4:
+                continue
+            holes.append(nudged(hole_ring, x0, y0))
+        shapes.append((outer, holes))
+    return shapes
 
 
 def main():
@@ -112,17 +134,19 @@ def main():
     print('  %s  work %dx%d, page %dx%d, ink %d px'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s), int(binary.sum())))
 
-    rings = outlines(binary, args.tolerance / s, MIN_AREA, gray=arr, inset=args.inset * s)
-    print('  %d outlines, %d points' % (len(rings), sum(len(r) for r in rings)))
+    shapes = outlines(binary, args.tolerance / s, MIN_AREA, gray=arr, inset=args.inset * s)
+    print('  %d shapes, %d points, %d holes'
+          % (len(shapes), sum(len(o) for o, _h in shapes), sum(len(h) for _o, h in shapes)))
 
     proj = project.Project(width=int(round(w * s)), height=int(round(h * s)),
                            title='vector trace of %s' % pathlib.Path(args.src).stem)
-    for i, ring in enumerate(rings):
+    for i, (ring, holes) in enumerate(shapes):
         pts = [(x * s, y * s) for x, y in ring]
         if len(pts) < 3:
             continue
         d = 'M ' + ' L '.join('%.2f %.2f' % p for p in pts) + ' Z'
-        proj.add_fill(core.Region(points=[tuple(p) for p in pts], d=d),
+        hole_pts = [[tuple(p) for p in ((x * s, y * s) for x, y in h)] for h in holes if len(h) >= 3]
+        proj.add_fill(core.Region(points=[tuple(p) for p in pts], d=d, holes=hole_pts),
                       stage='colour', colour='#141018', note='ink outline %d' % i)
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

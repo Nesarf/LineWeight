@@ -1334,9 +1334,15 @@ class Region(NamedTuple):
     re-styled, re-ordered or deleted by anything that only has a string. The polygon is what a `fill` mark stores so
     that the patch of colour stays a thing with an identity, which is the whole requirement; the `d` is kept alongside
     it because that is what a renderer wants and re-serialising it on every frame would be silly.
+
+    **`holes` is what a shape needs when it is not simply connected.** A dark garment with pale patterning inside it is
+    one outside and many insides; a single polygon fills the patterning too, which is how a vector trace of such a
+    reference came out as a solid silhouette carrying 448 per cent of the ink it was copying. A fill with holes is
+    filled by the even-odd rule, where a point inside a hole counts as outside.
     """
     points: list[tuple[float, float]]
     d: str
+    holes: list[list[tuple[float, float]]] = []
 
 
 def region_fill(polys: list[list[tuple[float, float]]], tolerance: float = 4.0) -> list[Region]:

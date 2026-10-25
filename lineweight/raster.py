@@ -683,7 +683,7 @@ def parse_hex(colour: str) -> tuple[int, int, int]:
 
 
 def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: float = 1.0,
-                 scale: float = 1.0, fill_rule: str = 'nonzero') -> None:
+                 scale: float = 1.0, fill_rule: str = 'nonzero', holes=None) -> None:
     """Fills a closed polygon into `layer`, by scanline.
 
     **Nonzero, and this was even-odd until a referee measured it.** The old reasoning was that even-odd is what a
@@ -713,30 +713,37 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
     n = len(points)
     if n < 3 or alpha <= 0:
         return
+    # **A hole forces even-odd, and only then.** With holes, a scanline crossing the outside once and the hole twice
+    # has an odd crossing number inside the ring and an even one inside the hole, which is the shape. Without holes the
+    # rule stays whatever the caller asked for, because nonzero is what keeps a hairpin's doubled-back half alive.
+    rings = [points] + [list(h) for h in (holes or []) if len(h) >= 3]
+    if len(rings) > 1:
+        fill_rule = 'even-odd'
     if fill_rule not in ('nonzero', 'even-odd'):
         raise ValueError('unknown fill rule %r' % (fill_rule,))
-    xs = [p[0] * scale for p in points]
-    ys = [p[1] * scale for p in points]
-    y0 = max(0, int(min(ys)))
-    y1 = min(layer.height - 1, int(max(ys)) + 1)
+    scaled = [([p[0] * scale for p in ring], [p[1] * scale for p in ring]) for ring in rings]
+    y0 = max(0, int(min(min(ys) for _xs, ys in scaled)))
+    y1 = min(layer.height - 1, int(max(max(ys) for _xs, ys in scaled)) + 1)
     r, g, b = colour
     for py in range(y0, y1 + 1):
         yc = py + 0.5
         crossings: list[tuple[float, int]] = []
-        for i in range(n):
-            j = (i + 1) % n
-            ya, yb = ys[i], ys[j]
-            if ya == yb:
-                continue
-            # half-open in y, so a vertex shared by two edges is counted once and not twice
-            if ya <= yc < yb:
-                direction = 1                      # downward on screen, and +y is down
-            elif yb <= yc < ya:
-                direction = -1
-            else:
-                continue
-            t = (yc - ya) / (yb - ya)
-            crossings.append((xs[i] + t * (xs[j] - xs[i]), direction))
+        for xs, ys in scaled:
+            n = len(xs)
+            for i in range(n):
+                j = (i + 1) % n
+                ya, yb = ys[i], ys[j]
+                if ya == yb:
+                    continue
+                # half-open in y, so a vertex shared by two edges is counted once and not twice
+                if ya <= yc < yb:
+                    direction = 1                      # downward on screen, and +y is down
+                elif yb <= yc < ya:
+                    direction = -1
+                else:
+                    continue
+                t = (yc - ya) / (yb - ya)
+                crossings.append((xs[i] + t * (xs[j] - xs[i]), direction))
         if len(crossings) < 2:
             continue
         crossings.sort()
@@ -792,8 +799,12 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     if not points:
         raise ValueError('fill mark %r has no points' % (mark.get('id'),))
     layer = Layer(width, height)
+    # **A shape with holes is filled even-odd**, so a point inside a hole counts as outside. Without them the rule
+    # stays nonzero, because an offset outline that doubles back at a hairpin must not be erased -- that measurement is
+    # in `fill_polygon`'s own docstring and it still holds for every fill that has no holes.
     fill_polygon(layer, points, parse_hex(appearance.get('fill', '#808080')),
-                 float(appearance.get('opacity', 1.0)), scale)
+                 float(appearance.get('opacity', 1.0)), scale,
+                 holes=geometry.get('holes') or None)
     return layer
 
 
