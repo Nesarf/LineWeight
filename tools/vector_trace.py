@@ -80,6 +80,11 @@ def outlines(mask, tolerance, min_area, gray=None, inset=0.5):
         if len(ring) < 4:
             continue
         outer = nudged(ring, x0, y0)
+        # **Each shape keeps its own tone.** One median over the whole drawing makes every mark the same grey while the
+        # reference has pale construction lines and dark accents; the difference shows up immediately in a brightness
+        # comparison, and it is not a difference of shape at all.
+        blob_tones = gray[y0:y1, x0:x1][local > 0] if gray is not None else None
+        tone = int(np.median(blob_tones)) if blob_tones is not None and blob_tones.size else 150
         holes = []
         inner = (1 - local).astype(np.uint8)
         inner_labels, inner_count = ndimage.label(inner, structure=np.ones((3, 3), dtype=np.uint8))
@@ -95,7 +100,7 @@ def outlines(mask, tolerance, min_area, gray=None, inset=0.5):
             if len(hole_ring) < 4:
                 continue
             holes.append(nudged(hole_ring, x0, y0))
-        shapes.append((outer, holes))
+        shapes.append((outer, holes, tone))
     return shapes
 
 
@@ -110,6 +115,8 @@ def main():
     ap.add_argument('--tolerance', type=float, default=TOLERANCE)
     ap.add_argument('--inset', type=float, default=0.5,
                     help='pixels each outline is pulled inward along the greyscale gradient; 0 turns it off')
+    ap.add_argument('--bands', type=int, default=1,
+                    help='how many tones the ink is split into; 1 draws every blob flat, and more is worse')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
 
@@ -134,24 +141,39 @@ def main():
     print('  %s  work %dx%d, page %dx%d, ink %d px'
           % (pathlib.Path(args.src).name, w, h, round(w * s), round(h * s), int(binary.sum())))
 
-    shapes = outlines(binary, args.tolerance / s, MIN_AREA, gray=arr, inset=args.inset * s)
+    shapes = []
+    if args.bands > 1 and binary.any():
+        # **The ink is not one tone.** A reference that has been through a photograph or a JPEG carries a gradient
+        # across every mark: a skirt is darker where it turns away, a line is heavier where the pen pressed. Drawing a
+        # whole blob at its median throws that away, and the loss is a brightness difference over the *area* of the
+        # mark rather than at its edge -- which blurring cannot remove, because it is not an edge.
+        edges = np.quantile(arr[binary > 0], np.linspace(0.0, 1.0, args.bands + 1))
+        for b in range(args.bands):
+            lo, hi = float(edges[b]), float(edges[b + 1])
+            band = binary & (arr >= lo) & (arr <= hi if b == args.bands - 1 else arr < hi)
+            if not band.any():
+                continue
+            tone = int(round((lo + hi) / 2.0))
+            for outer, holes, _t in outlines(band, args.tolerance / s, MIN_AREA, gray=arr,
+                                             inset=args.inset * s):
+                shapes.append((outer, holes, tone))
+    else:
+        shapes = outlines(binary, args.tolerance / s, MIN_AREA, gray=arr, inset=args.inset * s)
     print('  %d shapes, %d points, %d holes'
-          % (len(shapes), sum(len(o) for o, _h in shapes), sum(len(h) for _o, h in shapes)))
-
-    # **The ink's own tone, not a chosen black.** The reference's line is a grey around 150; drawing it at 20 makes
-    # every mark differ from its original by half a tone, which is most of a brightness comparison and none of a shape.
-    ink_grey = int(np.median(arr[binary > 0])) if binary.any() else 150
-    colour = '#%02x%02x%02x' % (ink_grey, ink_grey, ink_grey)
-    print('  ink drawn at grey %d' % ink_grey)
+          % (len(shapes), sum(len(o) for o, _h, _t in shapes), sum(len(h) for _o, h, _t in shapes)))
+    tones = [t for _o, _h, t in shapes]
+    if tones:
+        print("  ink drawn at each shape's own grey: %d to %d" % (min(tones), max(tones)))
 
     proj = project.Project(width=int(round(w * s)), height=int(round(h * s)),
                            title='vector trace of %s' % pathlib.Path(args.src).stem)
-    for i, (ring, holes) in enumerate(shapes):
+    for i, (ring, holes, tone) in enumerate(shapes):
         pts = [(x * s, y * s) for x, y in ring]
         if len(pts) < 3:
             continue
         d = 'M ' + ' L '.join('%.2f %.2f' % p for p in pts) + ' Z'
         hole_pts = [[tuple(p) for p in ((x * s, y * s) for x, y in h)] for h in holes if len(h) >= 3]
+        colour = '#%02x%02x%02x' % (tone, tone, tone)
         proj.add_fill(core.Region(points=[tuple(p) for p in pts], d=d, holes=hole_pts),
                       stage='colour', colour=colour, note='ink outline %d' % i)
     out = pathlib.Path(args.out)

@@ -65,6 +65,8 @@ def main():
     ap.add_argument('--limit', type=float, default=0.01)
     ap.add_argument('--grey', action='store_true',
                     help='compare brightness pixel by pixel instead of comparing ink masks')
+    ap.add_argument('--blur', type=float, default=0.0,
+                    help='gaussian sigma applied to both before comparing; matches two different edge profiles')
     args = ap.parse_args()
 
     ref_img = Image.open(args.reference)
@@ -80,6 +82,13 @@ def main():
                            dtype=np.float32) / 255.0
         drawn_g = np.asarray(_Image.open(args.render).convert('L').resize(size, _Image.LANCZOS),
                              dtype=np.float32) / 255.0
+        if args.blur:
+            # **Both sides blurred by the same amount, which removes the edge profile and keeps the structure.** A
+            # reference that has been through a JPEG has a two to three pixel ramp at every edge; a fill rasterised
+            # here has one of about a pixel. Comparing them sharply measures the two formats, not the two drawings.
+            from scipy import ndimage
+            ref_g = ndimage.gaussian_filter(ref_g, args.blur)
+            drawn_g = ndimage.gaussian_filter(drawn_g, args.blur)
         delta = np.abs(ref_g - drawn_g)
         mean = float(delta.mean())
         worst = float(delta.max())
