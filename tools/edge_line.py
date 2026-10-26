@@ -444,6 +444,62 @@ def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolera
     return out
 
 
+def merge_fragments(lines, reach=18.0, angle_deg=35.0, merge_below=90.0, rounds=6):
+    """Chain strokes whose ends face each other into one polyline, so a soft edge becomes a line.
+
+    **Why joining is a separate step from keeping.** A defocused edge does not survive non-maximum suppression as an
+    unbroken run: the gradient crosses the threshold repeatedly, so the mask comes back as a dotted trail and the walk
+    returns it as a chain of small strokes. Keeping those strokes is correct -- they are the boundary -- but a drawing
+    would have drawn one line. Joining them restores the line without re-admitting anything that was dropped.
+
+    **Only short strokes are joined, in rounds.** A stroke already longer than `merge_below` is a line in its own right
+    and merging it would fold two separate contours together; a short one is a piece. Each round rebuilds a grid of the
+    current pool, so the cost follows the number of short strokes and their neighbours rather than the square of the
+    pool, and it stops when a round changes nothing.
+    """
+    keep_long = math.cos(math.radians(angle_deg))
+    pool = [list(line) for line in lines]
+    for _ in range(rounds):
+        cell = max(reach, 1.0)
+        buckets = {}
+        for i, line in enumerate(pool):
+            for x, y in line:
+                buckets.setdefault((int(x // cell), int(y // cell)), set()).add(i)
+        absorbed = set()
+        for i, line in enumerate(pool):
+            if i in absorbed or polyline_length(line) >= merge_below:
+                continue
+            best = None
+            for at_start in (True, False):
+                px, py = line[0] if at_start else line[-1]
+                dx, dy = end_direction(line, at_start)
+                cx, cy = int(px // cell), int(py // cell)
+                for ax in (-1, 0, 1):
+                    for ay in (-1, 0, 1):
+                        for j in buckets.get((cx + ax, cy + ay), ()):
+                            if j == i or j in absorbed:
+                                continue
+                            for other_start in (True, False):
+                                qx, qy = pool[j][0] if other_start else pool[j][-1]
+                                gap = math.hypot(qx - px, qy - py)
+                                if gap > reach:
+                                    continue
+                                ox, oy = end_direction(pool[j], other_start)
+                                if -(dx * ox + dy * oy) < keep_long:
+                                    continue
+                                if best is None or gap < best[0]:
+                                    best = (gap, j, at_start, other_start)
+            if best is None:
+                continue
+            _gap, j, at_start, other_start = best
+            head = list(reversed(line)) if at_start else list(line)
+            tail = list(pool[j]) if other_start else list(reversed(pool[j]))
+            pool[j] = head + tail
+            absorbed.add(i)
+        pool = [line for k, line in enumerate(pool) if k not in absorbed]
+    return pool
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', required=True)
@@ -494,7 +550,11 @@ def main():
                     help='smoothing before the areas are cut; 0 follows the structure blur, larger cuts fewer areas')
     ap.add_argument('--dump-lines', default='',
                     help='write the pre-pruning strokes to this json file, for comparing two runs as data')
-    ap.add_argument('--faint', type=float, default=0.5,
+    ap.add_argument('--merge-reach', type=float, default=18.0,
+                    help='how far across a gap two strokes may be and still be joined into one line; 0 off')
+    ap.add_argument('--merge-angle', type=float, default=35.0,
+                    help='how many degrees a join may deviate')
+    ap.add_argument('--faint', type=float, default=0.6,
                     help='keep colour boundaries down to this fraction of the median gradient, for defocused areas; 0 off')
     ap.add_argument('--render', action='store_true')
     args = ap.parse_args()
@@ -561,6 +621,13 @@ def main():
         print('    prune: length %.1f reach %.2f angle %.0f close %.1f rings %s long %d of %d'
               % (args.prune_length * k, args.prune_reach * k, args.prune_angle,
                  args.close_tolerance * k, args.rings, long_count, len(lines)))
+
+    # **The dotted trail a soft edge leaves becomes a line here.** Joining changes no decision about what to keep, only
+    # how many marks it takes to say it.
+    if args.merge_reach:
+        before_merge = len(lines)
+        lines = merge_fragments(lines, args.merge_reach * k, args.merge_angle, 90.0 * k)
+        print('  joined: %d strokes -> %d lines' % (before_merge, len(lines)))
 
     # **The debris figure the objective is measured on.** A speck is short and alone: under fifteen pixels with nothing
     # else within twenty-five, both quoted at the 2880 reference size and scaled like every other length.
