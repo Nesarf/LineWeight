@@ -6,6 +6,12 @@ region, split the fills from the strokes, blur the first, multiply the second ba
 a pipeline nobody runs**, and this work has already lost a day to two runs of the same tool disagreeing about their own
 settings.
 
+**What changed in the middle.** The value layer used to cut the figure into connected sets at one brightness, then tint
+each of them from the reference. On a second reference that put a face, a dress and the background into one shape,
+because all three share a luminance, and tinting averaged three materials: the skin came out violet-grey. The shapes now
+come from the reference's own colour areas, so a shape holds one material and its colour is the reference's own. Two
+stages became one.
+
     python tools/paint.py --reference "F:\\...\\illust.jpg" --out-dir E:\\DaShaoHuo\\cache\\paint1
 
 Each stage reports the number it is accepted by, so a bad run is visible in the summary instead of in the picture.
@@ -38,8 +44,9 @@ def main():
     ap.add_argument('--reference', required=True)
     ap.add_argument('--out-dir', required=True)
     ap.add_argument('--canvas-side', type=float, default=2880)
-    ap.add_argument('--bands', type=int, default=4)
-    ap.add_argument('--sat-scale', type=float, default=0.75)
+    ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel for the colour areas')
+    ap.add_argument('--min-area', type=int, default=150, help='colour areas below this are folded into a neighbour')
+    ap.add_argument('--blur', type=float, default=1.0, help='blur before quantising, at the cut size')
     ap.add_argument('--sigma', type=float, default=5.0)
     ap.add_argument('--keep', type=float, default=0.45)
     ap.add_argument('--no-render', action='store_true')
@@ -48,19 +55,16 @@ def main():
     out = pathlib.Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     lines = out / 'lines.json'
-    value = out / 'value.json'
-    tinted = out / 'tinted.json'
+    shapes = out / 'shapes.json'
     grads = out / 'gradients.json'
     final = out / 'final.png'
 
     print('  reference %s' % pathlib.Path(args.reference).name)
     run('structure', [HERE / 'edge_line.py', '--src', args.reference, '--out', lines,
                       '--canvas-side', args.canvas_side])
-    run('value', [HERE / 'value_pass.py', '--project', lines, '--reference', args.reference,
-                  '--out', value, '--bands', args.bands])
-    run('tint', [HERE / 'tint_from_reference.py', '--src', value, '--reference', args.reference,
-                 '--out', tinted, '--sat-scale', args.sat_scale])
-    run('gradient', [HERE / 'gradient_fill.py', '--src', tinted, '--reference', args.reference,
+    run('shapes', [HERE / 'shape_pass.py', '--project', lines, '--reference', args.reference,
+                   '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
+    run('gradient', [HERE / 'gradient_fill.py', '--src', shapes, '--reference', args.reference,
                      '--out', grads])
     if not args.no_render:
         run('compose', [HERE / 'compose_soft.py', '--src', grads, '--out', final,
