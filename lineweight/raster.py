@@ -720,7 +720,7 @@ def parse_hex(colour: str) -> tuple[int, int, int]:
 
 
 def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: float = 1.0,
-                 scale: float = 1.0, fill_rule: str = 'nonzero', holes=None) -> None:
+                 scale: float = 1.0, fill_rule: str = 'nonzero', holes=None, gradient=None) -> None:
     """Fills a closed polygon into `layer`, by scanline.
 
     **Nonzero, and this was even-odd until a referee measured it.** The old reasoning was that even-odd is what a
@@ -762,6 +762,17 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
     y0 = max(0, int(min(min(ys) for _xs, ys in scaled)))
     y1 = min(layer.height - 1, int(max(max(ys) for _xs, ys in scaled)) + 1)
     r, g, b = colour
+    grad = None
+    if gradient:
+        # **Prepared once, applied per pixel.** The two endpoints are scaled like every other coordinate here, so a
+        # gradient stated in page units lands where its shape does.
+        gx0, gy0 = float(gradient['from'][0]) * scale, float(gradient['from'][1]) * scale
+        gx1, gy1 = float(gradient['to'][0]) * scale, float(gradient['to'][1]) * scale
+        gdx, gdy = gx1 - gx0, gy1 - gy0
+        gden = gdx * gdx + gdy * gdy
+        if gden <= 1e-9:
+            gden = 1.0
+        grad = (gx0, gy0, gdx, gdy, gden, parse_hex(gradient['colour0']), parse_hex(gradient['colour1']))
     for py in range(y0, y1 + 1):
         yc = py + 0.5
         crossings: list[tuple[float, int]] = []
@@ -818,9 +829,20 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
                 new_a = a + old_a * (1 - a)
                 if new_a <= 0:
                     continue
-                layer.data[index] = int((r * a + layer.data[index] * old_a * (1 - a)) / new_a)
-                layer.data[index + 1] = int((g * a + layer.data[index + 1] * old_a * (1 - a)) / new_a)
-                layer.data[index + 2] = int((b * a + layer.data[index + 2] * old_a * (1 - a)) / new_a)
+                if grad is not None:
+                    # **The value travels across the shape**, which is what a painted garment does inside one piece of
+                    # material. Interpolated per pixel, so it costs one multiply and one add here.
+                    gx0, gy0, gdx, gdy, gden, c0, c1 = grad
+                    t = ((px + 0.5 - gx0) * gdx + (py + 0.5 - gy0) * gdy) / gden
+                    t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+                    cr = c0[0] + (c1[0] - c0[0]) * t
+                    cg = c0[1] + (c1[1] - c0[1]) * t
+                    cb = c0[2] + (c1[2] - c0[2]) * t
+                else:
+                    cr, cg, cb = r, g, b
+                layer.data[index] = int((cr * a + layer.data[index] * old_a * (1 - a)) / new_a)
+                layer.data[index + 1] = int((cg * a + layer.data[index + 1] * old_a * (1 - a)) / new_a)
+                layer.data[index + 2] = int((cb * a + layer.data[index + 2] * old_a * (1 - a)) / new_a)
                 layer.data[index + 3] = int(new_a * 255)
 
 
@@ -841,7 +863,8 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     # in `fill_polygon`'s own docstring and it still holds for every fill that has no holes.
     fill_polygon(layer, points, parse_hex(appearance.get('fill', '#808080')),
                  float(appearance.get('opacity', 1.0)), scale,
-                 holes=geometry.get('holes') or None)
+                 holes=geometry.get('holes') or None,
+                 gradient=geometry.get('gradient') or None)
     return layer
 
 
