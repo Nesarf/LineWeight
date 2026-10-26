@@ -94,14 +94,22 @@ def main():
             continue
         colour0 = patch[projection <= low].mean(axis=0)
         colour1 = patch[projection >= high].mean(axis=0)
-        # **Lightness preserved**: scale both ends so their mean luminance equals the flat fill's.
+        # **Lightness preserved, and it takes iteration to get there.** Multiplying an sRGB triple by a factor does not
+        # multiply its Rec. 709 luminance by that factor -- the transfer curve is not linear -- so a single scale leaves
+        # the pair off by up to fifteen per cent, which measured as a third of all endpoints outside five. Repeating the
+        # scale until the factor reaches one converges in a handful of steps because the curve is monotone.
         flat = parse_hex((mark.get('appearance') or {}).get('fill', '#808080'))
         want = luminance(flat)
-        got = 0.5 * (luminance(colour0) + luminance(colour1))
-        if got > 1e-6 and want > 1e-6:
-            scale = want / got
-            colour0 = np.clip(colour0 * scale, 0, 255)
-            colour1 = np.clip(colour1 * scale, 0, 255)
+        for _ in range(20):
+            got = 0.5 * (luminance(colour0) + luminance(colour1))
+            if got <= 1e-6 or want <= 1e-6:
+                break
+            factor = want / got
+            colour0 = np.clip(colour0 * factor, 0, 255)
+            colour1 = np.clip(colour1 * factor, 0, 255)
+            if abs(factor - 1.0) < 1e-4:
+                break
+        if want > 1e-6:
             drifts.append(abs(0.5 * (luminance(colour0) + luminance(colour1)) - want) / want)
         centre = coords.mean(axis=0) + np.array([x0, y0])
         p0 = centre + axis * low
