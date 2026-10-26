@@ -32,10 +32,24 @@ import line_from_shapes
 import shape_pass
 import value_pass
 
-#: The two widths a line can draw at, on the cut grid. Below the first a line disappears when the canvas is scaled up;
-#: above the second it reads as an ink blot rather than a contour.
-THIN = 1.4
-THICK = 3.6
+#: The two widths a line can draw at, on the cut grid. **The fine one is for a change of light and the heavy one for a
+#: change of material.** Below 0.8 a line disappears when the canvas is scaled up; above 2.2 it reads as an ink blot.
+#: The earlier version took one width from the total colour difference, so a shadow line on a cheek was drawn as heavily
+#: as the join between hair and skin, and the whole picture came out over-inked.
+W_FINE = 0.5
+W_MATERIAL = 1.0
+
+#: The colour gap at which a join counts as a change of material rather than a change of light. Quoted on the normalised
+#: 0..1 channels the tables hold, where a hue or saturation change of this much is visible at a glance.
+MATERIAL_GAP = 0.08
+
+#: **Ink, by the same split, written as colour and not as alpha.** Three bands rather than a continuous ramp: a change of
+#: material draws in full black, a change of light draws in a middle grey. `alpha_profile` was tried first and measured to
+#: make the picture darker rather than lighter -- whatever that field drives, it is not the concentration of the mark, and
+#: a colour is unambiguous: it lands in the render because the render has nothing else to use.
+COLOUR_MATERIAL = '#000000'
+COLOUR_MIDDLE = '#4a4a4a'
+COLOUR_FINE = '#b8b8b8'
 
 
 def boundary(labels):
@@ -65,21 +79,54 @@ def boundary(labels):
     return mask, ya, xa, np.concatenate(low), np.concatenate(high)
 
 
-def width_of(points, gap, scale):
-    """How heavy a line should be: the colour difference of the joins it runs along, mapped between thin and thick."""
-    seen = []
+def ink_of(points, gap_colour):
+    """How dark the line should be, on the same argument as its width.
+
+    **A flat ink value over-inked the picture even after the widths were split.** Thinning every line left the whole-image
+    median unchanged at 0.0366, because what darkens a pixel is the line's ink and not its width. A join inside one
+    material is a change of a few per cent in colour; drawing it at full black is what made a fold in cloth read like a
+    contour.
+    """
+    colours = []
     for x, y in points:
         iy = int(round(y))
         ix = int(round(x))
-        if 0 <= iy < gap.shape[0] and 0 <= ix < gap.shape[1]:
-            value = float(gap[iy, ix])
-            if value > 0.0:
-                seen.append(value)
-    if not seen:
-        return THIN * scale
-    value = float(np.median(seen))
-    ratio = min(1.0, max(0.0, value / 0.20))
-    return (THIN + (THICK - THIN) * ratio) * scale
+        if 0 <= iy < gap_colour.shape[0] and 0 <= ix < gap_colour.shape[1]:
+            colours.append(float(gap_colour[iy, ix]))
+    if not colours:
+        return COLOUR_FINE
+    material = min(1.0, max(0.0, float(np.median(colours)) / MATERIAL_GAP))
+    if material >= 0.60:
+        return COLOUR_MATERIAL
+    if material >= 0.30:
+        return COLOUR_MIDDLE
+    return COLOUR_FINE
+
+
+def width_of(points, gap_colour, gap_light, scale):
+    """How heavy a line should be: a change of material draws full, a change of light draws fine.
+
+    **One width for both is what over-inked the whole picture.** The colour gap says whether the join is between two
+    materials; the lightness gap says whether it is the same surface at two brightnesses. A lock of hair and the shadow
+    under a jaw both separate two colours, so a single measure cannot tell them apart -- and on this reference that put a
+    black line down every fold.
+
+    A line is measured by the median of each quantity along its own length, not by one pixel, because a boundary crosses
+    both kinds of join in its run and the median is what the line *mostly* is.
+    """
+    colours = []
+    lights = []
+    for x, y in points:
+        iy = int(round(y))
+        ix = int(round(x))
+        if 0 <= iy < gap_colour.shape[0] and 0 <= ix < gap_colour.shape[1]:
+            colours.append(float(gap_colour[iy, ix]))
+            lights.append(float(gap_light[iy, ix]))
+    if not colours:
+        return W_FINE * scale
+    colour = float(np.median(colours))
+    material = min(1.0, max(0.0, colour / MATERIAL_GAP))
+    return (W_FINE + (W_MATERIAL - W_FINE) * material) * scale
 
 
 def main():
@@ -114,8 +161,11 @@ def main():
     work = image if abs(scale - 1.0) < 1e-6 else image.resize((w, h), Image.LANCZOS)
     rgb = np.asarray(work, dtype=np.float32) / 255.0
 
-    canvas_w = int(args.canvas_width or round(max(2880.0, float(max(w, h)))))
-    canvas_h = int(args.canvas_height or round(canvas_w * h / float(w)))
+    # **The canvas comes from the cut that made the areas**, so lines and fills land on one page by construction rather
+    # than by the caller remembering to pass the same two numbers twice.
+    declared = meta.get('canvas') or [0, 0]
+    canvas_w = int(args.canvas_width or declared[0] or round(max(2880.0, float(max(w, h)))))
+    canvas_h = int(args.canvas_height or declared[1] or round(canvas_w * h / float(w)))
     s = canvas_w / float(w)
 
     # **Every pixel quantity is quoted at the 2880 reference**, the same convention the gradient route uses: a length floor
@@ -147,8 +197,11 @@ def main():
     dh = np.abs(hue[low] - hue[high])
     dh = np.minimum(dh, 1.0 - dh) * 2.0
     dc = (dh * np.minimum(sat[low], sat[high]) + 0.5 * np.abs(sat[low] - sat[high])).astype(np.float32)
+    dl = np.abs(light[low] - light[high]).astype(np.float32)
     flat = ya * w + xa
-    gap = line_from_shapes.scatter_max(flat, dc, w * h).reshape(labels.shape)
+    size = w * h
+    gap_colour = line_from_shapes.scatter_max(flat, dc, size).reshape(labels.shape)
+    gap_light = line_from_shapes.scatter_max(flat, dl, size).reshape(labels.shape)
 
     lines = edge_line.walks(mask, max(1, int(round(args.min_segment * k))))
     print('  %d walks, %d points' % (len(lines), sum(len(line) for line in lines)))
@@ -168,9 +221,11 @@ def main():
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
-        width = width_of(pts, gap, s)
+        width = width_of(pts, gap_colour, gap_light, s)
+        ink = ink_of(pts, gap_colour)
         scaled = [(x * s, y * s) for x, y in pts]
-        record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, width_profile=[width] * len(scaled))
+        record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
+                                    width_profile=[width] * len(scaled))
         proj.add_stroke(record, stage='line', layer='ink', note='boundary %d' % i)
         written += 1
     out = pathlib.Path(args.out)

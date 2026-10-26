@@ -322,6 +322,19 @@ def main():
     colours = colour_of(labels, rgb)
     tick('colours')
 
+    # **The cut is written out beside the project, at the size it was made.** The line layer reads these instead of
+    # cutting the reference a second time: two cuts of the same picture with the same settings are the same labels in
+    # theory and one pixel apart in practice, and a line one pixel off its own boundary reads as a mistake.
+    stem = pathlib.Path(args.out)
+    labels_path = stem.with_name('%s-labels.npy' % stem.stem)
+    labels_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(labels_path, labels)
+    meta_path = stem.with_name('%s-meta.json' % stem.stem)
+    meta_path.write_text(json.dumps({'cut': [w, h], 'canvas': [width, height], 'scale': scale,
+                                     'levels': args.levels, 'blur': blur, 'min_area': area_threshold}),
+                         encoding='utf-8')
+    print('    areas written to %s' % labels_path.name)
+
     # **Scaled to the drawing's canvas before the outlines are taken.** The cut is made where it is affordable; the
     # polygons are built at the size the picture is drawn at, so a boundary is one canvas pixel and not a visible step.
     grow = float(width) / float(w)

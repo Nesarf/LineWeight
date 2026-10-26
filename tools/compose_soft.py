@@ -76,6 +76,12 @@ def main():
     if sharp.size != shade.size:
         sharp = sharp.resize(shade.size, Image.LANCZOS)
     ink = np.asarray(sharp, dtype=np.float32) / 255.0
+    # **The renderer's paper is not white.** Measured at 0.945, so multiplying it in darkened the whole picture by six per
+    # cent -- larger than every difference the line layer was being judged on, and it hid the improvement of a better line
+    # layer entirely. Normalising to the paper's own value puts the paper at one and leaves the lines where they are.
+    paper = float(np.percentile(ink, 92))
+    if paper > 0.2:
+        ink = np.clip(ink / paper, 0.0, 1.0)
     base = np.asarray(soft, dtype=np.float32)
     # **Multiply, because a line is a darkening of whatever is under it.** On paper that multiplies toward the paper's
     # own tone, and over shading it multiplies toward the shading -- which is what ink on paint does.

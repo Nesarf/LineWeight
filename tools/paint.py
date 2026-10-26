@@ -1,25 +1,34 @@
 """The whole picture from one painted reference, in one command.
 
-**What this replaces.** Reaching the last picture took seven commands in a fixed order, each with its own file in the
-middle: trace the structure, build a value layer, tint each region from the reference, fit a gradient inside each
-region, split the fills from the strokes, blur the first, multiply the second back. **A pipeline nobody can remember is
-a pipeline nobody runs**, and this work has already lost a day to two runs of the same tool disagreeing about their own
-settings.
+**What this replaces.** Reaching a picture took seven commands in a fixed order, each with its own file in the middle:
+trace the structure, cut the colour areas, fit a gradient inside each, split the fills from the strokes, blur the first,
+multiply the second back. **A pipeline nobody can remember is a pipeline nobody runs**, and this work has already lost a
+day to two runs of the same tool disagreeing about their own settings.
 
-**What changed in the middle.** The value layer used to cut the figure into connected sets at one brightness, then tint
-each of them from the reference. On a second reference that put a face, a dress and the background into one shape,
-because all three share a luminance, and tinting averaged three materials: the skin came out violet-grey. The shapes now
-come from the reference's own colour areas, so a shape holds one material and its colour is the reference's own. Two
-stages became one.
+**Two ways to get the line layer, and the picture decides which.**
 
-    python tools/paint.py --reference "F:\\...\\illust.jpg" --out-dir E:\\DaShaoHuo\\cache\\paint1
+`boundary` cuts the reference into colour areas once, takes the joins between them as the line candidate, and keeps only
+the joins a much coarser cut also sees. It is the default because it survives a reference the gradient route cannot
+handle: a starfield is a field of point highlights, so the gradient is noise everywhere and the skeleton walk has no end
+-- measured on the third reference, twenty minutes with no output.
+
+`gradient` is the older route: Canny on tone, colour used as a veto, then the same walk and join. It found structure the
+boundary route misses on a painted picture with clear contours, so it is kept rather than deleted.
+
+**The cut happens once.** The fills pass writes its areas beside its project, and the line pass reads them, so a line
+lands on exactly the boundary it describes instead of on a second cut that missed by a pixel.
+
+    python tools/paint.py --reference "F:\\...\\illust.jpg" --out-dir E:\\DaShaoHuo\\cache\\run
 
 Each stage reports the number it is accepted by, so a bad run is visible in the summary instead of in the picture.
 """
 import argparse
+import json
 import pathlib
 import subprocess
 import sys
+
+from PIL import Image
 
 HERE = pathlib.Path(__file__).parent
 ROOT = HERE.parent
@@ -39,10 +48,31 @@ def run(label, argv, allow=(0,)):
     return lines
 
 
+def skeleton(path, width, height, title):
+    """A project with a canvas and no marks, so the stages that need a page to draw on have one."""
+    doc = {'version': 2, 'canvas': {'width': int(width), 'height': int(height)}, 'title': title,
+           'stages': [], 'log': [], 'counter': 0, 'incremental': False, 'turn': 0, 'figure': None, 'marks': []}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
+    return path
+
+
+def render_project(src, out):
+    proc = subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(src), '--out', str(out)],
+                          capture_output=True, text=True, cwd=str(ROOT))
+    lines = [l.strip() for l in (proc.stdout or '').splitlines() if l.strip()]
+    print('  %-8s %s' % ('render', lines[-2] if len(lines) > 1 else (lines[-1] if lines else 'no output')))
+    if proc.returncode != 0:
+        print('    %s' % ((proc.stderr or '').strip().splitlines() or ['no message'])[-1])
+        raise SystemExit('render returned %d' % proc.returncode)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--reference', required=True)
     ap.add_argument('--out-dir', required=True)
+    ap.add_argument('--line-source', choices=('boundary', 'gradient'), default='boundary')
     ap.add_argument('--canvas-side', type=float, default=2880)
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel for the colour areas')
     ap.add_argument('--min-area', type=int, default=150, help='colour areas below this are folded into a neighbour')
@@ -57,18 +87,46 @@ def main():
     lines = out / 'lines.json'
     shapes = out / 'shapes.json'
     grads = out / 'gradients.json'
+    strokes = out / 'lines.png'
     final = out / 'final.png'
 
-    print('  reference %s' % pathlib.Path(args.reference).name)
-    run('structure', [HERE / 'edge_line.py', '--src', args.reference, '--out', lines,
-                      '--canvas-side', args.canvas_side])
-    run('shapes', [HERE / 'shape_pass.py', '--project', lines, '--reference', args.reference,
-                   '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
-    run('gradient', [HERE / 'gradient_fill.py', '--src', shapes, '--reference', args.reference,
-                     '--out', grads])
+    # **The canvas is decided here, once.** Both routes used to compute it from their own arguments, so a picture could
+    # come out with the fills on a 2880 wide page and the lines on a 3456 wide one.
+    ref = Image.open(args.reference)
+    ref_long = float(max(ref.size))
+    canvas_long = max(2880.0, ref_long * 1.2, args.canvas_side)
+    width = int(round(ref.size[0] * canvas_long / ref_long))
+    height = int(round(ref.size[1] * canvas_long / ref_long))
+    board = skeleton(out / 'board.json', width, height, 'canvas of %s' % pathlib.Path(args.reference).stem)
+
+    print('  reference %s  canvas %dx%d  lines from the %s'
+          % (pathlib.Path(args.reference).name, width, height, args.line_source))
+
+    if args.line_source == 'gradient':
+        run('structure', [HERE / 'edge_line.py', '--src', args.reference, '--out', lines,
+                          '--canvas-side', args.canvas_side])
+        project = lines
+    else:
+        run('shapes', [HERE / 'shape_pass.py', '--project', board, '--reference', args.reference,
+                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
+        run('lines', [HERE / 'edge_strokes.py',
+                      '--labels', shapes.with_name('%s-labels.npy' % shapes.stem),
+                      '--meta', shapes.with_name('%s-meta.json' % shapes.stem),
+                      '--reference', args.reference, '--out', lines])
+        project = shapes
+        if not args.no_render:
+            render_project(lines, strokes)
+
+    if args.line_source == 'gradient':
+        run('shapes', [HERE / 'shape_pass.py', '--project', project, '--reference', args.reference,
+                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
+
+    run('gradient', [HERE / 'gradient_fill.py', '--src', shapes, '--reference', args.reference, '--out', grads])
     if not args.no_render:
-        run('compose', [HERE / 'compose_soft.py', '--src', grads, '--out', final,
-                        '--sigma', args.sigma, '--keep', args.keep])
+        argv = [HERE / 'compose_soft.py', '--src', grads, '--out', final, '--sigma', args.sigma, '--keep', args.keep]
+        if args.line_source == 'boundary':
+            argv += ['--strokes', strokes]
+        run('compose', argv)
         print('  done     %s' % final)
     return 0
 
