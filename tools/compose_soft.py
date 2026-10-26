@@ -47,6 +47,9 @@ def main():
     ap.add_argument('--work-dir', default='')
     ap.add_argument('--sigma', type=float, default=6.0, help='blur applied to the shading only')
     ap.add_argument('--keep', type=float, default=0.55, help='how much of the softened shading to mix back; 1 is full')
+    ap.add_argument('--strokes', default='',
+                    help='a greyscale line image to multiply over the shading instead of rendering the project strokes; '
+                         'this is how a line layer from another source is tried without rebuilding it as marks')
     args = ap.parse_args()
 
     doc = json.loads(pathlib.Path(args.src).read_text(encoding='utf-8'))
@@ -54,8 +57,12 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
 
     fills = render(split(doc, 'fill'), work / 'fills')
-    strokes = render(split(doc, 'stroke'), work / 'strokes')
-    print('  rendered %s and %s' % (fills.name, strokes.name))
+    if args.strokes:
+        strokes = pathlib.Path(args.strokes)
+        print('  using %s as the line layer' % strokes)
+    else:
+        strokes = render(split(doc, 'stroke'), work / 'strokes')
+    print('  rendered %s' % fills.name)
 
     shade = Image.open(fills).convert('RGB')
     soft = shade.filter(ImageFilter.GaussianBlur(args.sigma))
@@ -64,6 +71,10 @@ def main():
     soft = Image.blend(shade, soft, args.keep)
 
     sharp = Image.open(strokes).convert('L')
+    # **A line layer from elsewhere is at its own resolution.** The cut that produced it is smaller than the canvas, so it
+    # is scaled here rather than requiring the caller to match the two by hand.
+    if sharp.size != shade.size:
+        sharp = sharp.resize(shade.size, Image.LANCZOS)
     ink = np.asarray(sharp, dtype=np.float32) / 255.0
     base = np.asarray(soft, dtype=np.float32)
     # **Multiply, because a line is a darkening of whatever is under it.** On paper that multiplies toward the paper's

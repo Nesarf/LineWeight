@@ -18,6 +18,7 @@ import argparse
 import json
 import pathlib
 import sys
+import time
 
 import numpy as np
 from PIL import Image
@@ -66,45 +67,77 @@ def equal_components(key):
     return labels.reshape(h, w).astype(np.int32) + 1
 
 
-def absorb(labels, min_area, rounds=8):
-    """Fold every speck into the neighbour it shares the most border with, until none is left.
+def absorb(labels, min_area):
+    """Fold every speck into the neighbour it shares the most border with, in one pass.
 
     **Dropping a speck leaves a hole in the painting.** Measured: keeping the small shapes out took the covered share of
     the figure from a hundred per cent down to eighty-one, so a fifth of the picture would have been paper. A shape this
     small is noise; the shape beside it is a better guess at what is under it than nothing is.
+
+    **One pass, not a loop of passes.** The earlier version recomputed the whole adjacency of the canvas on every round to
+    find that round's specks, and on a picture that cuts into a hundred and thirty-seven thousand pieces at the first
+    quantisation it took seventy-six seconds -- with every other stage of the cut under two. Counting the adjacency once,
+    then walking the areas from smallest to largest through a union-find, does the same merging in one traversal.
     """
-    for _ in range(rounds):
-        areas = np.bincount(labels.ravel())
-        small = [int(s) for s in np.flatnonzero(areas < max(1, min_area)) if s > 0]
-        if not small:
-            break
-        wanted = set(small)
-        pairs = []
-        for a, b in ((labels[:, 1:], labels[:, :-1]), (labels[1:, :], labels[:-1, :])):
-            keep = a != b
-            if keep.any():
-                pairs.append(np.stack([a[keep], b[keep]], axis=1))
-        if not pairs:
-            break
-        both = np.sort(np.concatenate(pairs).astype(np.int32), axis=1)
-        uniq, counts = np.unique(both, axis=0, return_counts=True)
-        size = int(labels.max()) + 1
-        best = np.zeros(size, dtype=np.int64)
-        want = np.zeros(size, dtype=np.int64)
-        for (a, b), n in zip(uniq, counts):
-            a, b = int(a), int(b)
-            if a in wanted and n > best[a]:
-                best[a], want[a] = n, b
-            if b in wanted and n > best[b]:
-                best[b], want[b] = n, a
+    count = int(labels.max())
+    if count < 3:
+        return labels
+    areas = np.bincount(labels.ravel(), minlength=count + 1).astype(np.int64)
+    pairs = []
+    for a, b in ((labels[:, 1:], labels[:, :-1]), (labels[1:, :], labels[:-1, :])):
+        keep = a != b
+        if keep.any():
+            pairs.append(np.stack([a[keep], b[keep]], axis=1))
+    if not pairs:
+        return labels
+    both = np.sort(np.concatenate(pairs).astype(np.int64), axis=1)
+    uniq, counts = np.unique(both, axis=0, return_counts=True)
+    del both, pairs
+
+    neighbours = {}
+    for index in range(uniq.shape[0]):
+        a = int(uniq[index, 0])
+        b = int(uniq[index, 1])
+        n = int(counts[index])
+        neighbours.setdefault(a, []).append((b, n))
+        neighbours.setdefault(b, []).append((a, n))
+
+    parent = np.arange(count + 1, dtype=np.int64)
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return int(x)
+
+    # **A few traversals, not one.** A speck that swallows its neighbours can still be under the threshold when it is
+    # done, and with a single pass it survives -- measured, that left nine thousand areas where the looping version left
+    # two. Re-walking the same adjacency costs a fraction of a second, because the expensive part was counting it.
+    for _round in range(12):
         changed = False
-        for s in small:
-            if want[s]:
-                labels[labels == s] = want[s]
-                changed = True
+        for i in np.argsort(areas[1:], kind='stable'):
+            i = int(i) + 1
+            if areas[i] >= min_area:
+                break
+            if find(i) != i:
+                continue
+            totals = {}
+            for j, n in neighbours.get(i, ()):
+                root = find(j)
+                totals[root] = totals.get(root, 0) + n
+            if not totals:
+                continue
+            target = max(totals.items(), key=lambda item: item[1])[0]
+            if target == find(i):
+                continue
+            parent[find(i)] = target
+            areas[target] += areas[i]
+            changed = True
         if not changed:
             break
-    return labels
+
+    root = np.array([find(i) for i in range(count + 1)], dtype=np.int32)
+    return root[labels]
 
 
 def colour_table(labels, rgb):
@@ -259,30 +292,48 @@ def main():
     rgb = np.asarray(work, dtype=np.float32) / 255.0
     w, h = rgb.shape[1], rgb.shape[0]
     gray = (0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]).astype(np.float32)
+
+    # **A step that prints nothing for fifteen minutes is not diagnosable.** The cut has four stages whose costs differ by
+    # two orders of magnitude depending on the picture, and three separate runs were spent guessing which one was slow.
+    mark = time.perf_counter()
+
+    def tick(label):
+        nonlocal mark
+        now = time.perf_counter()
+        print('    %6.1fs  %s' % (now - mark, label))
+        mark = now
+
     person = value_pass.person_mask(gray)
+    tick('figure mask')
 
     key = np.where(person, quantise(rgb, args.levels, blur), -1)
     labels = equal_components(key)
     labels = np.where(person, labels, 0)
+    tick('colour areas')
     before = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
     labels = absorb(labels, area_threshold)
     after = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
     areas = np.bincount(labels.ravel())
+    tick('specks folded away')
     print('  cut at %dx%d, figure %.1f%% of the page: %d shapes, specks folded away leaving %d covering %.1f%%'
           % (w, h, 100.0 * person.sum() / (w * h), before, after,
              100.0 * areas[1:].sum() / max(1.0, float(person.sum()))))
 
     colours = colour_of(labels, rgb)
+    tick('colours')
 
     # **Scaled to the drawing's canvas before the outlines are taken.** The cut is made where it is affordable; the
     # polygons are built at the size the picture is drawn at, so a boundary is one canvas pixel and not a visible step.
     grow = float(width) / float(w)
     if (w, h) != (width, height):
         labels = np.asarray(Image.fromarray(labels, mode='I').resize((width, height), Image.NEAREST))
+    tick('scaled to the canvas')
 
     rings = outlines(labels, grow=max(1, int(round(grow))), min_area=1)
+    tick('outlines traced')
     tol = args.simplify if args.simplify > 0 else max(1.5, grow)
     rings = [(area, label, simplify_ring(ring, tol)) for area, label, ring in rings]
+    tick('outlines simplified')
     # **Largest first.** A shape drawn later covers what was drawn before, so a small shape sits in the hole its larger
     # neighbour has instead of being painted over by it.
     rings.sort(key=lambda item: -item[0])
