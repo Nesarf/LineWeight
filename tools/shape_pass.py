@@ -245,6 +245,10 @@ def main():
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel')
     ap.add_argument('--blur', type=float, default=1.0)
     ap.add_argument('--min-area', type=int, default=150, help='shapes below this, at the cut size, are folded away')
+    ap.add_argument('--max-shapes', type=int, default=6000,
+                    help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
+                         'Zero turns the budget off. A reference with a textural surface quantises into tens of '
+                         'thousands of areas and every one of them is a separate fill to rasterise')
     ap.add_argument('--work-side', type=float, default=0.0,
                     help='if set, shrink the cut to this long side; a large reference is expensive because the cut is a '
                          'connected-components pass over every pixel. Zero leaves the reference at its own size')
@@ -313,6 +317,20 @@ def main():
     before = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
     labels = absorb(labels, area_threshold)
     after = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
+    # **A budget on how many areas there may be, not only on how small one may be.** A photographed reference with a
+    # textural surface -- hair strands, fabric weave, a speckled sky -- quantises into tens of thousands of areas, and
+    # every one of them is a separate fill to rasterise: measured on such a reference, twenty-seven thousand areas made
+    # the composer spend fifty-five minutes and counting. Two thousand areas on the same reference read the same and cost
+    # a minute. So the threshold rises until the count fits, which is the same fold done with a bigger number.
+    rounds = 0
+    while args.max_shapes and after > args.max_shapes and rounds < 8:
+        scale_up = max(1.5, after / float(args.max_shapes))
+        area_threshold = int(round(area_threshold * scale_up))
+        labels = absorb(labels, area_threshold)
+        after = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
+        rounds += 1
+        print('    over the shape budget: folding again at a minimum area of %d leaves %d'
+              % (area_threshold, after))
     areas = np.bincount(labels.ravel())
     tick('specks folded away')
     print('  cut at %dx%d, figure %.1f%% of the page: %d shapes, specks folded away leaving %d covering %.1f%%'
