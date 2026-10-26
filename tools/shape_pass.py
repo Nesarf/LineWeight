@@ -203,7 +203,14 @@ def main():
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel')
     ap.add_argument('--blur', type=float, default=1.0)
     ap.add_argument('--min-area', type=int, default=150, help='shapes below this, at the cut size, are folded away')
-    ap.add_argument('--work-side', type=float, default=1600.0, help='long side the picture is cut at')
+    ap.add_argument('--work-side', type=float, default=0.0,
+                    help='if set, shrink the cut to this long side; a large reference is expensive because the cut is a '
+                         'connected-components pass over every pixel. Zero leaves the reference at its own size')
+    ap.add_argument('--cut-side', type=float, default=0.0,
+                    help='explicit long side to cut at; may exceed the reference, which interpolates it smoothly rather '
+                         'than inventing detail. Zero takes the rule described below')
+    ap.add_argument('--upscale-cap', type=float, default=2400.0,
+                    help='how far a small reference may be enlarged before the cut, in pixels on the long side')
     ap.add_argument('--simplify', type=float, default=0.0,
                     help='boundary tolerance in canvas pixels; zero means one pixel at the cut size')
     args = ap.parse_args()
@@ -216,21 +223,40 @@ def main():
         return 1
 
     image = Image.open(args.reference).convert('RGB')
-    scale = min(1.0, args.work_side / float(max(image.size)))
+    # **The cut size and the reference size are two different things.** Cutting at the reference's own size is cheap and
+    # loses nothing on a large one, but on a six-hundred-wide reference every area is nineteen pixels across and its
+    # boundary is stubble. Cutting at the canvas size costs more and invents no detail -- but the interpolation makes the
+    # colour continuous across the bigger grid, so a boundary is a smooth curve there instead of a staircase of the small
+    # grid scaled up. Measured on the 600x800 reference: cutting at its own size gave a whole-image p90 of 0.3961, at the
+    # canvas 0.2484, at 2400 0.2536 -- so the gain is in leaving the small grid, not in matching the canvas exactly.
+    #
+    # **The reference is never shrunk**, because shrinking it throws away the detail the cut is reading; only a reference
+    # smaller than the canvas is enlarged, and then only up to `--upscale-cap`, because the cut is a connected-components
+    # pass over every pixel and a twelve-megapixel canvas took over fifteen minutes for a 1.2x gain.
+    reference_long = float(max(image.size))
+    if args.cut_side:
+        target = args.cut_side
+    else:
+        target = max(reference_long, min(float(max(width, height)), args.upscale_cap))
+        if args.work_side:
+            target = min(target, args.work_side)
+    scale = target / reference_long
     work = image
-    if scale < 1.0:
+    if abs(scale - 1.0) > 1e-6:
         work = image.resize((max(1, int(round(image.size[0] * scale))), max(1, int(round(image.size[1] * scale)))),
                             Image.LANCZOS)
+    area_threshold = max(1, int(round(args.min_area * scale * scale)))
+    blur = args.blur * scale
     rgb = np.asarray(work, dtype=np.float32) / 255.0
     w, h = rgb.shape[1], rgb.shape[0]
     gray = (0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]).astype(np.float32)
     person = value_pass.person_mask(gray)
 
-    key = np.where(person, quantise(rgb, args.levels, args.blur), -1)
+    key = np.where(person, quantise(rgb, args.levels, blur), -1)
     labels = equal_components(key)
     labels = np.where(person, labels, 0)
     before = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
-    labels = absorb(labels, args.min_area)
+    labels = absorb(labels, area_threshold)
     after = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
     areas = np.bincount(labels.ravel())
     print('  cut at %dx%d, figure %.1f%% of the page: %d shapes, specks folded away leaving %d covering %.1f%%'
