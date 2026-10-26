@@ -5671,6 +5671,25 @@ faint 0.4  mask 4.40%   11001 条    碎屑 0.01%
 
 **而这一条与之前几次是同一类错**：**把一个非线性空间的量当成线性的用。**
 
+### 而整条链现在是一条命令
+
+**`tools/paint.py`**：`structure → value → tint → gradient → compose`，一条命令从彩图到成品。
+
+```
+reference illust_76279002_20220924_233950.jpg
+structure joined: 8223 strokes -> 2358 lines       debris: 0 of 2358 (0.00%)
+value     608 value shapes under 2358 line marks   （四档由直方图的聚簇给）
+tint      value drift: mean 0.00354  worst 0.02362  限值 0.0500
+gradient  336 shapes given a gradient   drift 0.00000 / 0.00007  限值 0.0500
+compose   final.png
+```
+
+**而每一步报的还是它自己的验收数** —— 「碎屑多少」「漂移多少」「几档」，所以一次坏跑在摘要里就看得见。
+
+> **而这一条的意义与前面「四段串成一条命令」相同**：**需要七个命令、顺序不能错的流程，没有人会跑第二次。**
+> **而现在它是一行，而每个数都在。**
+
+
 
 
 
