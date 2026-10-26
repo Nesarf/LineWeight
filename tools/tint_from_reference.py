@@ -15,7 +15,7 @@ import json
 import pathlib
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 WR, WG, WB = 0.2126, 0.7152, 0.0722
 
@@ -69,12 +69,23 @@ def main():
         points = (mark.get('geometry') or {}).get('points') or []
         if len(points) < 3:
             continue
-        cx = int(min(width - 1, max(0, sum(p[0] for p in points) / len(points))))
-        cy = int(min(height - 1, max(0, sum(p[1] for p in points) / len(points))))
-        r = args.radius
-        patch = pixels[max(0, cy - r):cy + r + 1, max(0, cx - r):cx + r + 1]
-        if patch.size == 0:
+        # **The pixels inside the shape, not a patch around its centroid.** A convoluted shape -- a ribbon, a lock of
+        # hair, a leg seen between two others -- has its centroid outside itself, and sampling there takes the colour of
+        # whatever is behind it. Measured on a second reference, that turned a warm face violet because the skin's
+        # centroid sat on the violet background.
+        pts = np.asarray(points, dtype=np.float64)
+        x0 = int(max(0, np.floor(pts[:, 0].min())))
+        y0 = int(max(0, np.floor(pts[:, 1].min())))
+        x1 = int(min(width - 1, np.ceil(pts[:, 0].max())))
+        y1 = int(min(height - 1, np.ceil(pts[:, 1].max())))
+        if x1 <= x0 or y1 <= y0:
             continue
+        canvas = Image.new('L', (x1 - x0 + 1, y1 - y0 + 1), 0)
+        ImageDraw.Draw(canvas).polygon([(p[0] - x0, p[1] - y0) for p in pts], fill=255)
+        inside = np.asarray(canvas) > 127
+        if int(inside.sum()) < 16:
+            continue
+        patch = pixels[y0:y1 + 1, x0:x1 + 1][inside]
         mean = patch.reshape(-1, 3).mean(axis=0)
         hue, sat, _v = colorsys.rgb_to_hsv(float(mean[0]), float(mean[1]), float(mean[2]))
         sat = max(0.0, min(1.0, sat * args.sat_scale))
