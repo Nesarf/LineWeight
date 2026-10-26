@@ -107,39 +107,48 @@ def absorb(labels, min_area, rounds=8):
     return labels
 
 
-def colour_of(labels, rgb):
-    """One colour per shape, from the pixels inside it, plus how far a flat fill would be from the reference.
+def colour_table(labels, rgb):
+    """The mean colour of every area, and its pixel count, in one pass over the canvas.
 
-    Median rather than mean, so a strand of hair crossing a face does not drag a skin shape's colour toward the hair.
-    The error reported is the same measure the shape cut is judged by: paint every shape with its own colour and ask how
-    far, per pixel, that flat colour is from the picture. A shape holding one material scores near zero.
+    **A mean rather than a median, and the shape is why.** An area here is a connected set at one quantised colour, so the
+    pixels inside it are one material by construction: a strand of hair crossing a face lands in a *different* area, not
+    in the same one, which is exactly the case a median was guarding against on the old value bands that spanned three
+    materials. The cost is the deciding argument anyway -- a median walks each area's own bounding box in turn, and on a
+    two-and-a-half thousand wide reference with two thousand areas that is several hundred million comparisons; one
+    `bincount` over the canvas gives the whole table. Measured: the per-area median did not finish a run in twelve
+    minutes.
     """
     count = int(labels.max())
-    boxes = ndimage.find_objects(labels)
-    areas = np.bincount(labels.ravel(), minlength=count + 1)
+    flat = labels.ravel().astype(np.int64)
+    sums = np.empty((count + 1, 3), dtype=np.float64)
+    for channel in range(3):
+        sums[:, channel] = np.bincount(flat, weights=rgb[:, :, channel].ravel(), minlength=count + 1)
+    counts = np.bincount(flat, minlength=count + 1).astype(np.float64)
+    table = (sums / np.maximum(counts, 1.0)[:, None]).astype(np.float32)
+    return table, counts
+
+
+def colour_of(labels, rgb):
+    """One colour per shape, plus how far a flat fill of it would be from the reference.
+
+    The error is the measure the cut is judged by, now taken over every pixel at once: paint each pixel with its own
+    area's colour and ask how far that is from the picture. **The number is not directly comparable with the earlier
+    per-area median** -- that one weighted each area equally and reported its median, this one weights each pixel -- so a
+    change of scale here is a change of definition, not a regression.
+    """
+    table, counts = colour_table(labels, rgb)
+    inside = labels > 0
+    if inside.any():
+        painted = table[labels][inside]
+        error = np.abs(rgb[inside] - painted).sum(axis=1) / 3.0
+        print('  flat-colour error over the figure: mean %.4f  median %.4f'
+              % (float(error.mean()), float(np.median(error))))
     out = {}
-    errors = []
-    weights = []
-    for i in range(1, count + 1):
-        box = boxes[i - 1] if i - 1 < len(boxes) else None
-        if box is None or areas[i] < 4:
+    for i in range(1, len(counts)):
+        if counts[i] < 4:
             continue
-        ys, xs = box
-        patch = rgb[ys, xs][labels[ys, xs] == i]
-        if patch.shape[0] < 4:
-            continue
-        med = np.median(patch, axis=0)
-        out[i] = '#%02x%02x%02x' % tuple(int(round(float(c) * 255)) for c in np.clip(med, 0, 1))
-        errors.append(float(np.median(np.abs(patch - med).sum(axis=1) / 3.0)))
-        weights.append(int(areas[i]))
-    if errors:
-        errors = np.asarray(errors)
-        weights = np.asarray(weights, dtype=np.float64)
-        order = np.argsort(errors)
-        cum = np.cumsum(weights[order]) / weights.sum()
-        print('  flat-colour error, area weighted: median %.4f  p90 %.4f'
-              % (float(errors[order][np.searchsorted(cum, 0.5)]),
-                 float(errors[order][np.searchsorted(cum, 0.9)])))
+        rgb_i = np.clip(table[i], 0.0, 1.0)
+        out[i] = '#%02x%02x%02x' % tuple(int(round(float(c) * 255)) for c in rgb_i)
     return out
 
 
