@@ -245,10 +245,12 @@ def main():
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel')
     ap.add_argument('--blur', type=float, default=1.0)
     ap.add_argument('--min-area', type=int, default=150, help='shapes below this, at the cut size, are folded away')
-    ap.add_argument('--max-shapes', type=int, default=6000,
+    ap.add_argument('--max-shapes', type=int, default=30000,
                     help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
-                         'Zero turns the budget off. A reference with a textural surface quantises into tens of '
-                         'thousands of areas and every one of them is a separate fill to rasterise')
+                         'Zero turns the budget off. **A safety valve rather than a working limit**: it was set at six '
+                         'thousand while every fill went into a page-sized buffer, and once a fill took its own box the '
+                         'same reference cut into twenty-seven thousand areas rendered in four hundred and sixty-two '
+                         'seconds and came out measurably better than the budgeted version')
     ap.add_argument('--work-side', type=float, default=0.0,
                     help='if set, shrink the cut to this long side; a large reference is expensive because the cut is a '
                          'connected-components pass over every pixel. Zero leaves the reference at its own size')

@@ -76,6 +76,10 @@ def main():
     ap.add_argument('--canvas-side', type=float, default=2880)
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel for the colour areas')
     ap.add_argument('--min-area', type=int, default=150, help='colour areas below this are folded into a neighbour')
+    ap.add_argument('--max-shapes', type=int, default=30000,
+                    help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
+                         'Zero turns the budget off. A safety valve, not a working limit: a fill now rasterises into its '
+                         'own box, so twenty-seven thousand areas finish in under eight minutes')
     ap.add_argument('--blur', type=float, default=1.0, help='blur before quantising, at the cut size')
     ap.add_argument('--sigma', type=float, default=5.0)
     ap.add_argument('--keep', type=float, default=0.45)
@@ -108,7 +112,8 @@ def main():
         project = lines
     else:
         run('shapes', [HERE / 'shape_pass.py', '--project', board, '--reference', args.reference,
-                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
+                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area,
+                       '--max-shapes', args.max_shapes, '--blur', args.blur])
         run('lines', [HERE / 'edge_strokes.py',
                       '--labels', shapes.with_name('%s-labels.npy' % shapes.stem),
                       '--meta', shapes.with_name('%s-meta.json' % shapes.stem),
@@ -119,7 +124,8 @@ def main():
 
     if args.line_source == 'gradient':
         run('shapes', [HERE / 'shape_pass.py', '--project', project, '--reference', args.reference,
-                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area, '--blur', args.blur])
+                       '--out', shapes, '--levels', args.levels, '--min-area', args.min_area,
+                       '--max-shapes', args.max_shapes, '--blur', args.blur])
 
     run('gradient', [HERE / 'gradient_fill.py', '--src', shapes, '--reference', args.reference, '--out', grads])
     if not args.no_render:
