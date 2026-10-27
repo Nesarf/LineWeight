@@ -980,7 +980,42 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
             # second time, over the whole page, which is both a wrong picture and the cost this branch exists to avoid.
             continue
         elif kind == 'fill':
-            layer = fill_layer(mark, width, height, scale)
+            # **The mark's own box, not the page.** The same argument and the same arithmetic as the stroke branch above:
+            # a page-sized buffer per mark is what made twenty-seven thousand fills spend over fifty minutes in the
+            # composer on a large reference, and the picture inside a box the size of the mark is identical.
+            geometry = mark['geometry']
+            pts = geometry.get('points') or []
+            if len(pts) < 3:
+                continue
+            xs = [p[0] * scale for p in pts]
+            ys = [p[1] * scale for p in pts]
+            pad = 2
+            x0 = max(0, int(min(xs)) - pad)
+            y0 = max(0, int(min(ys)) - pad)
+            x1 = min(width, int(max(xs)) + pad + 1)
+            y1 = min(height, int(max(ys)) + pad + 1)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            # **The gradient's endpoints are page coordinates too**, so they move by the same offset as the points. Left
+            # behind, a gradient would shade the shape from the wrong direction while still looking perfectly plausible
+            # -- a fault that reads as an artistic choice rather than as a bug.
+            shift_x = x0 / scale
+            shift_y = y0 / scale
+            local = dict(mark)
+            local_geometry = dict(geometry)
+            local_geometry['points'] = [[p[0] - shift_x, p[1] - shift_y] for p in pts]
+            if geometry.get('holes'):
+                local_geometry['holes'] = [[[p[0] - shift_x, p[1] - shift_y] for p in ring]
+                                          for ring in geometry['holes']]
+            if geometry.get('gradient'):
+                gradient = dict(geometry['gradient'])
+                gradient['from'] = [gradient['from'][0] - shift_x, gradient['from'][1] - shift_y]
+                gradient['to'] = [gradient['to'][0] - shift_x, gradient['to'][1] - shift_y]
+                local_geometry['gradient'] = gradient
+            local['geometry'] = local_geometry
+            layer = fill_layer(local, x1 - x0, y1 - y0, scale)
+            out = blend_at(out, layer, x0, y0)
+            continue
         else:
             raise ValueError('cannot render a mark of kind %r' % (kind,))
         out = blend(out, layer, 'normal', 1.0)
