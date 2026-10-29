@@ -57,9 +57,11 @@ def skeleton(path, width, height, title):
     return path
 
 
-def render_project(src, out):
-    proc = subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(src), '--out', str(out)],
-                          capture_output=True, text=True, cwd=str(ROOT))
+def render_project(src, out, sweep=False):
+    argv = [sys.executable, '-m', 'lineweight', '--render', str(src), '--out', str(out)]
+    if sweep:
+        argv.append('--sweep')
+    proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(ROOT))
     lines = [l.strip() for l in (proc.stdout or '').splitlines() if l.strip()]
     print('  %-8s %s' % ('render', lines[-2] if len(lines) > 1 else (lines[-1] if lines else 'no output')))
     if proc.returncode != 0:
@@ -83,6 +85,10 @@ def main():
     ap.add_argument('--blur', type=float, default=1.0, help='blur before quantising, at the cut size')
     ap.add_argument('--sigma', type=float, default=5.0)
     ap.add_argument('--keep', type=float, default=0.45)
+    ap.add_argument('--sweep', action='store_true',
+                    help='lay every stroke down as a distance field instead of as stamped discs: the edge loses the '
+                         'stamp-pitch scallop, measured at 1.89 pixels of width wobble against 0.76 on the widest '
+                         'brush, and the render costs two to eight times more')
     ap.add_argument('--no-render', action='store_true')
     args = ap.parse_args()
 
@@ -120,7 +126,7 @@ def main():
                       '--reference', args.reference, '--out', lines])
         project = shapes
         if not args.no_render:
-            render_project(lines, strokes)
+            render_project(lines, strokes, args.sweep)
 
     if args.line_source == 'gradient':
         run('shapes', [HERE / 'shape_pass.py', '--project', project, '--reference', args.reference,
@@ -138,8 +144,11 @@ def main():
         run('merge', [HERE / 'merge_projects.py', '--fills', grads, '--lines', lines, '--out', picture])
     if not args.no_render:
         source = picture if args.line_source == 'boundary' else grads
-        run('compose', [HERE / 'compose_soft.py', '--src', source, '--out', final,
-                        '--sigma', args.sigma, '--keep', args.keep])
+        argv = [HERE / 'compose_soft.py', '--src', source, '--out', final,
+                '--sigma', args.sigma, '--keep', args.keep]
+        if args.sweep:
+            argv.append('--sweep')
+        run('compose', argv)
         print('  done     %s' % final)
         if args.line_source == 'boundary':
             print('  project  %s' % picture)

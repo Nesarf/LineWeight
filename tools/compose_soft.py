@@ -26,14 +26,18 @@ def split(doc, keep):
     return out
 
 
-def render(doc, path):
+def render(doc, path, sweep=False):
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     project = path.with_suffix('.json')
     project.write_text(json.dumps(doc, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     png = path.with_suffix('.png')
-    proc = subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(project), '--out', str(png)],
-                          capture_output=True, text=True, cwd=r'E:\lineweight')
+    argv = [sys.executable, '-m', 'lineweight', '--render', str(project), '--out', str(png)]
+    # **The analytic brush is a rendering choice, so it is forwarded rather than decided here.** It changes how a width
+    # becomes pixels, not what the two layers are; the blur below is a decision about the layers and is untouched by it.
+    if sweep:
+        argv.append('--sweep')
+    proc = subprocess.run(argv, capture_output=True, text=True, cwd=r'E:\lineweight')
     if proc.returncode != 0:
         print(proc.stderr[-400:])
         raise SystemExit('render failed for %s' % project)
@@ -50,18 +54,21 @@ def main():
     ap.add_argument('--strokes', default='',
                     help='a greyscale line image to multiply over the shading instead of rendering the project strokes; '
                          'this is how a line layer from another source is tried without rebuilding it as marks')
+    ap.add_argument('--sweep', action='store_true',
+                    help='render the marks with the analytic brush: the edge loses the stamp-pitch scallop and the '
+                         'composer pays two to eight times the render time for it')
     args = ap.parse_args()
 
     doc = json.loads(pathlib.Path(args.src).read_text(encoding='utf-8'))
     work = pathlib.Path(args.work_dir or pathlib.Path(args.out).with_suffix(''))
     work.mkdir(parents=True, exist_ok=True)
 
-    fills = render(split(doc, 'fill'), work / 'fills')
+    fills = render(split(doc, 'fill'), work / 'fills', sweep=args.sweep)
     if args.strokes:
         strokes = pathlib.Path(args.strokes)
         print('  using %s as the line layer' % strokes)
     else:
-        strokes = render(split(doc, 'stroke'), work / 'strokes')
+        strokes = render(split(doc, 'stroke'), work / 'strokes', sweep=args.sweep)
     print('  rendered %s' % fills.name)
 
     shade = Image.open(fills).convert('RGB')
