@@ -31,7 +31,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only on a machine without numpy
     _np = None
 
-from .core import BRUSHES, mark_ink
+from .core import BRUSHES, brush_at, mark_ink
 from .roles import DEFAULT_INK
 
 
@@ -291,7 +291,7 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     outline: one stroke goes to SVG or to a buffer without being redrawn, and the two outputs cannot disagree about
     what was drawn.
     """
-    brush = BRUSHES[record['brush']]
+    brush = brush_at(record['brush'], record.get('size', 1.0))
     colour = record.get('colour_int') or (26, 22, 32)
     layer = Layer(width, height, paper=paper)
     if density:

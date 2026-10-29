@@ -80,6 +80,29 @@ BRUSHES: dict[str, dict[str, float]] = {
              'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
 }
 
+#: **The sizes a brush may be laid down at**, as multiples of its own width. **A physical nib comes in sizes, and an
+#: artist changes the brush size far more often than the brush.** Without this the table gives exactly one width per
+#: brush -- four brushes, four line weights for a whole drawing -- and the pressure model cannot supply the rest,
+#: because it works in ratios around that one width: `p / median` moves a line by tens of per cent, not by ten times.
+SIZES = (0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+
+
+def brush_at(name: str, size: float = 1.0) -> dict[str, float]:
+    """The brush definition scaled to a size.
+
+    **Scaling `width` alone is enough, and that is a consequence of the unit the table was designed around.** Every
+    other length in a brush is quoted as a multiple of its own width -- `taper_in` and `taper_out` are `width * 14.3`
+    in total so a nib's entry takes the same distance on a long stroke as on a short one, and `wobble` is a fraction of
+    the width. Raising `width` therefore raises all of them by the same factor, which is what "the same brush, bigger"
+    means. A brush whose taper were quoted in absolute pixels would need every field scaled, and would then be a
+    different brush rather than a larger one.
+    """
+    brush = dict(BRUSHES[name])
+    if size != 1.0:
+        brush['width'] = brush['width'] * float(size)
+    return brush
+
+
 # **How far a fitted outline curve may sit from the exact offset, as a multiple of the brush width.**
 #
 # The obvious way to choose this is "small enough to be invisible", and that is the wrong criterion here, because it
@@ -1047,7 +1070,8 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   colour: str = '', resolution: int = 14, role: str = '',
                   width_profile: list[float] | None = None,
                   alpha_profile: list[float] | None = None,
-                  absolute_width: bool = False) -> dict:
+                  absolute_width: bool = False,
+                  size: float = 1.0) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1060,7 +1084,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
     Nothing about the rendering changes; `stroke()` now builds its outline from a record, so the two cannot drift
     apart, and a test asserts that a record round-trips to identical output.
     """
-    brush = BRUSHES[brush_name]
+    brush = brush_at(brush_name, size)
     path = catmull(points, resolution)
     path = tremble(path, brush.get('wobble', 0.0) * brush['width'], seed,
                    TREMBLE_STEP * brush['width'])
@@ -1102,6 +1126,11 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # reach the canvas unchanged. Without the flag the renderer multiplies it by `p / median`, which is the right
         # thing for a stroke a hand drew and the wrong thing for one that was copied.
         'absolute_width': bool(absolute_width),
+        # **The brush's own size multiplier, carried on the record so expansion can rebuild the same brush.** A size is
+        # not a width: the width follows the pressure, the taper is quoted as a multiple of it and the tremor is a
+        # fraction, so a record that stored only a width would lose every relative quantity the brush is made of. Absent
+        # means one, so a record written before sizes existed expands exactly as it did.
+        'size': float(size),
         'width_profile': [float(w) for w in width_profile] if width_profile else [],
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
@@ -1166,7 +1195,7 @@ def stroke_widths(record: dict) -> list[float]:
     side, the same recorded stroke can be re-expanded with a different one, which is the practical difference between
     keeping the line and keeping only its outline.
     """
-    brush = BRUSHES[record['brush']]
+    brush = brush_at(record['brush'], record.get('size', 1.0))
     gamma = float(brush.get('curve', 1.0))
     # **The role multiplies the profile rather than replacing it**, so naming a line's role never removes the pressure
     # variation -- which is the whole point of this library, and the thing the drawing convention says artists forget
@@ -1198,7 +1227,7 @@ def outline_chain_of(record: dict) -> list[Cubic]:
 
 def from_record(record: dict) -> tuple[str, float]:
     """Rebuilds a stroke's outline from its record, which is what makes the record worth keeping."""
-    brush = BRUSHES[record['brush']]
+    brush = brush_at(record['brush'], record.get('size', 1.0))
     ps = [float(p) for p in record['pressure']]
     chain = outline_chain_of(record)
     d = (curve.chain_to_path(chain) + ' Z') if chain else ''
