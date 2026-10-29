@@ -285,7 +285,7 @@ def test_a_straight_stroke_is_continuous_not_a_string_of_beads(tmp_path):
     from lineweight import BRUSHES, stroke_record
     from lineweight.raster import stroke_layer
 
-    for name in ('fine', 'ink', 'pencil', 'wash'):
+    for name in BRUSHES:
         record = stroke_record([(20.0, 80.0), (200.0, 80.0)], name, seed=5)
         record['colour_int'] = (40, 34, 48)
         layer = stroke_layer(record, 220, 160, 1.0)
@@ -1445,7 +1445,9 @@ def test_the_model_never_draws_a_uniform_stroke():
     for brush in BRUSHES:
         for i in range(40):
             values.append(stroke_variation(stroke_record(a_walk(seed=i * 7 + len(brush)), brush, seed=i)))
-    assert len(values) == 160
+    # **The count follows the table**, because a literal here would silently stop covering a brush that was added later:
+    # the loop below walks every brush, so the assertion has to be about however many that turned out to be.
+    assert len(values) == 40 * len(BRUSHES)
     assert max(values) < UNIFORM_FLOOR, \
         'a generated stroke is uniform: flattest %.3f, floor %.2f' % (max(values), UNIFORM_FLOOR)
     assert sum(1 for v in values if v < 0.75) > 100, 'most strokes should have visible variation, not hover at the floor'

@@ -78,6 +78,53 @@ BRUSHES: dict[str, dict[str, float]] = {
     # that merely looked reasonable and had no effect until the raster compositor arrived.
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
              'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
+
+    # # The second group, with **where each number comes from stated rather than implied.**
+    #
+    # Three rules hold for every brush in the table, old and new:
+    #
+    # - **`spacing` is 0.56 because it was swept**: at 0.8 of a dab's diameter a straight stroke is still one run of ink
+    #   and at 1.0 it breaks into beads.
+    # - **`taper_in + taper_out` is 14.3 in total**, from a measured 丸ペン whose 入り and 抜き are both 5.0 mm on a
+    #   0.35 mm nib. **Only that total is measured**; how it splits between the ends is carried over, and is a choice.
+    # - **`width` is that material's drawn width at 300 dpi**, where 1 mm is 11.8 pixels: a statement about the tool.
+    #
+    # The response curve, the tremor and the noise are **carried over from the range the first four brushes occupy**
+    # (noise 0.10 to 0.26, wobble 0.14 to 0.38) and placed inside it by how hard the tool is: a soft brush answers
+    # pressure early and shakes more, a technical pen does neither. A derivation from this table, not a measurement.
+
+    # **丸筆 (maru)** -- a 0.3 mm mapping nib, the pen line art is normally inked with. The curve is steep because a
+    # pointed nib has to be pressed before it opens at all.
+    'maru': {'width': 3.5, 'opacity': 1.0, 'taper_in': 7.0, 'taper_out': 7.3, 'spacing': 0.56,
+             'speed': 0.30, 'corner': 0.35, 'noise': 0.14, 'wobble': 0.18, 'curve': 1.30},
+
+    # **面相筆 (brush)** -- a soft tip. It widens as soon as it is pressed, so the curve sits under 1, and it shakes most
+    # of any brush here, because a soft tip is held by a hand rather than by a metal ferrule.
+    'brush': {'width': 14.0, 'opacity': 1.0, 'taper_in': 5.8, 'taper_out': 8.5, 'spacing': 0.56,
+              'speed': 0.18, 'corner': 0.22, 'noise': 0.24, 'wobble': 0.34, 'curve': 0.62, 'grain': 0.10},
+
+    # **A felt-tip marker is nearly insensitive to pressure** -- the tip is touching the paper or it is not -- so the curve
+    # is close to 1 and the tremor is small. **It still breathes**, because every brush here must: a line of one width all
+    # the way along is the exact failure this library exists to prevent.
+    'marker': {'width': 11.0, 'opacity': 0.80, 'taper_in': 6.4, 'taper_out': 7.9, 'spacing': 0.56,
+               'speed': 0.28, 'corner': 0.30, 'noise': 0.12, 'wobble': 0.20, 'curve': 0.95, 'grain': 0.06},
+
+    # **The airbrush is the one brush whose taper is not 14.3, and the reason is arithmetic rather than taste.** A taper is
+    # a fixed distance, so at 26 pixels wide the measured total would be a 372-pixel entry, longer than most strokes -- the
+    # same fault that once gave the 22-pixel wash a 590-pixel entry and left every wash nothing but taper. An airbrush has
+    # no nib to build pressure against in the first place: its entry and exit are a fade, not a taper.
+    'airbrush': {'width': 26.0, 'opacity': 0.22, 'taper_in': 1.6, 'taper_out': 1.6, 'spacing': 0.56,
+                 'speed': 0.12, 'corner': 0.10, 'noise': 0.10, 'wobble': 0.12, 'curve': 0.75, 'grain': 0.20},
+
+    # **Chalk is grain, and the grain is the point.** The largest in the table, above the wash's 0.45, because a stick of
+    # chalk deposits by whether a fragment catches the tooth of the paper rather than by how hard it is pressed.
+    'chalk': {'width': 9.0, 'opacity': 0.85, 'taper_in': 5.5, 'taper_out': 8.8, 'spacing': 0.56,
+              'speed': 0.34, 'corner': 0.40, 'noise': 0.28, 'wobble': 0.30, 'curve': 1.05, 'grain': 0.70},
+
+    # **A white gel pen for highlights**: opaque, hard-edged, and held as still as a hand holds anything -- the smallest
+    # tremor here, because its job is to put one clean mark where the light already is.
+    'white': {'width': 4.5, 'opacity': 1.0, 'taper_in': 6.8, 'taper_out': 7.5, 'spacing': 0.56,
+              'speed': 0.24, 'corner': 0.28, 'noise': 0.10, 'wobble': 0.14, 'curve': 1.15, 'grain': 0.04},
 }
 
 #: **The sizes a brush may be laid down at**, as multiples of its own width. **A physical nib comes in sizes, and an
