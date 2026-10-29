@@ -804,3 +804,55 @@ def save_project(project: Project, path: str) -> None:
 def load_project(path: str) -> Project:
     with open(path, encoding='utf-8') as handle:
         return Project.from_dict(json.load(handle))
+
+
+def combine(fills: dict, lines: dict) -> dict:
+    """Two project files into one drawing, fills first and lines after.
+
+    **Why the two files were a hole rather than a choice.** Every stage used to write its own project, and the two met only
+    at the moment of compositing a PNG. The shape of the artwork requires that **every line and every colour application
+    be an individually addressable entry in the project file** -- a drawing that exists as two files, merged into an image,
+    cannot be revised as one drawing, and "revise this line by id" then has no single file to look in.
+
+    **What is checked rather than assumed.** A mark's coordinates are absolute, so two projects are only one drawing if
+    they are the same page; and the id is how a later stage revises one mark and leaves the rest alone, so a duplicate
+    would make that ambiguous in silence.
+
+    Order is the drawing order and is never sorted: ink goes on top of paint. Sequences are rewritten to the merged order,
+    because that is what the renderer walks and what a later stage uses to say "this came before that".
+    """
+    canvas_a = fills.get('canvas') or {}
+    canvas_b = lines.get('canvas') or {}
+    if (canvas_a.get('width'), canvas_a.get('height')) != (canvas_b.get('width'), canvas_b.get('height')):
+        raise ValueError('the two projects disagree about the page: %sx%s against %sx%s'
+                         % (canvas_a.get('width'), canvas_a.get('height'),
+                            canvas_b.get('width'), canvas_b.get('height')))
+    marks = []
+    seen = {}
+    # **Each mark is copied before its sequence is rewritten.** The marks belong to the documents being read, and a later
+    # stage reads the same areas the earlier one wrote: a merge that edited them in place would change the fills project,
+    # so rerunning the line stage would start from a file that had already been merged once.
+    for mark in list(fills.get('marks', [])) + list(lines.get('marks', [])):
+        identifier = mark.get('id')
+        if not identifier:
+            raise ValueError('a mark has no id, so it could never be revised by id')
+        if identifier in seen:
+            raise ValueError('two marks share the id %r (positions %d and %d)'
+                             % (identifier, seen[identifier], len(marks)))
+        seen[identifier] = len(marks)
+        copy = dict(mark)
+        copy['seq'] = len(marks)
+        marks.append(copy)
+    out = dict(fills)
+    out['marks'] = marks
+    # **The stage list is the union.** A stage present in one file and absent from the other would otherwise disappear, and
+    # `render --stage` would then refuse a stage the drawing actually contains.
+    stages = []
+    for doc in (fills, lines):
+        for stage in doc.get('stages', []):
+            if stage not in stages:
+                stages.append(stage)
+    out['stages'] = stages
+    out['title'] = '%s + %s' % (fills.get('title', 'fills'), lines.get('title', 'lines'))
+    out['counter'] = len(marks)
+    return out

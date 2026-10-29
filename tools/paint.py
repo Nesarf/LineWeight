@@ -128,12 +128,21 @@ def main():
                        '--max-shapes', args.max_shapes, '--blur', args.blur])
 
     run('gradient', [HERE / 'gradient_fill.py', '--src', shapes, '--reference', args.reference, '--out', grads])
+
+    # **One project, not two.** The fills and the lines were separate files that only met when a PNG was composited, so the
+    # drawing could not be revised as one drawing -- "revise this line by id" had no single file to look in. They are
+    # combined here, and the composer then reads that one file and splits it by kind for the two-layer render: the blur
+    # belongs to the shading, not to the filing.
+    picture = out / 'picture.json'
+    if args.line_source == 'boundary':
+        run('merge', [HERE / 'merge_projects.py', '--fills', grads, '--lines', lines, '--out', picture])
     if not args.no_render:
-        argv = [HERE / 'compose_soft.py', '--src', grads, '--out', final, '--sigma', args.sigma, '--keep', args.keep]
-        if args.line_source == 'boundary':
-            argv += ['--strokes', strokes]
-        run('compose', argv)
+        source = picture if args.line_source == 'boundary' else grads
+        run('compose', [HERE / 'compose_soft.py', '--src', source, '--out', final,
+                        '--sigma', args.sigma, '--keep', args.keep])
         print('  done     %s' % final)
+        if args.line_source == 'boundary':
+            print('  project  %s' % picture)
     return 0
 
 
