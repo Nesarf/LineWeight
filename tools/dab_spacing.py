@@ -60,6 +60,11 @@ def main():
     ap.add_argument('--brush', default='ink')
     ap.add_argument('--sweep', default='0.56,0.44,0.35,0.25,0.18,0.12')
     ap.add_argument('--size', type=float, default=1.0, help='the brush size multiplier')
+    ap.add_argument('--noise', type=float, default=None,
+                    help='override the brush noise; 0 asks what the scallop is with no breathing at all')
+    ap.add_argument('--wobble', type=float, default=None,
+                    help='override the brush wobble; the sideways tremor moves each dab, which changes how many dabs '
+                         'cover a column and therefore the measured width')
     ap.add_argument('--length', type=int, default=900)
     ap.add_argument('--pad', type=int, default=120, help='columns skipped at each end, past the taper')
     args = ap.parse_args()
@@ -77,6 +82,16 @@ def main():
     print('  %-7s %8s %10s %10s' % ('spacing', 'median', 'scallop px', 'as fraction'))
 
     original = brush['spacing']
+    original_noise = brush.get('noise', 0.0)
+    original_wobble = brush.get('wobble', 0.0)
+    # **Turning the breathing off is the experiment that separates the two sources.** A dab-pitch scallop is periodic
+    # and stops when the pitch closes; the noise term is a slow random walk and does not care about the pitch at all.
+    if args.noise is not None:
+        brush['noise'] = args.noise
+    # **And the sideways tremor is a third source**, which is why it has its own override: it moves each dab, so a column
+    # may be covered by one dab or by two, and the ink in that column changes with it.
+    if args.wobble is not None:
+        brush['wobble'] = args.wobble
     rows = []
     try:
         for value in (float(v) for v in args.sweep.split(',')):
@@ -90,6 +105,8 @@ def main():
             print('  %-7.2f %8.2f %10.2f %10.3f' % (value, median, spread, fraction))
     finally:
         brush['spacing'] = original
+        brush['noise'] = original_noise
+        brush['wobble'] = original_wobble
 
     # **A scallop of half a pixel is invisible** -- it is inside the anti-aliasing of the edge itself. That is the
     # threshold this reports against, and it is deliberately a physical quantity rather than a chosen fraction.
