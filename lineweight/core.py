@@ -1816,7 +1816,7 @@ def to_xfl(out_path: str, launch: bool = False) -> int:
 
 
 def render_report(project_path: str, stage: str = '', upto: str = '', out: str = 'render.png',
-                  scale: float = 1.0, paper: str = '') -> int:
+                  scale: float = 1.0, paper: str = '', sweep: bool = False) -> int:
     """Renders a project file to an image, optionally one pass at a time.
 
     **This is an export, not the product.** What lineweight makes is the project file; an image is one reading of it,
@@ -1866,7 +1866,7 @@ def render_report(project_path: str, stage: str = '', upto: str = '', out: str =
     if getattr(project, 'figure', None) is not None:
         outlined = {l.name for l in project.figure.layers.layers if getattr(l, 'outline', False)}
     layer = render_marks([m.to_dict() for m in marks], width, height, scale,
-                         paper=PAPERS[paper] if paper else None, outlined=outlined)
+                         paper=PAPERS[paper] if paper else None, outlined=outlined, sweep=sweep)
     parent = os.path.dirname(out)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -2255,6 +2255,11 @@ def main() -> int:
     parser.add_argument('--scale', type=float, default=1.0, help='with --psd: pixels per drawing unit')
     parser.add_argument('--paper', default='', metavar='NAME',
                         help='with --render: the surface to draw on, e.g. smooth, drawing, rough, canvas')
+    parser.add_argument('--sweep', action='store_true',
+                        help='with --render: lay each stroke down as a distance from its centre line instead of as a '
+                             'row of stamped discs. The edge loses the stamp-pitch scallop -- measured at 1.89 pixels of '
+                             'width wobble on a fourteen-pixel brush against 0.76 -- and costs two to eight times the '
+                             'render time, which is why it is not the default')
     parser.add_argument('--check-body', default='', metavar='FILE',
                         help='validate a proposed body: a JSON object of joint -> parent, against the rig')
     parser.add_argument('--check-layers', default='', metavar='FILE',
@@ -2303,7 +2308,7 @@ def main() -> int:
         return to_xfl(args.xfl, launch=args.run)
     if args.render:
         return render_report(args.render, stage=args.stage, upto=args.upto, out=args.out, scale=args.scale,
-                             paper=args.paper)
+                             paper=args.paper, sweep=args.sweep)
     if args.check:
         return check_report(args.check, scale=args.scale)
     if args.log:
