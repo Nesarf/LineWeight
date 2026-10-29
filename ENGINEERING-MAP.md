@@ -97,13 +97,17 @@ run       2 /  0 /  0        audit     2 /  0 /  1        invariants 2 / 0 / 1
    ├─ tools/gradient_fill.py ◄───── shapes.json
    │     每形沿主轴两端取色 ────────► gradients.json
    │
-   └─ tools/compose_soft.py ◄─────── gradients.json + lines.png
-         填色层高斯模糊 · 线层保持锐利 · 相乘 ─► final.png
+   ├─ project.combine ◄───────────── gradients.json + lines.json
+   │     一份工程，fill 在前、线在后 ─► picture.json
+   │
+   └─ tools/compose_soft.py ◄─────── picture.json
+         按 kind 拆两层 · 填色模糊 · 线保持锐利 · 相乘 ─► final.png
 ```
 
-**注意这条流的一个结构缺口**：`fills` 与 `lines` 是**两个独立的工程文件**，只在最后渲染成位图时相遇。而
-`DESIGN-PROJECT.md` 要求「每一条线、每一次上色都必须是工程文件里可单独寻址的一项」—— 一个分成两份、
-只在 PNG 里合并的工程，不满足那一条。**这是地图上标红的坑，见 §6。**
+**这条流最后合成一份工程。** `fills` 与 `lines` 曾经是两个独立的文件、只在渲染成位图时相遇，那样
+`DESIGN-PROJECT.md` 那条「每一条线、每一次上色都必须是工程文件里可单独寻址的一项」就不成立：一份分成两份的
+工程，无法「按 id 修改这一条线」。现在 `project.combine` 把它们并成 `picture.json`，合成器读那一份、按 kind 拆成
+两层渲染 —— 模糊属于明暗，不属于归档。
 
 ---
 
@@ -142,8 +146,8 @@ run       2 /  0 /  0        audit     2 /  0 /  1        invariants 2 / 0 / 1
 
 ## 6. 现在的坑（按影响排序）
 
-1. **fills 与 lines 是两个工程**，只在位图阶段合并。要合成一份可编辑工程，需要在 `project` 层做一次合并，
-   而两份工程的画布与缩放必须同一（目前靠 `meta.json` 传，没有强制）。
+1. ~~**fills 与 lines 是两个工程**~~ —— **已解决**（`project.combine`，提交 `69b0c3a`）。合并工程与两份源文件渲染
+   逐像素相同（1702 万像素 0 差异）；两条静默失败的校验也补齐了：画布不一致、id 重复。
 
 2. **笔刷只有 4 支，每支 8 个参数里 2 个有测量**。加笔刷不是加数据，是给参数找依据。
 
