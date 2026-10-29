@@ -66,17 +66,35 @@ BRUSHES: dict[str, dict[str, float]] = {
     # with `tools/stroke_swell.py`: ninety-eight per cent of a straight run sat within one pixel of its own median.
     # **A pen that lays down the same width all along a stroke is a computer's pen**, and that was the one property of
     # the line that no amount of correct geometry could supply. These values are raised until the swell is visible.
-    'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 6.0, 'taper_out': 8.3, 'spacing': 0.56,
+    'fine': {'width': 2.0, 'opacity': 1.0, 'taper_in': 6.0, 'taper_out': 8.3, 'spacing': 0.35,
              'speed': 0.35, 'corner': 0.40, 'noise': 0.20, 'wobble': 0.30, 'curve': 1.15},
-    'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 5.4, 'taper_out': 8.9, 'spacing': 0.56,
+    'ink': {'width': 6.5, 'opacity': 1.0, 'taper_in': 5.4, 'taper_out': 8.9, 'spacing': 0.35,
             'speed': 0.22, 'corner': 0.30, 'noise': 0.24, 'wobble': 0.26, 'curve': 0.85},
-    'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
+    'pencil': {'width': 4.0, 'opacity': 0.75, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.35,
                'speed': 0.40, 'corner': 0.45, 'noise': 0.26, 'wobble': 0.38, 'curve': 1.00, 'grain': 0.35},
-    # **Spacing is measured, not chosen.** Sweeping it per brush and counting how many separate runs of ink a
-    # single straight stroke leaves shows all four staying continuous to 0.8 of a diameter and breaking at
-    # 1.0, so every brush sits at 0.56 -- a measured value with the margin left in, rather than a number
-    # that merely looked reasonable and had no effect until the raster compositor arrived.
-    'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.56,
+    # **Spacing answers two different questions, and it used to answer only the first.**
+    #
+    # The first is whether a straight stroke stays *one run of ink*. Swept per brush and counted, every brush stays
+    # continuous to 0.8 of a dab's diameter and breaks into beads at 1.0.
+    #
+    # The second is what the **edge** does, and the eye reads the edge. At 0.56 of a diameter a six-pixel brush places
+    # its dabs 3.6 pixels apart, and overlapping hard discs leave a row of scallops there -- visible on every wide brush
+    # and absent on the two narrow ones when ten brushes were drawn side by side. `tools/dab_spacing.py` measures the
+    # width along a straight stroke by **summing alpha per column** rather than counting lit pixels, because an integer
+    # count cannot report a wobble smaller than one pixel and on a fine brush the median is two.
+    #
+    # Measured on the ink brush, scallop as pixels of width:
+    #
+    #     0.56 -> 1.85      0.44 -> 1.31      0.35 -> 1.01      0.25 -> 0.78      0.12 -> 0.60
+    #
+    # **The tail floor is not spacing.** Past 0.35 the number stops moving (0.78 then 0.60, while the brush's own stall
+    # is flat at 2.82 for every spacing below 0.35): what is left is the `noise` term breathing the width along the
+    # stroke, which is the property this library exists to keep. So 0.35 is where spacing's own contribution drops under
+    # the breathing, and going further buys almost nothing.
+    #
+    # It costs. A 860-pixel stroke at the ink width goes from 8 ms to 12 ms -- **half again** -- which on a drawing of ten
+    # thousand strokes is forty more seconds. That is the trade, and it was made knowing both numbers.
+    'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.35,
              'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
 
     # # The second group, with **where each number comes from stated rather than implied.**
@@ -95,35 +113,35 @@ BRUSHES: dict[str, dict[str, float]] = {
 
     # **丸筆 (maru)** -- a 0.3 mm mapping nib, the pen line art is normally inked with. The curve is steep because a
     # pointed nib has to be pressed before it opens at all.
-    'maru': {'width': 3.5, 'opacity': 1.0, 'taper_in': 7.0, 'taper_out': 7.3, 'spacing': 0.56,
+    'maru': {'width': 3.5, 'opacity': 1.0, 'taper_in': 7.0, 'taper_out': 7.3, 'spacing': 0.35,
              'speed': 0.30, 'corner': 0.35, 'noise': 0.14, 'wobble': 0.18, 'curve': 1.30},
 
     # **面相筆 (brush)** -- a soft tip. It widens as soon as it is pressed, so the curve sits under 1, and it shakes most
     # of any brush here, because a soft tip is held by a hand rather than by a metal ferrule.
-    'brush': {'width': 14.0, 'opacity': 1.0, 'taper_in': 5.8, 'taper_out': 8.5, 'spacing': 0.56,
+    'brush': {'width': 14.0, 'opacity': 1.0, 'taper_in': 5.8, 'taper_out': 8.5, 'spacing': 0.35,
               'speed': 0.18, 'corner': 0.22, 'noise': 0.24, 'wobble': 0.34, 'curve': 0.62, 'grain': 0.10},
 
     # **A felt-tip marker is nearly insensitive to pressure** -- the tip is touching the paper or it is not -- so the curve
     # is close to 1 and the tremor is small. **It still breathes**, because every brush here must: a line of one width all
     # the way along is the exact failure this library exists to prevent.
-    'marker': {'width': 11.0, 'opacity': 0.80, 'taper_in': 6.4, 'taper_out': 7.9, 'spacing': 0.56,
+    'marker': {'width': 11.0, 'opacity': 0.80, 'taper_in': 6.4, 'taper_out': 7.9, 'spacing': 0.35,
                'speed': 0.28, 'corner': 0.30, 'noise': 0.12, 'wobble': 0.20, 'curve': 0.95, 'grain': 0.06},
 
     # **The airbrush is the one brush whose taper is not 14.3, and the reason is arithmetic rather than taste.** A taper is
     # a fixed distance, so at 26 pixels wide the measured total would be a 372-pixel entry, longer than most strokes -- the
     # same fault that once gave the 22-pixel wash a 590-pixel entry and left every wash nothing but taper. An airbrush has
     # no nib to build pressure against in the first place: its entry and exit are a fade, not a taper.
-    'airbrush': {'width': 26.0, 'opacity': 0.22, 'taper_in': 1.6, 'taper_out': 1.6, 'spacing': 0.56,
+    'airbrush': {'width': 26.0, 'opacity': 0.22, 'taper_in': 1.6, 'taper_out': 1.6, 'spacing': 0.35,
                  'speed': 0.12, 'corner': 0.10, 'noise': 0.10, 'wobble': 0.12, 'curve': 0.75, 'grain': 0.20},
 
     # **Chalk is grain, and the grain is the point.** The largest in the table, above the wash's 0.45, because a stick of
     # chalk deposits by whether a fragment catches the tooth of the paper rather than by how hard it is pressed.
-    'chalk': {'width': 9.0, 'opacity': 0.85, 'taper_in': 5.5, 'taper_out': 8.8, 'spacing': 0.56,
+    'chalk': {'width': 9.0, 'opacity': 0.85, 'taper_in': 5.5, 'taper_out': 8.8, 'spacing': 0.35,
               'speed': 0.34, 'corner': 0.40, 'noise': 0.28, 'wobble': 0.30, 'curve': 1.05, 'grain': 0.70},
 
     # **A white gel pen for highlights**: opaque, hard-edged, and held as still as a hand holds anything -- the smallest
     # tremor here, because its job is to put one clean mark where the light already is.
-    'white': {'width': 4.5, 'opacity': 1.0, 'taper_in': 6.8, 'taper_out': 7.5, 'spacing': 0.56,
+    'white': {'width': 4.5, 'opacity': 1.0, 'taper_in': 6.8, 'taper_out': 7.5, 'spacing': 0.35,
               'speed': 0.24, 'corner': 0.28, 'noise': 0.10, 'wobble': 0.14, 'curve': 1.15, 'grain': 0.04},
 }
 
