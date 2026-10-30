@@ -167,6 +167,28 @@ def line_mask(gray, delta=25.0, reach=2.5, window=15):
     return dark & (thickness <= reach)
 
 
+def detail_density(gray, box=None, delta=12.0, window=15):
+    """How much internal structure a region has: the share of pixels that differ from their own local median.
+
+    **This is the measurement behind "the hair reads as one solid mass".** A strand drawn inside a dark shape is a
+    difference from its surroundings, and so is a fold, a highlight and a gap; what a stuck-together patch lacks is any
+    difference at all. So a region's detail is the share of its pixels that are not their own neighbourhood -- no
+    segmentation, no idea of what a strand is, and therefore no need to locate anything first.
+
+    **Both directions count**, unlike `line_mask`: a strand is often darker than the mass around it, but a highlight
+    along a strand is lighter, and a patch with either one is not stuck together.
+
+    `box` is `(x0, y0, x1, y1)` in pixels of the array; without it the whole array is measured.
+    """
+    if box is not None:
+        x0, y0, x1, y1 = box
+        gray = gray[y0:y1, x0:x1]
+    if gray.size == 0:
+        return 0.0
+    local = ndimage.median_filter(gray, size=max(3, int(window)))
+    return float((np.abs(gray - local) > delta).mean())
+
+
 def wobble_of(path, long_side=1600, gap=4.0, tolerance=0.8):
     """How far a stroke wanders off its own simplification, in its own widths.
 
