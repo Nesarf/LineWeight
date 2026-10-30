@@ -132,12 +132,13 @@ def main():
     ap.add_argument('--prune-reach', type=float, default=25.0)
     ap.add_argument('--prune-angle', type=float, default=20.0)
     ap.add_argument('--merge-reach', type=float, default=18.0)
-    ap.add_argument('--min-light-gap', type=float, default=0.0,
-                    help='drop boundaries whose lightness difference across them is below this. Zero keeps everything. '
-                         'Measured against a reference drawing\'s own lines: 0.04 lifts the share of drawn lines that land '
-                         'on a real one from 39.8%% to 50.7%% and costs 11.5 points of coverage, and it beats the colour '
-                         'gap at every operating point. Length was tried as a second filter and made it worse, because '
-                         'short strokes are eyelashes and long ones are joins the artist did not draw')
+    ap.add_argument('--min-light-gap', type=float, default=0.04,
+                    help='drop boundaries whose lightness difference across them is below this. **0.04 is the measured '
+                         'default, not a round number**: against a reference drawing\'s own lines it lifts the share of '
+                         'drawn lines that land on a real one from 39.8%% to 50.7%% and costs 11.5 points of coverage, '
+                         'and it beats the colour gap at every operating point. Zero restores every candidate. Length and '
+                         'area ratio were tried as second filters and both point the same way -- smaller is more likely '
+                         'to be a real line -- but each costs a third of the recall, so neither is applied')
     ap.add_argument('--merge-angle', type=float, default=35.0)
     ap.add_argument('--all-joins', action='store_true',
                     help='draw every boundary; by default only those the coarser cut also sees, measured to keep 46 per '

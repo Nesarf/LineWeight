@@ -104,13 +104,14 @@ def main():
                          'Zero turns the budget off. A safety valve, not a working limit: a fill now rasterises into its '
                          'own box, so twenty-seven thousand areas finish in under eight minutes')
     ap.add_argument('--blur', type=float, default=1.0, help='blur before quantising, at the cut size')
-    ap.add_argument('--sigma', default='5.0',
-                    help='blur applied to the shading; `auto` reads how flat the reference is and picks one. '
+    ap.add_argument('--sigma', default='auto',
+                    help='blur applied to the shading; the default reads how flat the reference is and picks one, '
+                         'because the two numbers tuned on one reference are wrong on another by a visible margin. '
                          'A cel-painted reference is 0.90 flat and wants 1.5, a soft painting is 0.74 and wants 5.0, '
                          'a thick one is 0.64 and wants 6.0 -- and the flat one behind a 5.0 blur loses the borders '
-                         'that are the whole of its style')
-    ap.add_argument('--keep', default='0.45',
-                    help='how much of the softened shading to mix back; `auto` follows the same flatness reading')
+                         'that are the whole of its style. A number overrides it')
+    ap.add_argument('--keep', default='auto',
+                    help='how much of the softened shading to mix back; the default follows the same flatness reading')
     ap.add_argument('--sweep', action='store_true',
                     help='lay every stroke down as a distance field instead of as stamped discs: the edge loses the '
                          'stamp-pitch scallop, measured at 1.89 pixels of width wobble against 0.76 on the widest '
