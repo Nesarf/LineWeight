@@ -137,7 +137,16 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
     return result
 
 
-def taper_of(path, long_side=1600, gap=4.0, reach=60):
+def in_boxes(y, x, spans, size):
+    """Whether a point falls in any of a part's boxes, which are fractions of the picture."""
+    width_px, height_px = size
+    for x0, y0, x1, y1 in spans:
+        if x0 * width_px <= x <= x1 * width_px and y0 * height_px <= y <= y1 * height_px:
+            return True
+    return False
+
+
+def taper_of(path, long_side=1600, gap=4.0, reach=60, regions=None):
     """How long a stroke's entry is, as a multiple of its own width -- or `None` when it has no entry at all.
 
     **The library's brushes assume a measured 丸ペン entry of 14.3 widths.** That figure came from a physical nib in a book,
@@ -179,7 +188,11 @@ def taper_of(path, long_side=1600, gap=4.0, reach=60):
         peak = max(line)
         if peak <= typical * 1.15:
             continue                     # this stroke does not thin at all: no entry to measure
-        for head in (line[:reach], list(reversed(line[-reach:]))):
+        # **Both ends, each filed under where that end is.** A traced polyline has no direction -- the walk may start at
+        # either end of the stroke -- so an entry measured at one end is filed by that end's position and the ambiguity
+        # disappears. A stroke that crosses two parts contributes one entry to each, which is what a single stroke over a
+        # boundary actually is.
+        for head, end in ((line[:reach], segment[0]), (list(reversed(line[-reach:])), segment[-1])):
             if head[0] > peak * 0.75:
                 continue                 # starts near its own peak: the end was cut, not tapered
             risen = 0
@@ -188,14 +201,26 @@ def taper_of(path, long_side=1600, gap=4.0, reach=60):
                     risen = index
                     break
             if risen:
-                entries.append(risen / typical)
+                entries.append((int(end[0]), int(end[1]), risen / typical))
     if not entries:
         return {'name': pathlib.Path(path).name, 'strokes': 0, 'entry_widths': None}
-    return {'name': pathlib.Path(path).name,
-            'strokes': len(entries),
-            'entry_widths': {'median': float(np.median(entries)),
-                             'p10': float(np.percentile(entries, 10)),
-                             'p90': float(np.percentile(entries, 90))}}
+    lengths = [length for _y, _x, length in entries]
+    result = {'name': pathlib.Path(path).name,
+              'strokes': len(entries),
+              'entry_widths': {'median': float(np.median(lengths)),
+                               'p10': float(np.percentile(lengths, 10)),
+                               'p90': float(np.percentile(lengths, 90))}}
+    if regions:
+        by_part = {}
+        for part, spans in regions.items():
+            picked = [length for y, x, length in entries if in_boxes(y, x, spans, image.size)]
+            if len(picked) >= 3:
+                by_part[part] = {'count': len(picked),
+                                 'median': float(np.median(picked)),
+                                 'p10': float(np.percentile(picked, 10)),
+                                 'p90': float(np.percentile(picked, 90))}
+        result['by_part'] = by_part
+    return result
 
 
 def assign(ys, xs, widths, spans, size):
