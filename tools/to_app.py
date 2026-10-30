@@ -11,6 +11,12 @@ started" says nothing about whether the drawing was built. The generated script 
 `run_jsx` waits for that rather than for the process: a script that throws halfway writes no sentinel and the failure comes
 back as a timeout with the report beside it.
 
+**The one step that is not automation.** Illustrator guards against a script arriving from outside itself, and that guard
+is a dialog a person clicks. So this bridge is not unattended: a run with nobody at the screen ends in a timeout, and the
+output says so rather than blaming the drawing. What the bridge does guarantee is that the application's own report comes
+back -- measured once: `app=Adobe Illustrator 28.5.0, layers=2 paths=3926, ALL_OK`, 103.8 seconds after the launch, with
+the path count equal to the number of marks handed over.
+
 **Default is to write the script and stop.** Launching an application opens a window on somebody's desktop, so `--run` is
 the flag that does it and the run is a decision rather than a side effect of asking where a file is.
 
@@ -93,9 +99,19 @@ def main() -> int:
         print('  no Illustrator found; the script is written and can be run by hand')
         return 2
     print('  handing it to %s' % app_path)
+    # **The one step that is not automation, and it belongs in the output rather than in a document nobody reads.**
+    # Illustrator guards against a script arriving from outside the application, and the guard is a dialog somebody has to
+    # click. The run below waits for the sentinel, so that click is not a hang -- but a run with nobody in front of the
+    # screen does end in a timeout, and a timeout that says "the script never finished" would be blaming the drawing for a
+    # security prompt. Measured once on this machine: the window appeared, a person clicked through it, and the report
+    # arrived 103.8 seconds after the launch with all 3926 paths counted.
+    print('  if Illustrator asks whether to allow this script, that dialog is the run: click through it.')
     result = run.run_jsx(jsx, script, str(report), str(sentinel), app_path=app_path,
                          timeout=args.timeout, close_when_done=not args.keep_open)
     print('  %s' % result.describe())
+    if not result.ok and not result.sentinel_seen and result.spawned:
+        print('  no sentinel, and the application is running: the likely cause is the script-security dialog,')
+        print('  not a failure in the drawing. The report file says whatever the script got as far as.')
     if not result.ok and result.report:
         print('  report tail:')
         for line in result.report.splitlines()[-8:]:
