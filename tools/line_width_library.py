@@ -85,7 +85,7 @@ def figure_stats(mask):
     return stats
 
 
-def widths_of(path, long_side=1600, subpixel=True, regions=None):
+def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
     image = Image.open(path).convert('L')
     scale = min(1.0, long_side / float(max(image.size)))
     if scale < 1.0:
@@ -106,7 +106,13 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None):
     else:
         distance = ndimage.distance_transform_edt(mask)
         widths = 2.0 * distance[skeleton]
-    keep = widths > 0
+    # **A filled black area is not a thick line, and the transform cannot tell them apart.** A cel-shaded drawing has whole
+    # regions painted solid -- a hat, a shoe, a hair mass -- and every skeleton point inside one measures as a stroke tens
+    # of pixels wide. That is what made a search result rank highest on "the drawing uses a range of widths": the range came
+    # from black shapes, not from line work. A line is thin enough that the ink runs out within a few pixels, so points
+    # deeper than this inside the ink are excluded and the survey measures strokes.
+    solid = ndimage.distance_transform_edt(mask)[ys, xs] > gap
+    keep = (~solid) & (widths > 0)
     ys, xs, widths = ys[keep], xs[keep], widths[keep]
     if widths.size < 20:
         return None
@@ -209,14 +215,17 @@ def main():
                     help='the largest connected mass of ink must be at least this share of all the ink')
     ap.add_argument('--min-mass-height', type=float, default=0.50,
                     help='and must span at least this share of the picture height, which excludes a vignette')
-    ap.add_argument('--max-components', type=int, default=0,
-                    help='**off by default, because the test was measured and it is wrong.** It was meant to exclude an '
+    ap.add_argument('--max-components', type=int, default=0,                    help='**off by default, because the test was measured and it is wrong.** It was meant to exclude an '
                          'ornamented page, on the assumption that a character is one connected mass and ornament is not. '
                          'Running it on the corpus rejected 151 of 152 drawings as having 28 to 2212 separate masses: a '
                          'scanned pencil line is broken by the scan, by JPEG and by the artist lifting the pen, while a '
                          'decorative border is often one continuous field. Set it above zero only to see that for yourself')
     ap.add_argument('--manifest', default='',
                     help='write the accepted drawings and their numbers to this JSON file, so the set can be reproduced')
+    ap.add_argument('--max-gap', type=float, default=4.0,
+                    help='a skeleton point deeper than this inside the ink is in a filled area, not on a line, and is '
+                         'skipped; a cel-shaded drawing paints whole regions solid and the transform reads those as '
+                         'strokes tens of pixels wide')
     args = ap.parse_args()
 
     regions = None
@@ -231,7 +240,7 @@ def main():
     rejected = []
     for path in files:
         try:
-            result = widths_of(path, args.long_side, regions=regions)
+            result = widths_of(path, args.long_side, regions=regions, gap=args.max_gap)
         except Exception as problem:  # a corrupt or unusual file must not stop the survey
             print('  %-26s %s' % (path.name[:26], problem))
             continue
