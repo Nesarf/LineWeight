@@ -115,7 +115,7 @@ def main():
     parser.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
     parser.add_argument('--stitch-reach', type=float, default=0.0035,
                         help='how far apart two ends may be, as a share of the page long side; 0 turns stitching off')
-    parser.add_argument('--stitch-straight', type=float, default=0.5,
+    parser.add_argument('--stitch-straight', type=float, default=0.0,
                         help='cosine below which a join is a corner rather than a continuation')
     parser.add_argument('--canvas-side', type=float, default=0.0, help='ask for a longer page than the rule gives')
     args = parser.parse_args()
