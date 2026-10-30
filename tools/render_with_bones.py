@@ -92,12 +92,21 @@ def main():
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     lineart = False
     freestyle = False
+    page_w, page_h = 1024, 1536
     if '--lineart' in args:
         args = [a for a in args if a != '--lineart']
         lineart = True
     if '--freestyle' in args:
         args = [a for a in args if a != '--freestyle']
         freestyle = True
+    if '--size' in args:
+        # **Resolution is a parameter because it decides what the line is made of.** A freestyle line is about two
+        # pixels wide whatever the page size, so on a 1024 page a diagonal stroke is a two pixel staircase and thinning
+        # breaks it into runs of two or three; on a 2048 page the same stroke has a body. The projected bone coordinates
+        # are scaled from the same `resolution_x`, so they follow without a second change.
+        at = args.index('--size')
+        page_w, page_h = (int(value) for value in args[at + 1].split('x'))
+        args = args[:at] + args[at + 2:]
     if len(args) < 3:
         print('usage: -- in.blend out.png out.json')
         return 2
@@ -133,8 +142,8 @@ def main():
             camera.rotation_euler = (math.radians(90.0), 0.0, 0.0)
         scene.camera = camera
 
-    scene.render.resolution_x = 1024
-    scene.render.resolution_y = 1536
+    scene.render.resolution_x = page_w
+    scene.render.resolution_y = page_h
     scene.render.resolution_percentage = 100
     scene.render.filepath = out_png
     scene.render.image_settings.file_format = 'PNG'
@@ -154,6 +163,12 @@ def main():
         scene.render.film_transparent = False
     elif freestyle:
         configure_freestyle(scene)
+        # **The pen scales with the page.** A 2048 render is meant to be the same drawing at twice the detail, which
+        # only holds if the line keeps its real width -- left at two pixels it would be a hairline on the larger page and
+        # thinner things break up under thinning, not more continuous ones.
+        settings = scene.view_layers[0].freestyle_settings
+        if settings.linesets:
+            settings.linesets[0].linestyle.thickness = 2.0 * max(1.0, page_w / 1024.0)
         flat_white(meshes)
         # Background white for the same reason the surface is white: the line is then the only dark thing in the picture,
         # so measuring "how much of this render is line" does not first require deciding which darks are not line.

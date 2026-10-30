@@ -32,19 +32,27 @@ sys.path.insert(0, TOOLS)
 sys.path.insert(0, ROOT)
 
 from copy_linework import thin
-from line_width_library import line_mask
 from lineweight.roles import role_for_part
 
 
 def read_render(path):
     """The line pixels of a render, as a boolean mask.
 
-    The backdrop of a measurement render is not paper white, so a threshold on absolute darkness would count the
-    backdrop or miss the line. `line_mask` asks the relative question instead: thin, and darker than its surroundings.
+    **A measurement render has one known backdrop, and that changes the right question.** `line_mask` asks whether a pixel
+    is thin and darker than its own neighbourhood; that is the correct criterion for a painted reference, where a dark
+    garment is as dark as a line. On a render it fails in a specific way: a line one pixel wide has a neighbourhood that
+    is half line, so the local median sits near the line's own value and half its pixels get rejected. Measured on the
+    1024 render, `line_mask` returned the line in **385 components with a median of 5 pixels** -- a dotted line rather
+    than the line the renderer drew, and the cause of every broken stroke downstream.
+
+    A flat backdrop makes the absolute question available: everything darker than a share of the backdrop is line. The
+    mode is the backdrop because it covers most of the page by construction.
     """
     image = Image.open(path).convert('L')
     gray = np.asarray(image, dtype=np.float64)
-    mask = line_mask(gray)
+    values, counts = np.unique(gray.astype(np.uint8), return_counts=True)
+    background = float(values[counts.argmax()])
+    mask = gray < background * 0.65
     return mask, image.size
 
 
