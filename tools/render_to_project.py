@@ -26,6 +26,7 @@ sys.path.insert(0, ROOT)
 
 from copy_linework import prune, simplify, thin, trace
 from lineweight import core, project
+from lineweight.roles import role_for_part
 from lines_to_bones import family_of, nearest_bone, read_bones, read_render
 
 #: **One number for the whole picture, and that is the renderer's choice rather than an artist's.** A mark's width here
@@ -184,9 +185,13 @@ def main():
     index, distance = nearest_bone(middles, heads, tails)
 
     families = {}
+    lengths = {}
     written = 0
     for i, (seg, which) in enumerate(zip(kept, index)):
         family = family_of(names[int(which)])
+        # **Length rather than point count.** A run is a pixel chain, so its length is its number of pixels; counting
+        # sampled control points would weight a straight run and a wiggly one differently for no reason.
+        lengths[family] = lengths.get(family, 0) + len(seg)
         points = simplify([(float(x) * scale, float(y) * scale) for y, x in seg], 0.9)
         if len(points) < 2:
             continue
@@ -212,8 +217,18 @@ def main():
         print('  undecided   %d marks over %d parts: %s'
               % (len(undecided), len(tally),
                  ', '.join('%s %d' % (name, count) for name, count in ranked_gap)))
-    ranked = sorted(families.items(), key=lambda item: item[1], reverse=True)[:8]
-    print('  families    %s' % '  '.join('%s %d' % (name, count) for name, count in ranked))
+    # **What the render can say about a part, in the one currency it has.** It cannot say how wide a line is -- freestyle
+    # draws every line at one constant -- but it can say how much line each part carries and how long its runs are. If the
+    # measured tiers show a pattern here (short runs where the corpus draws heavy, long runs where it draws light) then
+    # length stands in for width; if they do not, length is a separate fact and the table needs both columns.
+    total_length = sum(lengths.values()) or 1
+    print('  %-12s %6s %8s %8s %7s  %s' % ('part', 'marks', 'length', 'mean', 'share', 'role'))
+    for family, count in sorted(families.items(), key=lambda item: item[1], reverse=True):
+        total = lengths.get(family, 0)
+        role = role_for_part(family)
+        print('  %-12s %6d %8d %8.1f %6.1f%%  %s'
+              % (family, count, total, total / count, 100.0 * total / total_length,
+                 role.name if role else 'none'))
 
     out = os.path.abspath(args.out)
     folder = os.path.dirname(out)
