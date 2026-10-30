@@ -56,7 +56,7 @@ def figure_box(mask):
     return int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1])
 
 
-def widths_of(path, long_side=1600):
+def widths_of(path, long_side=1600, subpixel=True):
     image = Image.open(path).convert('L')
     scale = min(1.0, long_side / float(max(image.size)))
     if scale < 1.0:
@@ -71,8 +71,11 @@ def widths_of(path, long_side=1600):
     # **The skeleton, so the width is sampled on the line rather than in the ink's interior.** Sampled anywhere in the
     # mask, a thick patch would contribute its middle and a hairline its own -- the two would not be comparable.
     skeleton = cl.thin(mask.astype(np.uint8)).astype(bool)
-    distance = ndimage.distance_transform_edt(mask)
-    widths = 2.0 * distance[skeleton]
+    if subpixel:
+        widths = subpixel_widths(gray, mask, skeleton)
+    else:
+        distance = ndimage.distance_transform_edt(mask)
+        widths = 2.0 * distance[skeleton]
     widths = widths[widths > 0]
     if widths.size < 20:
         return None
@@ -85,6 +88,39 @@ def widths_of(path, long_side=1600):
         'p10': float(np.percentile(widths, 10)) / height,
         'p90': float(np.percentile(widths, 90)) / height,
     }
+
+
+def subpixel_widths(gray, mask, skeleton, half=7):
+    """The width at each skeleton pixel, **measured in ink rather than in whole pixels**.
+
+    **Why the distance transform could not answer this.** On a two-pixel line it can only report a half pixel, so the
+    measured widths of a drawing's strokes take a handful of values and `p90/median` comes out as 1.00 or 2.00 rather than
+    as a number that could be compared with anything. The anti-aliased edge is where the information that was thrown away
+    lives: a column that is forty per cent covered is four tenths of a pixel, and JPEG's soft edge carries exactly that.
+
+    **Two directions, and the smaller one wins.** A stroke's true width is what a line drawn across it measures; measuring
+    along a stroke instead gives its length. Taking the smaller of the row and column integrals is the cheap way to always
+    land on the crossing direction without computing a normal -- wrong only at a junction, where both directions run along
+    ink, and a junction is a small share of any drawing's skeleton.
+    """
+    page = float(np.percentile(gray, 90))
+    ink_level = float(np.percentile(gray[mask], 10)) if mask.any() else 0.0
+    span = max(page - ink_level, 1.0)
+    coverage = np.clip((page - gray) / span, 0.0, 1.0)
+
+    rows = np.cumsum(coverage, axis=0)
+    rows = np.vstack([np.zeros((1, coverage.shape[1]), dtype=np.float64), rows])
+    cols = np.cumsum(coverage, axis=1)
+    cols = np.hstack([np.zeros((coverage.shape[0], 1), dtype=np.float64), cols])
+
+    ys, xs = np.nonzero(skeleton)
+    y0 = np.clip(ys - half, 0, coverage.shape[0])
+    y1 = np.clip(ys + half + 1, 0, coverage.shape[0])
+    x0 = np.clip(xs - half, 0, coverage.shape[1])
+    x1 = np.clip(xs + half + 1, 0, coverage.shape[1])
+    vertical = rows[y1, xs] - rows[y0, xs]
+    horizontal = cols[ys, x1] - cols[ys, x0]
+    return np.minimum(vertical, horizontal)
 
 
 def main():
