@@ -83,12 +83,25 @@ def main():
         if role_name not in roles.ROLES:
             problems.append('part %r is given the unknown role %r' % (part, role_name))
 
+    # 7b -- the ordering, on the same argument
+    order_entry = facts.get('part_order') or {}
+    tiers_file = tuple(tuple(tier) for tier in order_entry.get('items', []) if isinstance(tier, list))
+    if tiers_file != roles.PART_TIERS:
+        problems.append('part_order in facts.json is %r but roles.PART_TIERS is %r'
+                        % (tiers_file, roles.PART_TIERS))
+
     # 2 -- a source that the shelf does not name
     shelf = (LEARN / 'sources.md').read_text(encoding='utf-8')
     for key, entry in facts.items():
         if not isinstance(entry, dict) or 'source' not in entry:
             continue
         src = entry['source']
+        # **Two kinds of source, and they are checked differently.** A fact taken from a book must name a book the shelf
+        # lists. A fact measured in this repository -- a line width, an order of parts -- has no book to name, and the
+        # `measured:` prefix says so; without it the checker would report every measurement as an uncited claim, which is
+        # the opposite of what it means.
+        if src.startswith('measured:'):
+            continue
         # The shelf names books by author and articles by site, so match on the first distinctive word. **A page number
         # has to come off first**: the citation reads `Hampton p10.` and the shelf says `Michael Hampton`, and matching
         # the whole citation would report a source that is in fact listed.

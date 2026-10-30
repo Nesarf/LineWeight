@@ -294,3 +294,33 @@ def test_every_part_names_a_role_that_exists():
 def test_the_reverse_lookup_finds_the_parts_of_one_role():
     assert roles.parts_for_role('shadow') == ('under_bottom_lip', 'under_nose', 'under_top_eyelid', 'under_top_lip')
     assert roles.parts_for_role('detail') == ()
+
+
+def test_the_ordering_says_only_what_two_drawings_agree_on():
+    """**An order, and only the part of it that repeats.** Two labelled drawings agree that the face and the eye are
+    heavier than the hair and the boots. Face against eye goes the other way in each of them, and hair against boot
+    swaps too -- so those pairs are one tier, which means their order was not measured.
+    """
+    assert roles.heavier_than('face', 'boot') is True
+    assert roles.heavier_than('eye', 'hair') is True
+    assert roles.heavier_than('boot', 'face') is False
+
+
+def test_a_pair_the_measurements_do_not_order_answers_nothing():
+    """A guess dressed as a verdict cannot be checked, and this table exists to be checked against a drawing."""
+    assert roles.heavier_than('face', 'eye') is None
+    assert roles.heavier_than('hair', 'boot') is None
+    assert roles.heavier_than('face', 'left_ear') is None
+    assert roles.heavier_than('left_ear', 'face') is None
+
+
+def test_the_tiers_are_ordered_and_the_parts_in_them_exist():
+    assert roles.tier_of('face') == 0
+    assert roles.tier_of('boot') == 1
+    assert roles.tier_of('left_ear') is None
+    assert len(roles.PART_TIERS) >= 2, 'a single tier would say only that nothing is ordered'
+    seen = set()
+    for tier in roles.PART_TIERS:
+        for part in tier:
+            assert part not in seen, '%r appears in two tiers' % part
+            seen.add(part)

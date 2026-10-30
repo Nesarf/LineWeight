@@ -159,6 +159,47 @@ def width_scale(name: str) -> float:
     return ROLES[name].width if name else 1.0
 
 
+#: **What the measurements support: an order, not a magnitude.** Three drawings were labelled by part and measured with
+#: subpixel widths (`tools/line_width_library.py --regions`), in units of each figure's own height:
+#:
+#:     150605691  pencil full figure   face 0.309  eye 0.300  boot 0.197  hair 0.194  cloth 0.165
+#:     150609781  grey-toned figure    eye  0.345  face 0.335 hair 0.291  dress 0.230 leg 0.229  boot 0.200
+#:     150605984  smooth outline       head 0.160  leg 0.158  torso 0.155 shoe 0.154  dress 0.131
+#:
+#: The third is not a counterexample: a drawing with no interior detail has no hierarchy of line to measure, and its
+#: ratio of 1.22 between heaviest and lightest part says so. **The table applies to drawings that spend line weight on
+#: hierarchy**, which is a classification step before the lookup and is what `roles_report` already prints.
+#:
+#: **Only comparisons that repeat across drawings are written here.** Face and eye are above hair and boot in both
+#: measuring drawings; face against eye swaps (0.309 over 0.300, then 0.345 over 0.335) and hair against boot swaps too,
+#: so each pair shares a tier. **A tier means the order inside it was not measured**, not that it is absent -- and a
+#: caller told None gets to say so instead of inventing a rank.
+PART_TIERS: tuple[tuple[str, ...], ...] = (
+    ('face', 'eye'),
+    ('hair', 'cloth', 'leg', 'boot'),
+)
+
+
+def tier_of(part: str) -> int | None:
+    """Which tier a part sits in, 0 being the heaviest, or None when the part has not been measured."""
+    for index, tier in enumerate(PART_TIERS):
+        if part in tier:
+            return index
+    return None
+
+
+def heavier_than(part: str, other: str) -> bool | None:
+    """Whether `part` is drawn heavier than `other`, or **None when the measurements do not decide it.**
+
+    Two parts in one tier, or a part nobody has measured, both give None rather than a plausible answer: this table
+    exists to be checked against a drawing, and a guess dressed as a verdict cannot be checked.
+    """
+    a, b = tier_of(part), tier_of(other)
+    if a is None or b is None or a == b:
+        return None
+    return a < b
+
+
 def role_for_part(part: str) -> Role | None:
     """The role a named part is drawn in, **or None when the part is not in the table.**
 
