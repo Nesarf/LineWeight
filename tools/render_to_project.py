@@ -14,6 +14,7 @@ than the picture it copies. A 1024x1536 render is therefore traced at 2880.
 
 import argparse
 import os
+import subprocess
 import sys
 
 import numpy as np
@@ -108,8 +109,13 @@ def stitch(segments, gap=2.0, straight=0.5, rounds=20):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--render', required=True, help='the PNG the render wrote')
-    parser.add_argument('--bones', required=True, help='the JSON the render wrote beside it')
+    parser.add_argument('--blend', help='a .blend to render first; the picture and the bones land beside --out')
+    parser.add_argument('--blender', default=r'E:\Blender Foundation\Blender 4.4\blender.exe',
+                        help='the Blender used when --blend is given')
+    parser.add_argument('--size', default='2048x3072',
+                        help='page size when rendering a .blend; 1024 leaves a fifth of the skeleton unwalked')
+    parser.add_argument('--render', help='the PNG the render wrote')
+    parser.add_argument('--bones', help='the JSON the render wrote beside it')
     parser.add_argument('--out', required=True, help='the project file to write')
     parser.add_argument('--prune', type=int, default=4, help='skeleton spurs shorter than this are cut')
     parser.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
@@ -119,6 +125,28 @@ def main():
                         help='cosine below which a join is a corner rather than a continuation')
     parser.add_argument('--canvas-side', type=float, default=0.0, help='ask for a longer page than the rule gives')
     args = parser.parse_args()
+
+    if args.blend:
+        # **One command from a rig to a project, because four runs taught the parameters and a fifth would not.** The
+        # size lives here rather than in `render_with_bones.py` because 1024 is a fine page for other studies and a
+        # broken one for this: at 1024 the skeleton is 7991 pixels and the walk leaves 621 of them unvisited, against 4
+        # at 2048. A default that silently produces a dashed drawing is the failure this option exists to prevent.
+        stem = os.path.splitext(os.path.abspath(args.out))[0]
+        args.render = stem + '.png'
+        args.bones = stem + '-bones.json'
+        print('  rendering   %s at %s' % (os.path.basename(args.blend), args.size))
+        command = [args.blender, '--background', '--factory-startup',
+                   '--python', os.path.join(TOOLS, 'render_with_bones.py'),
+                   '--', args.blend, args.render, args.bones, '--freestyle', '--size', args.size]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if not os.path.exists(args.bones):
+            # **The failure is printed rather than raised blind**, because the likely causes are a Blender that is not
+            # where this file thinks and a scene whose rig it cannot read -- and each has its own line in the output.
+            print((result.stdout or '')[-1500:])
+            print((result.stderr or '')[-1500:])
+            raise SystemExit('Blender wrote no bones, so there is nothing to measure')
+    elif not (args.render and args.bones):
+        parser.error('give --blend, or both --render and --bones')
 
     mask, size = read_render(args.render)
     names, heads, tails, bone_size = read_bones(args.bones)
