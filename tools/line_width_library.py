@@ -48,31 +48,41 @@ def ink_mask(gray):
     return gray < limit
 
 
-def figure_box(mask):
-    """The figure's extent, taken from **the largest connected mass of ink** rather than from all of it.
+def figure_stats(mask):
+    """The figure's extent **and the numbers that decide whether it is a character drawing at all**.
 
-    **The bounding box of every ink pixel is not the figure.** A drawing with a decorative border, a dense background or a
-    stray mark in a corner has ink at every edge of the page, so its box is the page -- and every width divided by that box
-    comes out too small. A corpus gathered by a search tag contains many such drawings: the one that exposed this had a
-    small character in a white oval surrounded by cross-and-dot ornament, and its "figure height" came out as the whole
-    image, which is why a survey of forty drawings reported a spread of nearly four times.
+    **The bounding box of every ink pixel is not the figure.** A drawing with a decorative border or a dense background has
+    ink at every edge of the page, so its box is the page, and every width divided by that box comes out too small. A
+    corpus gathered by a search tag contains many such drawings: the one that exposed this had a small character in a white
+    oval surrounded by cross-and-dot ornament.
 
-    **The largest single mass is the figure** in a character drawing, because head, body and hair are one connected shape
-    while ornament is separate. It fails when the character is drawn as disconnected pieces and the background is one
-    connected field, so the returned box is a guess with a reason, not a fact.
+    **The largest single mass of ink is the figure** in a character drawing, because head, body and hair are one connected
+    shape while ornament is separate. Three numbers say whether that held:
+
+    - `mass_share`, the largest mass over all the ink. A character drawing puts most of its ink in one shape.
+    - `mass_height`, the largest mass's height over the picture's. A full figure, not a vignette.
+    - `components`, how many separate masses of ink there are. An ornamented page has dozens.
+
+    They are returned rather than enforced, so the caller can report why a drawing was refused instead of dropping it in
+    silence.
     """
     labelled, count = ndimage.label(mask)
+    stats = {'components': int(count), 'mass_share': 0.0, 'mass_height': 0.0, 'box': None}
     if count == 0:
-        return None
+        return stats
     sizes = np.bincount(labelled.ravel())
     sizes[0] = 0
     biggest = int(sizes.argmax())
+    total = float(sizes.sum()) or 1.0
     mass = labelled == biggest
     rows = np.flatnonzero(mass.any(axis=1))
     cols = np.flatnonzero(mass.any(axis=0))
     if rows.size == 0 or cols.size == 0:
-        return None
-    return int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1])
+        return stats
+    stats['mass_share'] = float(sizes[biggest]) / total
+    stats['mass_height'] = float(rows[-1] - rows[0] + 1) / float(mask.shape[0])
+    stats['box'] = (int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1]))
+    return stats
 
 
 def widths_of(path, long_side=1600, subpixel=True, regions=None):
@@ -82,10 +92,10 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None):
         image = image.resize((max(1, int(image.size[0] * scale)), max(1, int(image.size[1] * scale))), Image.LANCZOS)
     gray = np.asarray(image, dtype=np.float32)
     mask = ink_mask(gray)
-    box = figure_box(mask)
-    if box is None:
+    stats = figure_stats(mask)
+    if stats['box'] is None:
         return None
-    height = box[1] - box[0] + 1
+    height = stats['box'][1] - stats['box'][0] + 1
 
     # **The skeleton, so the width is sampled on the line rather than in the ink's interior.** Sampled anywhere in the
     # mask, a thick patch would contribute its middle and a hairline its own -- the two would not be comparable.
@@ -108,6 +118,11 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None):
         'median': float(np.median(widths)) / height,
         'p10': float(np.percentile(widths, 10)) / height,
         'p90': float(np.percentile(widths, 90)) / height,
+        # **The three numbers that decide whether this is a character drawing**, carried out of the measurement so a
+        # refusal can be reported with its reason rather than as a missing row.
+        'mass_share': stats['mass_share'],
+        'mass_height': stats['mass_height'],
+        'components': stats['components'],
     }
     if regions:
         result['by_part'] = {part: assign(ys, xs, widths, spans, image.size) for part, spans in regions.items()}
@@ -185,6 +200,21 @@ def main():
     ap.add_argument('--regions', default='',
                     help='a JSON file of {part: [[x0,y0,x1,y1], ...]} with the boxes as fractions of the image, so the '
                          'widths can be reported by part of the body rather than as one pooled number')
+    # **The three tests for "is this a character drawing".** Without them the corpus is "the twenty-two I happened to
+    # keep", which nobody else can reproduce; with them it is a rule anyone can run on the same folder and get the same
+    # list, disagreements and all.
+    ap.add_argument('--min-mass-share', type=float, default=0.40,
+                    help='the largest connected mass of ink must be at least this share of all the ink')
+    ap.add_argument('--min-mass-height', type=float, default=0.50,
+                    help='and must span at least this share of the picture height, which excludes a vignette')
+    ap.add_argument('--max-components', type=int, default=0,
+                    help='**off by default, because the test was measured and it is wrong.** It was meant to exclude an '
+                         'ornamented page, on the assumption that a character is one connected mass and ornament is not. '
+                         'Running it on the corpus rejected 151 of 152 drawings as having 28 to 2212 separate masses: a '
+                         'scanned pencil line is broken by the scan, by JPEG and by the artist lifting the pen, while a '
+                         'decorative border is often one continuous field. Set it above zero only to see that for yourself')
+    ap.add_argument('--manifest', default='',
+                    help='write the accepted drawings and their numbers to this JSON file, so the set can be reproduced')
     args = ap.parse_args()
 
     regions = None
@@ -207,8 +237,19 @@ def main():
             print('  %-26s (too little ink)' % path.name[:26])
             continue
         ratio = result['p90'] / max(result['median'], 1e-9)
-        if result['median'] > args.max_median or ratio > args.max_ratio:
-            rejected.append((path.name, result['median'], ratio))
+        reason = None
+        if result['mass_share'] < args.min_mass_share:
+            reason = 'largest mass is only %.0f%% of the ink' % (100 * result['mass_share'])
+        elif result['mass_height'] < args.min_mass_height:
+            reason = 'largest mass spans only %.0f%% of the height' % (100 * result['mass_height'])
+        elif args.max_components and result['components'] > args.max_components:
+            reason = '%d separate masses of ink' % result['components']
+        elif result['median'] > args.max_median:
+            reason = 'typical width %.2f%% of the figure is a filled area' % (100 * result['median'])
+        elif ratio > args.max_ratio:
+            reason = 'p90/median is %.1f, which a line drawing does not reach' % ratio
+        if reason:
+            rejected.append((path.name, reason))
             continue
         rows.append(result)
         print('  %-26s %8.4f%% %8.4f%% %8.4f%% %9.2f'
@@ -217,9 +258,11 @@ def main():
 
     if rejected:
         print()
-        print('  rejected %d of %d as not line art:' % (len(rejected), len(rejected) + len(rows)))
-        for name, median, ratio in rejected[:8]:
-            print('    %-26s median %6.3f%%  p90/median %5.2f' % (name[:26], 100 * median, ratio))
+        print('  rejected %d of %d:' % (len(rejected), len(rejected) + len(rows)))
+        for name, reason in rejected[:10]:
+            print('    %-26s %s' % (name[:26], reason))
+        if len(rejected) > 10:
+            print('    ... %d more' % (len(rejected) - 10))
 
     if len(rows) >= 2:
         medians = np.array([r['median'] for r in rows])
@@ -263,6 +306,25 @@ def main():
                          ', '.join(p for p, v in summary.items() if v == low)))
                 print('  %s the 1.5x threshold that would make a part table worth having'
                       % ('PASSES' if high / max(low, 1e-9) >= 1.5 else 'FAILS'))
+    # **The set is written down, not just printed.** A survey that exists only as console output cannot be reproduced or
+    # argued with: the next person runs it on the same folder and gets a different list because the thresholds lived in
+    # their memory. The manifest carries the tests as well as the results, so a disagreement is about a number.
+    if args.manifest:
+        manifest = {
+            'source': str(folder),
+            'pattern': pathlib.Path(args.glob).name,
+            'tests': {'min_mass_share': args.min_mass_share, 'min_mass_height': args.min_mass_height,
+                      'max_components': args.max_components, 'max_median': args.max_median,
+                      'max_ratio': args.max_ratio},
+            'accepted': [{'file': row['name'], 'median': row['median'], 'p10': row['p10'], 'p90': row['p90'],
+                          'figure_height_px': row['figure_height'], 'mass_share': row['mass_share'],
+                          'mass_height': row['mass_height'], 'components': row['components']} for row in rows],
+            'rejected': [{'file': name, 'reason': why} for name, why in rejected],
+        }
+        target = pathlib.Path(args.manifest)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+        print('  manifest: %d accepted, %d rejected, written to %s' % (len(rows), len(rejected), target))
     return 0
 
 
