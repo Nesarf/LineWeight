@@ -117,6 +117,26 @@ ROLES: dict[str, Role] = {
 # stroke in every existing project file by 1.0 while looking like it had done nothing at all.
 NO_ROLE = ''
 
+#: **A role is what a line is for; a part is where it is drawn.** This table is the first row of the part-x-role table
+#: described in `AESTHETIC-LIBRARY.md`, and it exists because a model that knows a line is a `contour` still does not know
+#: whether it is drawing a hair tip or a jaw -- and those two must not be drawn the same weight.
+#:
+#: The content is `learn/facts.json`'s `light_source_rule`: *comic-inking* ch.III names five places on a face that carry
+#: extra weight, and the rule behind them is "heavy on the dark side, thin on the light side". Four of the five sit under
+#: a form that overhangs -- the eyelid under its own lid, the nose, both lips -- so they are `shadow`, the convention's
+#: 陰影線. The jaw is where the head's surface turns away from the viewer, which is the definition of `silhouette`, so it
+#: carries that role and its wider multiplier.
+#:
+#: **The fact and this table are checked against each other** by `tools/check_learn.py`, because two copies of one fact
+#: drift silently -- the same fault that kept a wrong pixel threshold in service for two whole rounds.
+PART_ROLES: dict[str, str] = {
+    'under_top_eyelid': 'shadow',
+    'under_nose': 'shadow',
+    'under_top_lip': 'shadow',
+    'under_bottom_lip': 'shadow',
+    'jaw_line': 'silhouette',
+}
+
 
 def names() -> tuple[str, ...]:
     return tuple(ROLES)
@@ -137,6 +157,22 @@ def role(name: str) -> Role:
 def width_scale(name: str) -> float:
     """The multiplier a role applies to the brush width. An unset role is 1.0 and changes nothing."""
     return ROLES[name].width if name else 1.0
+
+
+def role_for_part(part: str) -> Role | None:
+    """The role a named part is drawn in, **or None when the part is not in the table.**
+
+    **None rather than a fallback**, for the reason `role()` refuses an unknown name: a part that nobody has written down
+    is a part nobody has decided about, and returning `contour` for it would turn "not yet decided" into a confident
+    answer that happens to look like every other line. The caller can then say so.
+    """
+    name = PART_ROLES.get(part)
+    return ROLES[name] if name else None
+
+
+def parts_for_role(role_name: str) -> tuple[str, ...]:
+    """Every part drawn in one role, in name order. The reverse lookup, which is what a checklist needs."""
+    return tuple(sorted(part for part, name in PART_ROLES.items() if name == role_name))
 
 
 def ink(name: str) -> str:

@@ -198,5 +198,18 @@
     "items": ["all fingers as one mitten-shaped group", "point and line from the joints only", "each finger drawn separately"],
     "source": "CLIP STUDIO, 'drawing hands without reference'",
     "note": "Given as a choice rather than a rule: different poses suit different methods, and a mitten group is the quickest way to check how far the fingers bend together."
+  },
+
+  "part_roles": {
+    "count": 5,
+    "items": [
+      {"part": "under_top_eyelid", "role": "shadow"},
+      {"part": "under_nose", "role": "shadow"},
+      {"part": "under_top_lip", "role": "shadow"},
+      {"part": "under_bottom_lip", "role": "shadow"},
+      {"part": "jaw_line", "role": "silhouette"}
+    ],
+    "source": "comic-inking, ch.III, through light_source_rule. The rule names five places on a face that carry extra weight; the roles are the convention's own reading of them. Four sit under a form that overhangs -- the lid over its own underside, the nose, both lips -- so they are the shadow line (陰影線). The jaw is where the head's surface turns away from the viewer, which is the silhouette (輪郭線).",
+    "note": "**The first row of the part-x-role table, and the first fact in this file that a program reads.** The same pairs live in `lineweight/roles.py` as `PART_ROLES`, and `tools/check_learn.py` refuses a difference between the two. It says which role, not how wide -- widths are the measured half and belong in `AESTHETIC-LIBRARY.md`."
   }
 }

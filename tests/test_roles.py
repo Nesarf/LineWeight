@@ -257,3 +257,40 @@ def test_the_report_is_reachable_and_prints_the_trade():
     assert 'potency' in text and 'naturalness' in text, 'the trade must be printed, not implied'
     assert '%.2f' % roles.WIDTH_P90_OVER_MEDIAN in text, 'the corpus reference must be beside the drawing\'s ratio'
     assert 'outer/inner' in text, 'the checklist item this model exists to answer'
+
+
+def test_a_part_of_the_face_gets_the_role_the_book_gave_it():
+    """**The first fact in `learn/facts.json` that a program reads.** *comic-inking* ch.III names five places on a face
+    that carry extra weight; four of them sit under a form that overhangs, so they are the shadow line, and the jaw is
+    where the head turns away, so it is the silhouette. Until this table existed, a stroke could know it was a contour
+    and still not know whether it was drawing a hair tip or a jaw.
+    """
+    for part in ('under_top_eyelid', 'under_nose', 'under_top_lip', 'under_bottom_lip'):
+        assert roles.role_for_part(part).name == 'shadow', part
+    assert roles.role_for_part('jaw_line').name == 'silhouette'
+
+
+def test_the_jaw_outweighs_the_shadow_lines_beneath_the_form():
+    """The roles carry widths, so the table answers "how heavy" as well as "which kind" -- the silhouette is the widest
+    role and a shadow line sits one geometric step below it."""
+    jaw = roles.role_for_part('jaw_line')
+    nose = roles.role_for_part('under_nose')
+    assert jaw.width > nose.width
+    assert jaw.width == pytest.approx(roles.WIDTH_P90_OVER_MEDIAN)
+
+
+def test_a_part_nobody_wrote_down_is_refused_rather_than_guessed():
+    """A part that is not in the table is a part nobody has decided about. Returning `contour` would turn "not yet
+    decided" into a confident answer that looks exactly like every other line."""
+    assert roles.role_for_part('left_ear') is None
+    assert roles.role_for_part('') is None
+
+
+def test_every_part_names_a_role_that_exists():
+    for part, name in roles.PART_ROLES.items():
+        assert name in roles.ROLES, '%s names the unknown role %r' % (part, name)
+
+
+def test_the_reverse_lookup_finds_the_parts_of_one_role():
+    assert roles.parts_for_role('shadow') == ('under_bottom_lip', 'under_nose', 'under_top_eyelid', 'under_top_lip')
+    assert roles.parts_for_role('detail') == ()

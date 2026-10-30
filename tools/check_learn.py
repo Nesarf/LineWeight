@@ -52,10 +52,36 @@ def main():
     for key in facts:
         if isinstance(facts[key], dict) and 'items' in facts[key]:
             for item in facts[key]['items']:
+                # **Not every list holds strings.** `part_roles` holds objects, and running a word-split over a dict's
+                # repr produces a "name" of `{'part':`, which then collides with nothing and reports nothing -- a check
+                # that silently stops checking. Only the string lists are about names.
+                if not isinstance(item, str):
+                    continue
                 stem = re.split(r'[\s(]', str(item))[0].lower()
                 if stem and stem in seen and seen[stem] != key:
                     notes.append('%r appears in both %s and %s' % (stem, seen[stem], key))
                 seen[stem] = key
+
+    # 7 -- a fact and the code that reads it disagree
+    #
+    # **This is the check that makes the first fact worth having.** `learn/facts.json` records that five places on a face
+    # carry extra weight and what role each is drawn in; `lineweight/roles.py` carries the same pairs so a program can use
+    # them. Two copies of one fact drift in silence, and this project has already kept a wrong threshold in service for
+    # two whole rounds that way.
+    sys.path.insert(0, r'E:\lineweight')
+    from lineweight import roles
+
+    entry = facts.get('part_roles') or {}
+    from_file = {(str(item.get('part')), str(item.get('role')))
+                 for item in entry.get('items', []) if isinstance(item, dict)}
+    from_code = set(roles.PART_ROLES.items())
+    for part, role_name in sorted(from_file - from_code):
+        problems.append('part %r is %r in facts.json but missing from roles.PART_ROLES' % (part, role_name))
+    for part, role_name in sorted(from_code - from_file):
+        problems.append('part %r is %r in roles.PART_ROLES but missing from facts.json' % (part, role_name))
+    for part, role_name in sorted(from_code & from_file):
+        if role_name not in roles.ROLES:
+            problems.append('part %r is given the unknown role %r' % (part, role_name))
 
     # 2 -- a source that the shelf does not name
     shelf = (LEARN / 'sources.md').read_text(encoding='utf-8')
