@@ -386,6 +386,18 @@ def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolera
     supports = local_support(lines, support_radius) if support_min > 0 else None
     longs = [l for l in lines if polyline_length(l) >= long_length]
     keep_long = math.cos(math.radians(angle_deg))
+    # **A grid over the long strokes' ends, because the question is local and the loop was not.** For each short stroke
+    # the test is "does any long stroke end within `reach` of this end, facing it" -- and the first version answered that
+    # by scanning all 2403 long strokes for each of 9128 short ones, twice for two ends and twice for two directions,
+    # which is 88 million pairs and 26 seconds on the measured reference. Bucketing the ends by a cell the size of `reach`
+    # answers the same question from a handful of candidates, and the directions are computed once instead of per query.
+    cell = max(1.0, float(reach))
+    buckets = {}
+    for other in longs:
+        for other_start in (True, False):
+            qx, qy = other[0] if other_start else other[-1]
+            ox, oy = end_direction(other, other_start)
+            buckets.setdefault((int(qx // cell), int(qy // cell)), []).append((qx, qy, ox, oy))
     out = []
     for index, line in enumerate(lines):
         span = polyline_length(line)
@@ -425,15 +437,17 @@ def prune_fragments(lines, long_length, reach=14.0, angle_deg=35.0, close_tolera
         for at_start in (True, False):
             px, py = line[0] if at_start else line[-1]
             dx, dy = end_direction(line, at_start)
-            for other in longs:
-                for other_start in (True, False):
-                    qx, qy = other[0] if other_start else other[-1]
-                    if math.hypot(qx - px, qy - py) > reach:
-                        continue
-                    ox, oy = end_direction(other, other_start)
-                    # **Facing each other**: the two outward directions are opposed, so the pieces would meet.
-                    if -(dx * ox + dy * oy) >= keep_long:
-                        joined = True
+            gx, gy = int(px // cell), int(py // cell)
+            for bx in (gx - 1, gx, gx + 1):
+                for by in (gy - 1, gy, gy + 1):
+                    for qx, qy, ox, oy in buckets.get((bx, by), ()):
+                        if math.hypot(qx - px, qy - py) > reach:
+                            continue
+                        # **Facing each other**: the two outward directions are opposed, so the pieces would meet.
+                        if -(dx * ox + dy * oy) >= keep_long:
+                            joined = True
+                            break
+                    if joined:
                         break
                 if joined:
                     break
