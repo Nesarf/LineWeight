@@ -86,7 +86,16 @@ def figure_stats(mask):
 
 
 def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
-    image = Image.open(path).convert('L')
+    image = Image.open(path)
+    # **Saturation before greyscale, because a coloured picture is not a line drawing and the other criteria cannot tell.**
+    # Measured on four references: a cel-painted illustration reports 0.420 and three line drawings and one grey one report
+    # 0.000 -- no overlap at all. `ink_mask` sees the dark parts of a coloured picture as ink, so a finished colour piece
+    # passed every earlier test with the figure filling the frame the way a drawing does.
+    rgb = np.asarray(image.convert('RGB'), dtype=np.float32) / 255.0
+    top = rgb.max(axis=2)
+    bottom = rgb.min(axis=2)
+    saturation = float(np.where(top > 0.02, (top - bottom) / np.maximum(top, 1e-6), 0.0).mean())
+    image = image.convert('L')
     scale = min(1.0, long_side / float(max(image.size)))
     if scale < 1.0:
         image = image.resize((max(1, int(image.size[0] * scale)), max(1, int(image.size[1] * scale))), Image.LANCZOS)
@@ -130,6 +139,7 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
         'mass_share': stats['mass_share'],
         'mass_height': stats['mass_height'],
         'components': stats['components'],
+        'saturation': saturation,
     }
     if regions:
         result['by_part'] = {part: assign(ys, xs, normalised, spans, image.size)
@@ -386,6 +396,10 @@ def main():
     # list, disagreements and all.
     ap.add_argument('--min-mass-share', type=float, default=0.40,
                     help='the largest connected mass of ink must be at least this share of all the ink')
+    ap.add_argument('--max-saturation', type=float, default=0.08,
+                    help='a coloured picture is not a line drawing. Measured: a cel illustration reports 0.420 and four line '
+                         'drawings and one grey one report 0.000, so the cut can be anywhere in between; the earlier '
+                         'criteria cannot see this at all, because the dark parts of a coloured picture read as ink')
     ap.add_argument('--min-mass-height', type=float, default=0.50,
                     help='and must span at least this share of the picture height, which excludes a vignette')
     ap.add_argument('--max-components', type=int, default=0,                    help='**off by default, because the test was measured and it is wrong.** It was meant to exclude an '
@@ -422,7 +436,9 @@ def main():
             continue
         ratio = result['p90'] / max(result['median'], 1e-9)
         reason = None
-        if result['mass_share'] < args.min_mass_share:
+        if result['saturation'] > args.max_saturation:
+            reason = 'average saturation %.2f, so this is a coloured picture and not a line drawing' % result['saturation']
+        elif result['mass_share'] < args.min_mass_share:
             reason = 'largest mass is only %.0f%% of the ink' % (100 * result['mass_share'])
         elif result['mass_height'] < args.min_mass_height:
             reason = 'largest mass spans only %.0f%% of the height' % (100 * result['mass_height'])
