@@ -200,15 +200,37 @@ def heavier_than(part: str, other: str) -> bool | None:
     return a < b
 
 
-def role_for_part(part: str) -> Role | None:
-    """The role a named part is drawn in, **or None when the part is not in the table.**
+#: **A tier is not a role**, so turning one into the other is a decision that has to be named rather than implied. The
+#: measured statement is "these parts are drawn heavier than those"; the convention's statement is that a heavier line is
+#: a shadow line (陰影線) and a lighter one is an interior contour (内部線). Put together, the top tier answers with
+#: `shadow` and the rest with `contour`.
+#:
+#: **It is a fallback, not a measurement**, and the caller can ask for it to be off. `--roles` prints which of the two a
+#: stroke's role came from, because "the book says this part is a shadow line" and "this part is in the heavy half and
+#: heavy means shadow" are different claims.
+TIER_ROLES: tuple[str, ...] = ('shadow', 'contour')
 
-    **None rather than a fallback**, for the reason `role()` refuses an unknown name: a part that nobody has written down
-    is a part nobody has decided about, and returning `contour` for it would turn "not yet decided" into a confident
-    answer that happens to look like every other line. The caller can then say so.
+
+def role_for_part(part: str, allow_tier: bool = True) -> Role | None:
+    """The role a named part is drawn in, **or None when nothing decides it.**
+
+    **Three sources, in order of how much they claim.** A part named in `PART_ROLES` gets the role the books give it. A
+    part in one of the measured `PART_TIERS` gets that tier's role, which is a derivation and not a citation. A part in
+    neither gets None.
+
+    **None rather than a fallback to `contour`**, for the reason `role()` refuses an unknown name: a part nobody has
+    written down is a part nobody has decided about, and answering "contour" would turn "not yet decided" into a
+    confident answer that happens to look like every other line.
     """
     name = PART_ROLES.get(part)
-    return ROLES[name] if name else None
+    if name:
+        return ROLES[name]
+    if not allow_tier:
+        return None
+    tier = tier_of(part)
+    if tier is None or tier >= len(TIER_ROLES):
+        return None
+    return ROLES[TIER_ROLES[tier]]
 
 
 def parts_for_role(role_name: str) -> tuple[str, ...]:

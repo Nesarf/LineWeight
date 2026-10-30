@@ -324,3 +324,23 @@ def test_the_tiers_are_ordered_and_the_parts_in_them_exist():
         for part in tier:
             assert part not in seen, '%r appears in two tiers' % part
             seen.add(part)
+
+
+def test_a_measured_tier_answers_a_part_the_books_never_named():
+    """**The derivation, and it is marked as one.** The books name five places on a face; the measurement says the face
+    and the eye are drawn heavier than hair and boots. A part from the measurement alone gets the role its tier implies --
+    a heavy line is a shadow line, a light one an interior contour.
+    """
+    assert roles.role_for_part('face').name == 'shadow'
+    assert roles.role_for_part('boot').name == 'contour'
+
+
+def test_the_derivation_can_be_turned_off():
+    """A caller comparing a drawing against the books alone must be able to see only what the books say."""
+    assert roles.role_for_part('face', allow_tier=False) is None
+
+
+def test_a_named_part_beats_a_tier():
+    """`under_nose` is named by the book and also falls in a tier; the citation is the stronger claim, and it wins."""
+    assert roles.tier_of('under_nose') is None, 'this part is not in a tier, so the test would prove nothing'
+    assert roles.role_for_part('under_nose').name == 'shadow'
