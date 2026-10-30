@@ -344,3 +344,47 @@ def test_a_named_part_beats_a_tier():
     """`under_nose` is named by the book and also falls in a tier; the citation is the stronger claim, and it wins."""
     assert roles.tier_of('under_nose') is None, 'this part is not in a tier, so the test would prove nothing'
     assert roles.role_for_part('under_nose').name == 'shadow'
+
+
+def a_project_with_two_parts():
+    from lineweight import core, project
+    p = project.Project(width=200, height=200)
+    first = p.add_stroke(core.stroke_record([(20, 20), (180, 180)], 'ink', seed=1),
+                         stage='line', note='a', layer='character')
+    first.part = 'face'
+    second = p.add_stroke(core.stroke_record([(20, 180), (180, 20)], 'ink', seed=2),
+                          stage='line', note='b', layer='character')
+    second.part = 'left_ear'
+    third = p.add_stroke(core.stroke_record([(40, 40), (160, 40)], 'ink', seed=3),
+                         stage='line', note='c', layer='character')
+    p.next_turn()
+    return p, first, second, third
+
+
+def test_a_mark_carries_the_part_it_draws():
+    from lineweight import project
+    p, first, _second, third = a_project_with_two_parts()
+    assert first.part == 'face'
+    assert third.part == '', 'a mark nobody labelled says so with an empty part'
+    restored = project.Project.from_dict(p.to_dict())
+    assert [m.part for m in restored.marks] == ['face', 'left_ear', '']
+
+
+def test_the_role_is_assigned_from_the_part_and_undecided_parts_are_reported():
+    """**A part nothing has measured is left alone**, and the third mark -- which names no part -- is not touched either.
+    Defaulting them would make "not decided" indistinguishable from "decided"."""
+    p, first, second, third = a_project_with_two_parts()
+    assigned, undecided = p.assign_roles_by_part(note='by part')
+    assert assigned == {first.id: 'shadow'}
+    assert undecided == ['left_ear']
+    assert first.geometry['role'] == 'shadow'
+    assert second.geometry.get('role', '') == ''
+    assert third.geometry.get('role', '') == ''
+
+
+def test_the_assignment_can_be_limited_to_what_the_books_name():
+    p, first, _second, _third = a_project_with_two_parts()
+    assigned, undecided = p.assign_roles_by_part(note='books only', allow_tier=False)
+    assert assigned == {}
+    assert undecided == ['face', 'left_ear']
+    assert first.geometry.get('role', '') == ''

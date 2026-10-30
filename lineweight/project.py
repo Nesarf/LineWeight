@@ -146,18 +146,24 @@ class Mark:
     # **Which layer of the figure this mark belongs to.** Empty when the project declares no figure, and required once
     # it does -- see `Project.set_figure`. A drawing whose marks do not say which layer they are is a pile of marks.
     layer: str = ''
+    # **What this mark draws** -- `face`, `eye`, `hair`, `boot` -- or empty when nobody has said. It is separate from
+    # `layer` on purpose: a layer is a sheet in an animation rig, a part is a thing in the picture, and a costume layer can
+    # carry both a collar and a cuff. **The part is what the role table is keyed on**, so a mark that names one can be
+    # given a role by measurement (`roles.role_for_part`) instead of by a human deciding per stroke.
+    part: str = ''
 
     def to_dict(self) -> dict:
         return {'id': self.id, 'kind': self.kind, 'stage': self.stage, 'seq': self.seq,
                 'geometry': self.geometry, 'appearance': self.appearance,
-                'provenance': self.provenance, 'state': self.state, 'layer': self.layer}
+                'provenance': self.provenance, 'state': self.state, 'layer': self.layer,
+                'part': self.part}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Mark':
         return cls(id=d['id'], kind=d['kind'], stage=d['stage'], seq=d['seq'],
                    geometry=d.get('geometry', {}), appearance=d.get('appearance', {}),
                    provenance=d.get('provenance', {}), state=d.get('state', LIVE),
-                   layer=d.get('layer', ''))
+                   layer=d.get('layer', ''), part=d.get('part', ''))
 
 
 @dataclass
@@ -485,6 +491,33 @@ class Project:
         find them. A correction that silently does nothing is the failure this mechanism exists to prevent.
         """
         return [self.assign_role(mark_id, role, note=note) for mark_id, role in assignments.items()]
+
+    def assign_roles_by_part(self, note: str = '', allow_tier: bool = True) -> tuple[dict, list[str]]:
+        """Gives every mark that names a part the role the table derives for it.
+
+        **This is the step where a measurement becomes a drawing decision.** A mark carrying `part = 'face'` gets the role
+        the table gives the face -- and that answer may come from a book (`roles.PART_ROLES`) or from a measured tier of
+        parts (`roles.PART_TIERS`), with `allow_tier` letting a caller ask for the citation alone.
+
+        **A part nothing has measured is left alone and reported**, not defaulted: assigning it `contour` would make "not
+        decided" indistinguishable from "decided", which is the fault `role()` refuses an unknown name to avoid.
+
+        Returns the assignments made and the parts that had no answer. The caller opens the turn, as with `assign_roles`.
+        """
+        assignments = {}
+        undecided = []
+        for mark in self.marks:
+            part = getattr(mark, 'part', '')
+            if not part:
+                continue
+            found = roles.role_for_part(part, allow_tier=allow_tier)
+            if found is None:
+                undecided.append(part)
+            else:
+                assignments[mark.id] = found.name
+        if assignments:
+            self.assign_roles(assignments, note=note)
+        return assignments, undecided
 
     def supersede(self, mark_id: str, reason: str = '') -> Mark:
         """Takes a mark out of the drawing **without removing it**.
