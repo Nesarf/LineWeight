@@ -80,54 +80,37 @@ def boundary(labels):
     return mask, ya, xa, np.concatenate(low), np.concatenate(high)
 
 
-def ink_of(points, gap_colour):
-    """How dark the line should be, on the same argument as its width.
+def width_and_ink(points, gap_colour, gap_light, scale):
+    """How heavy a line should be and how dark, **from one pass over its own samples**.
 
-    **A flat ink value over-inked the picture even after the widths were split.** Thinning every line left the whole-image
-    median unchanged at 0.0366, because what darkens a pixel is the line's ink and not its width. A join inside one
-    material is a change of a few per cent in colour; drawing it at full black is what made a fold in cloth read like a
-    contour.
+    **Two questions, one measurement.** A line's weight and its ink are both decided by the same number -- the median
+    colour gap along its own length -- because that number says whether the join is between two materials or between two
+    lightnesses of one surface. They were two functions for a while, each walking the same points and taking the same
+    median, which is the same measurement paid for twice.
+
+    **Why the gap and not one pixel**: a boundary crosses both kinds of join in its run, and the median is what the line
+    *mostly* is. **Why two outputs**: one width for every join over-inked the picture -- a lock of hair and the shadow under
+    a jaw both separate two colours, so a single measure cannot tell them apart, and on the measured reference that put a
+    black line down every fold. A change of material draws full and dark; a change of light draws fine and light.
     """
-    colours = []
-    for x, y in points:
-        iy = int(round(y))
-        ix = int(round(x))
-        if 0 <= iy < gap_colour.shape[0] and 0 <= ix < gap_colour.shape[1]:
-            colours.append(float(gap_colour[iy, ix]))
-    if not colours:
-        return COLOUR_FINE
-    material = min(1.0, max(0.0, float(np.median(colours)) / MATERIAL_GAP))
-    if material >= 0.60:
-        return COLOUR_MATERIAL
-    if material >= 0.30:
-        return COLOUR_MIDDLE
-    return COLOUR_FINE
-
-
-def width_of(points, gap_colour, gap_light, scale):
-    """How heavy a line should be: a change of material draws full, a change of light draws fine.
-
-    **One width for both is what over-inked the whole picture.** The colour gap says whether the join is between two
-    materials; the lightness gap says whether it is the same surface at two brightnesses. A lock of hair and the shadow
-    under a jaw both separate two colours, so a single measure cannot tell them apart -- and on this reference that put a
-    black line down every fold.
-
-    A line is measured by the median of each quantity along its own length, not by one pixel, because a boundary crosses
-    both kinds of join in its run and the median is what the line *mostly* is.
-    """
-    colours = []
-    lights = []
-    for x, y in points:
-        iy = int(round(y))
-        ix = int(round(x))
-        if 0 <= iy < gap_colour.shape[0] and 0 <= ix < gap_colour.shape[1]:
-            colours.append(float(gap_colour[iy, ix]))
-            lights.append(float(gap_light[iy, ix]))
-    if not colours:
-        return W_FINE * scale
-    colour = float(np.median(colours))
+    ys = np.array([int(round(y)) for _x, y in points])
+    xs = np.array([int(round(x)) for x, _y in points])
+    h, w = gap_colour.shape
+    ok = (ys >= 0) & (ys < h) & (xs >= 0) & (xs < w)
+    if not ok.any():
+        return W_FINE * scale, COLOUR_FINE
+    # **One fancy index instead of a loop of scalars.** `gap_colour[iy, ix]` in Python costs a few microseconds a sample
+    # and there are tens of thousands of samples; indexing with two arrays is one call.
+    colour = float(np.median(gap_colour[ys[ok], xs[ok]]))
     material = min(1.0, max(0.0, colour / MATERIAL_GAP))
-    return (W_FINE + (W_MATERIAL - W_FINE) * material) * scale
+    width = (W_FINE + (W_MATERIAL - W_FINE) * material) * scale
+    if material >= 0.60:
+        ink = COLOUR_MATERIAL
+    elif material >= 0.30:
+        ink = COLOUR_MIDDLE
+    else:
+        ink = COLOUR_FINE
+    return width, ink
 
 
 def main():
@@ -240,8 +223,7 @@ def main():
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
-        width = width_of(pts, gap_colour, gap_light, s)
-        ink = ink_of(pts, gap_colour)
+        width, ink = width_and_ink(pts, gap_colour, gap_light, s)
         scaled = [(x * s, y * s) for x, y in pts]
         record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
                                     width_profile=[width] * len(scaled))
