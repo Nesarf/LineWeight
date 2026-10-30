@@ -18,6 +18,7 @@ import argparse
 import json
 import pathlib
 import sys
+import time
 
 import numpy as np
 from PIL import Image
@@ -149,6 +150,16 @@ def main():
                          'cent of them and to be the difference between a drawing and a mass of hatching')
     args = ap.parse_args()
 
+    # **A stage that prints nothing for four minutes is not diagnosable.** This tool is half of the pipeline's wall time on a
+    # large reference and the cost is not spread evenly: the skeleton walk alone can be most of it.
+    mark = time.perf_counter()
+
+    def tick(label):
+        nonlocal mark
+        now = time.perf_counter()
+        print('    %6.1fs  %s' % (now - mark, label))
+        mark = now
+
     labels = np.load(args.labels)
     meta = json.loads(pathlib.Path(args.meta).read_text(encoding='utf-8'))
     w, h = int(meta['cut'][0]), int(meta['cut'][1])
@@ -174,7 +185,10 @@ def main():
 
     table, _counts = shape_pass.colour_table(labels, rgb)
     light, sat, hue = line_from_shapes.rgb_stats(table)
+    tick('area colours')
+
     mask, ya, xa, low, high = boundary(labels)
+    tick('boundary pixels')
     print('  %d areas, %d boundary pixels (%.2f%% of the cut)'
           % (int(labels.max()), int(mask.sum()), 100.0 * mask.mean()))
 
@@ -191,6 +205,7 @@ def main():
               % (coarse_areas, int(kept.sum()), int(mask.sum()),
                  100.0 * float(kept.sum()) / max(1, int(mask.sum()))))
         mask = kept
+        tick('coarse filter')
 
     # **The same colour gap the boundary analysis uses**, so a line is as heavy as the analysis says the join is. A hue
     # difference is weighted by the smaller of the two saturations, because two nearly grey areas have a hue that is noise.
@@ -202,17 +217,21 @@ def main():
     size = w * h
     gap_colour = line_from_shapes.scatter_max(flat, dc, size).reshape(labels.shape)
     gap_light = line_from_shapes.scatter_max(flat, dl, size).reshape(labels.shape)
+    tick('colour and lightness gaps')
 
     lines = edge_line.walks(mask, max(1, int(round(args.min_segment * k))))
+    tick('skeleton and walk')
     print('  %d walks, %d points' % (len(lines), sum(len(line) for line in lines)))
     if args.prune_length:
         before = len(lines)
         lines = edge_line.prune_fragments(lines, args.prune_length * k, args.prune_reach * k, args.prune_angle,
                                           8.0 * k, 20.0 * k, 600.0 * k, None, 30.0 * k, 0.0)
+        tick('pruned')
         print('  fragments: %d kept of %d' % (len(lines), before))
     if args.merge_reach:
         before = len(lines)
         lines = edge_line.merge_fragments(lines, args.merge_reach * k, args.merge_angle, 90.0 * k)
+        tick('joined')
         print('  joined: %d walks -> %d lines' % (before, len(lines)))
 
     proj = project.Project(width=canvas_w, height=canvas_h,
@@ -232,6 +251,7 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     project.save_project(proj, str(out))
     print('  %d lines on a %dx%d canvas, written to %s' % (written, canvas_w, canvas_h, out))
+    tick('records written')
     return 0
 
 

@@ -158,7 +158,7 @@ def material_classes(table, k):
     return labels
 
 
-def coarse_boundary(rgb, person, levels, blur, min_area):
+def coarse_boundary(rgb, person, levels, blur, min_area, downsample=1):
     """The boundaries between areas that survive a much coarser cut, widened a little.
 
     **A feature's scale is the range over which it is still there.** A lock of hair, a fold in cloth and the shading
@@ -168,19 +168,42 @@ def coarse_boundary(rgb, person, levels, blur, min_area):
     material at any scale.
 
     So the coarse cut answers "is this a real edge" and the fine cut answers "where exactly". The coarse set is widened
-    by a couple of pixels because the two cuts place a boundary one or two pixels apart.
+    because the two cuts place a boundary a pixel or two apart.
+
+    **`downsample` is kept and defaults to one because shrinking the picture was tried and it changes the answer.** It
+    does make this stage cheaper -- 31.6 seconds to 10.6 on a two-thousand-four-hundred-wide reference, the largest single
+    item in the line pass. But a picture shrunk by four is not the same picture viewed more coarsely: it has lost the
+    detail the fine cut is compared against, so the coarse cut keeps far more boundaries (76 per cent of them against 35)
+    and everything downstream doubles -- pruning 31 to 103 seconds, records 19 to 56. The net was 83 seconds *slower*.
+    **An optimisation that changes what the stage decides is not an optimisation**, and the numbers are here so the idea is
+    not tried again casually.
     """
     from scipy import ndimage
-    key = np.where(person, shape_pass.quantise(rgb, max(2, levels // 2), blur * 3.0), -1)
+    h, w = person.shape
+    if downsample > 1:
+        from PIL import Image
+        sw, sh = max(1, w // downsample), max(1, h // downsample)
+        small_rgb = np.stack([
+            np.asarray(Image.fromarray(rgb[:, :, c]).resize((sw, sh), Image.BILINEAR), dtype=np.float32)
+            for c in range(3)], axis=2)
+        small_person = np.asarray(Image.fromarray(person.astype(np.uint8) * 255).resize((sw, sh), Image.NEAREST)) > 127
+    else:
+        small_rgb, small_person = rgb, person
+
+    key = np.where(small_person, shape_pass.quantise(small_rgb, max(2, levels // 2), blur * 3.0 / max(1, downsample)),
+                   -1)
     labels = shape_pass.equal_components(key)
-    labels = np.where(person, labels, 0)
-    labels = shape_pass.absorb(labels, max(1, min_area * 4))
+    labels = np.where(small_person, labels, 0)
+    labels = shape_pass.absorb(labels, max(1, int(round(min_area * 4 / float(downsample * downsample)))))
     edge = np.zeros(labels.shape, dtype=bool)
     for dy, dx in NEIGHBOURS:
         a = labels[max(0, dy):labels.shape[0] + min(0, dy), max(0, dx):labels.shape[1] + min(0, dx)]
         b = labels[max(0, -dy):labels.shape[0] + min(0, -dy), max(0, -dx):labels.shape[1] + min(0, -dx)]
         edge[max(0, dy):labels.shape[0] + min(0, dy), max(0, dx):labels.shape[1] + min(0, dx)] |= a != b
-    return ndimage.binary_dilation(edge, iterations=2), int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
+    areas = int(np.count_nonzero(np.bincount(labels.ravel())[1:]))
+    if downsample > 1:
+        edge = np.asarray(Image.fromarray(edge.astype(np.uint8) * 255).resize((w, h), Image.NEAREST)) > 127
+    return ndimage.binary_dilation(edge, iterations=2 * max(1, downsample)), areas
 
 
 def area_thickness(labels):
