@@ -35,12 +35,69 @@ def world_bounds(objects):
     return low, high
 
 
+def flat_white(meshes):
+    """Give every mesh one emission material so lighting cannot be mistaken for line.
+
+    Freestyle draws the lines on top of whatever the surface render is. If the surface keeps its own materials, the dark
+    parts of it (hinges, shadowed cloth) sit in the same value range as a freestyle line, and any later line detector would
+    count both. A flat white emission surface removes that: whatever is not white is a line.
+    """
+    white = bpy.data.materials.new('measure-white')
+    white.use_nodes = True
+    nodes = white.node_tree.nodes
+    for node in list(nodes):
+        nodes.remove(node)
+    output = nodes.new('ShaderNodeOutputMaterial')
+    emission = nodes.new('ShaderNodeEmission')
+    emission.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+    emission.inputs['Strength'].default_value = 1.0
+    white.node_tree.links.new(emission.outputs['Emission'], output.inputs['Surface'])
+    for obj in meshes:
+        obj.data.materials.clear()
+        obj.data.materials.append(white)
+
+
+def configure_freestyle(scene):
+    """Turn on freestyle with every line class that a hand inking would also use.
+
+    Outline selection alone was measured to produce the same 0.44 per cent of line pixels as a material render -- it marks
+    where an object ends, which is the one thing both methods agree on. The interior structure (folds, hair strands, the
+    crease where a sleeve enters a cuff) is exactly what an inker draws and what a silhouette detector cannot see, so those
+    selections have to be on for this render to be comparable to a hand drawing.
+    """
+    scene.render.engine = 'CYCLES'
+    scene.cycles.samples = 8
+    scene.cycles.use_denoising = False
+    scene.render.use_freestyle = True
+    layer = scene.view_layers[0]
+    layer.use_freestyle = True
+    settings = layer.freestyle_settings
+    settings.mode = 'EDITOR'
+    lineset = settings.linesets.new('detail') if not settings.linesets else settings.linesets[0]
+    lineset.select_silhouette = True
+    lineset.select_border = True
+    lineset.select_crease = True
+    lineset.select_contour = True
+    lineset.select_external_contour = True
+    lineset.select_material_boundary = True
+    # A crease is drawn where the angle between faces exceeds this. 120 degrees is deliberately loose: an inker draws a
+    # fold that a stricter threshold would call smooth, and the point of this render is to over-produce candidates.
+    # The angle lives on the settings object, not on the line set -- putting it on the line set raises AttributeError.
+    settings.crease_angle = math.radians(120.0)
+    lineset.linestyle.color = (0.0, 0.0, 0.0)
+    lineset.linestyle.thickness = 2.0
+
+
 def main():
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     lineart = False
+    freestyle = False
     if '--lineart' in args:
         args = [a for a in args if a != '--lineart']
         lineart = True
+    if '--freestyle' in args:
+        args = [a for a in args if a != '--freestyle']
+        freestyle = True
     if len(args) < 3:
         print('usage: -- in.blend out.png out.json')
         return 2
@@ -94,6 +151,19 @@ def main():
         shading.show_object_outline = True
         shading.object_outline_color = (0.0, 0.0, 0.0)
         scene.display.render_aa = '8'
+        scene.render.film_transparent = False
+    elif freestyle:
+        configure_freestyle(scene)
+        flat_white(meshes)
+        # Background white for the same reason the surface is white: the line is then the only dark thing in the picture,
+        # so measuring "how much of this render is line" does not first require deciding which darks are not line.
+        world = scene.world if scene.world is not None else bpy.data.worlds.new('measure-world')
+        scene.world = world
+        world.use_nodes = True
+        background = world.node_tree.nodes.get('Background')
+        if background is not None:
+            background.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+            background.inputs['Strength'].default_value = 1.0
         scene.render.film_transparent = False
     bpy.ops.render.render(write_still=True)
 
