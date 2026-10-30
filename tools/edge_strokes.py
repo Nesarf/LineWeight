@@ -22,6 +22,7 @@ import time
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 sys.path.insert(0, r'E:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -261,7 +262,26 @@ def main():
     # lines lie on the figure by construction, so the outermost boundary row is the figure's top and bottom.
     rows = np.flatnonzero(mask.any(axis=1))
     figure_box = (int(rows[0]), int(rows[-1])) if rows.size else None
+    # **And the person, because a boundary lies wherever two colours meet and this picture has a sea in it.** The first
+    # version filed every line by height alone, and the head band came out holding 550 lines whose x range was 3399 of a
+    # 3464 pixel canvas -- waves, sky and a halo, not a face. A part is only meaningful for a line that is on the figure.
+    gray_cut = (0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]).astype(np.float32)
+    person = value_pass.person_mask(gray_cut)
+    # **And the person's own bounds in x as well as y**, because a person mask is generous on a picture with a sea in it:
+    # the first pass kept 5007 of 5028 lines as "on the figure", and the head band still held lines 3399 pixels wide. A
+    # boundary that spans the canvas is the water's edge, and the midpoint of a line is not where a long line lives.
+    labelled, count_person = ndimage.label(person)
+    person_box = None
+    if count_person:
+        sizes = np.bincount(labelled.ravel())
+        sizes[0] = 0
+        biggest = labelled == int(sizes.argmax())
+        cols = np.flatnonzero(biggest.any(axis=0))
+        bands = np.flatnonzero(biggest.any(axis=1))
+        if cols.size and bands.size:
+            person_box = (int(bands[0]), int(bands[-1]), int(cols[0]), int(cols[-1]))
     written = 0
+    added_by_part = 0
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
@@ -272,14 +292,24 @@ def main():
         record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
                                     width_profile=[width] * len(scaled))
         added = proj.add_stroke(record, stage='line', layer='ink', note='boundary %d' % i)
-        if figure_box is not None:
-            middle = pts[len(pts) // 2][1] * s
-            added.part = part_by_height(middle, (figure_box[0] * s, figure_box[1] * s))
+        if person_box is not None:
+            mid = pts[len(pts) // 2]
+            mid_y = mid[1] * s
+            mid_x = mid[0] * s
+            # **The person's box is in cut coordinates and the mark in canvas ones**, so the comparison divides by the
+            # same scale the mark was multiplied by.
+            iy = int(mid_y / s) if s else 0
+            ix = int(mid_x / s) if s else 0
+            top, bottom, left, right = person_box
+            if top <= iy <= bottom and left <= ix <= right:
+                added.part = part_by_height(mid_y, (top * s, bottom * s))
+                added_by_part += 1
         written += 1
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     project.save_project(proj, str(out))
     print('  %d lines on a %dx%d canvas, written to %s' % (written, canvas_w, canvas_h, out))
+    print('  %d of them fall on the figure and carry a part; the rest are background boundaries' % added_by_part)
     tick('records written')
     return 0
 
