@@ -118,6 +118,27 @@ def width_and_ink(points, gap_colour, gap_light, scale):
     return width, ink, light_gap
 
 
+def part_by_height(y, box, head=0.16, torso=0.55):
+    """A first division of the figure by height: `head`, `torso`, `legs`.
+
+    **Crude, and the crudeness is the point of starting here.** A hand at hip height lands in `torso`; an arm raised above
+    the head lands in `head`; a knee-length skirt straddles the boundary. But the rule costs nothing, needs no
+    segmentation, and it already separates "lines in the face" from "lines in the clothes" -- which is the split the role
+    table is built on and the reason a line carrying `part` is worth more than a line carrying nothing.
+
+    The fractions are where a standing figure's landmarks sit: the head is about a sixth of the height at six heads, and
+    the legs begin a little below the halfway mark because the crotch does not sit at the middle of the silhouette.
+    """
+    y0, y1 = float(box[0]), float(box[1])
+    span = max(1.0, y1 - y0)
+    where = (float(y) - y0) / span
+    if where < head:
+        return 'head'
+    if where < torso:
+        return 'torso'
+    return 'legs'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--labels', required=True, help='the area labels written beside the fills project')
@@ -234,6 +255,12 @@ def main():
 
     proj = project.Project(width=canvas_w, height=canvas_h,
                            title='colour boundaries of %s' % pathlib.Path(args.reference).stem)
+    # **The figure's box, so a line can be filed by where it sits.** Without a part a line is a shape; with one it can be
+    # given a role by the table (`roles.role_for_part`) and asked questions like "how many lines are in the face".
+    # **The boundary mask's own rows, not a person mask**: a person mask costs another pass over the picture and these
+    # lines lie on the figure by construction, so the outermost boundary row is the figure's top and bottom.
+    rows = np.flatnonzero(mask.any(axis=1))
+    figure_box = (int(rows[0]), int(rows[-1])) if rows.size else None
     written = 0
     for i, pts in enumerate(lines):
         if len(pts) < 2:
@@ -244,7 +271,10 @@ def main():
         scaled = [(x * s, y * s) for x, y in pts]
         record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
                                     width_profile=[width] * len(scaled))
-        proj.add_stroke(record, stage='line', layer='ink', note='boundary %d' % i)
+        added = proj.add_stroke(record, stage='line', layer='ink', note='boundary %d' % i)
+        if figure_box is not None:
+            middle = pts[len(pts) // 2][1] * s
+            added.part = part_by_height(middle, (figure_box[0] * s, figure_box[1] * s))
         written += 1
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
