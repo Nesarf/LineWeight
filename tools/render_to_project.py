@@ -37,6 +37,75 @@ RENDER_WIDTH = 2.0
 MIN_SEGMENT = 4
 
 
+def stitch(segments, gap=2.0, straight=0.5, rounds=20):
+    """Join the runs whose ends meet, when the direction says one line continues through the join.
+
+    **Why this is needed at all.** A hand-drawn line ends at two points, so `copy_linework`'s walk starts at one end and
+    arrives at the other. A render's contour is closed: the skeleton has almost no degree-one ends, so `trace` falls back
+    to starting from arbitrary points, and its walks cancel each other through `used`. Measured at 2048, one connected
+    component of 32126 skeleton pixels came back as **3240 runs with a median of three pixels** -- the pixels were
+    continuous, the runs were not. The drawing then read as dashes, which is a failure of granularity rather than of
+    geometry.
+
+    `gap` is in pixels: two ends further apart than this are two different lines meeting near each other, which is what a
+    crossing looks like. `straight` is the cosine below which a join is refused -- a corner is also two runs meeting, and
+    joining across it would round off the one thing a corner is.
+
+    **Either end joins, because a closed contour is walked from both ways.** Restricting joins to a tail meeting a head
+    halved the runs at 1024 and left two thirds of them at 2048, and the reason is visible in what a closed loop does: the
+    first walk goes round one way and the run that meets it arrives going the other way, so a tail-to-head test refuses
+    exactly the joins a contour needs. A tail therefore joins a tail by reversing it, which is the same line read
+    backwards rather than a different claim.
+    """
+    paths = [[(float(y), float(x)) for y, x in seg] for seg in segments]
+    for _ in range(rounds):
+        ends = {}
+        for i, path in enumerate(paths):
+            if len(path) < 2:
+                continue
+            ends.setdefault((int(path[0][0] // gap), int(path[0][1] // gap)), []).append((i, 0))
+            ends.setdefault((int(path[-1][0] // gap), int(path[-1][1] // gap)), []).append((i, 1))
+        joined = 0
+        for i, path in enumerate(paths):
+            if len(path) < 2:
+                continue
+            tail = path[-1]
+            step_y = path[-1][0] - path[-2][0]
+            step_x = path[-1][1] - path[-2][1]
+            span = (step_y * step_y + step_x * step_x) ** 0.5
+            if span == 0.0:
+                continue
+            best = None
+            for oy in (-1, 0, 1):
+                for ox in (-1, 0, 1):
+                    cell = (int(tail[0] // gap) + oy, int(tail[1] // gap) + ox)
+                    for j, which in ends.get(cell, ()):
+                        if j == i or len(paths[j]) < 2:
+                            continue
+                        other = paths[j]
+                        near, nxt = (other[0], other[1]) if which == 0 else (other[-1], other[-2])
+                        away = ((near[0] - tail[0]) ** 2 + (near[1] - tail[1]) ** 2) ** 0.5
+                        if away > gap:
+                            continue
+                        next_y = nxt[0] - near[0]
+                        next_x = nxt[1] - near[1]
+                        next_span = (next_y * next_y + next_x * next_x) ** 0.5
+                        if next_span == 0.0:
+                            continue
+                        if (step_y * next_y + step_x * next_x) / (span * next_span) < straight:
+                            continue
+                        if best is None or away < best[0]:
+                            best = (away, j, which)
+            if best is not None:
+                _away, j, which = best
+                paths[i] = paths[i] + (paths[j] if which == 0 else paths[j][::-1])
+                paths[j] = []
+                joined += 1
+        if not joined:
+            break
+    return [path for path in paths if len(path) >= 2]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--render', required=True, help='the PNG the render wrote')
@@ -44,6 +113,10 @@ def main():
     parser.add_argument('--out', required=True, help='the project file to write')
     parser.add_argument('--prune', type=int, default=4, help='skeleton spurs shorter than this are cut')
     parser.add_argument('--min-segment', type=int, default=MIN_SEGMENT)
+    parser.add_argument('--stitch-reach', type=float, default=0.0035,
+                        help='how far apart two ends may be, as a share of the page long side; 0 turns stitching off')
+    parser.add_argument('--stitch-straight', type=float, default=0.5,
+                        help='cosine below which a join is a corner rather than a continuation')
     parser.add_argument('--canvas-side', type=float, default=0.0, help='ask for a longer page than the rule gives')
     args = parser.parse_args()
 
@@ -53,10 +126,19 @@ def main():
         raise SystemExit('the render is %s but the bones were projected into %s' % (size, bone_size))
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
-    segments = trace(skeleton)
+    runs = trace(skeleton)
+    if args.stitch_reach > 0:
+        # **The reach scales with the page, because the gap it bridges does.** Measured on the same drawing at two sizes
+        # the useful distance was 5.4 px at 1024 and 10.8 px at 2048 -- 0.35 per cent of the long side either way. Held
+        # at a constant, a value that works at one size is a no-op at the other.
+        segments = stitch(runs, gap=args.stitch_reach * float(max(size)), straight=args.stitch_straight)
+    else:
+        segments = runs
     kept = [seg for seg in segments if len(seg) >= args.min_segment]
-    print('  render      %d x %d, %d segments, %d longer than %d'
-          % (size[0], size[1], len(segments), len(kept), args.min_segment))
+    # **Both counts, because the pair is the measurement.** The traced number says what the walk produced; the stitched
+    # one says how much of that was one line cut into pieces.
+    print('  render      %d x %d, %d traced, %d after stitching, %d longer than %d'
+          % (size[0], size[1], len(runs), len(segments), len(kept), args.min_segment))
     if not kept:
         print('  nothing to write')
         return 1
