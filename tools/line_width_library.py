@@ -110,14 +110,15 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None):
     ys, xs, widths = ys[keep], xs[keep], widths[keep]
     if widths.size < 20:
         return None
+    normalised = widths / height
     result = {
         'name': pathlib.Path(path).name,
         'size': image.size,
         'figure_height': height,
         'skeleton_px': int(widths.size),
-        'median': float(np.median(widths)) / height,
-        'p10': float(np.percentile(widths, 10)) / height,
-        'p90': float(np.percentile(widths, 90)) / height,
+        'median': float(np.median(normalised)),
+        'p10': float(np.percentile(normalised, 10)),
+        'p90': float(np.percentile(normalised, 90)),
         # **The three numbers that decide whether this is a character drawing**, carried out of the measurement so a
         # refusal can be reported with its reason rather than as a missing row.
         'mass_share': stats['mass_share'],
@@ -125,7 +126,8 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None):
         'components': stats['components'],
     }
     if regions:
-        result['by_part'] = {part: assign(ys, xs, widths, spans, image.size) for part, spans in regions.items()}
+        result['by_part'] = {part: assign(ys, xs, normalised, spans, image.size)
+                             for part, spans in regions.items()}
     return result
 
 
@@ -264,7 +266,10 @@ def main():
         if len(rejected) > 10:
             print('    ... %d more' % (len(rejected) - 10))
 
-    if len(rows) >= 2:
+    # **One drawing is enough to report on.** The summary used to need two, which meant a single labelled drawing printed
+    # its overall width and then silently skipped the by-part table -- the one output an experiment with one drawing is
+    # for. Spread over a single sample is 1.0x and says so rather than being hidden.
+    if rows:
         medians = np.array([r['median'] for r in rows])
         ratios = np.array([r['p90'] / max(r['median'], 1e-9) for r in rows])
         print()
@@ -286,16 +291,19 @@ def main():
             for row in rows:
                 for part, stats in (row.get('by_part') or {}).items():
                     if stats:
-                        pooled.setdefault(part, []).append(stats['median'])
+                        # **The sample size is the number of skeleton points, not the number of drawings.** A first
+                        # version printed the drawing count under the heading `n`, where a single labelled drawing
+                        # showed `n = 1` beside a median and read as one sample instead of ten thousand.
+                        pooled.setdefault(part, []).append((stats['median'], stats['count']))
             print()
-            print('  %-16s %5s %12s %12s' % ('part', 'n', 'median', 'as head %'))
+            print('  %-16s %9s %9s %11s' % ('part', 'drawings', 'points', 'median'))
             summary = {}
             for part in sorted(pooled):
-                values = np.array(pooled[part])
+                pairs = pooled[part]
+                values = np.array([value for value, _count in pairs])
+                points = sum(count for _value, count in pairs)
                 summary[part] = float(np.median(values))
-                print('  %-16s %5d %11.4f%% %11.3f%%'
-                      % (part, values.size, 100 * np.median(values),
-                         100 * np.median(values) * HEADS / np.median(medians) if np.median(medians) else 0))
+                print('  %-16s %9d %9d %10.4f%%' % (part, values.size, points, 100 * np.median(values)))
             if len(summary) >= 2:
                 low = min(summary.values())
                 high = max(summary.values())
