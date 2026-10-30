@@ -137,6 +137,73 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
     return result
 
 
+def wobble_of(path, long_side=1600, gap=4.0, tolerance=0.8):
+    """How far a stroke wanders off its own simplification, in its own widths.
+
+    **`wobble` in the brush table is the amplitude of a hand's tremor, and a hand drawing contains one.** Simplify each
+    stroke with Douglas-Peucker at the tolerance the pipeline already uses, and the distance the original points sit off
+    that simplified line is the tremor the simplification threw away. Divided by the stroke's own width it is comparable
+    across sizes, which is the unit the table's `wobble` is in.
+
+    **Why this is measurable and `speed` is not.** Speed is a property of the hand at the moment of drawing and leaves no
+    trace in the finished picture -- a fast line and a slow one can be the same width. Tremor does leave a trace: it is
+    the sideways deviation along the stroke. So one of the four unmeasured brush parameters can be given a number from the
+    corpus, and the others cannot.
+    """
+    import trace as tr
+    image = Image.open(path).convert('L')
+    scale = min(1.0, long_side / float(max(image.size)))
+    if scale < 1.0:
+        image = image.resize((max(1, int(image.size[0] * scale)), max(1, int(image.size[1] * scale))), Image.LANCZOS)
+    gray = np.asarray(image, dtype=np.float32)
+    mask = ink_mask(gray)
+    skeleton = cl.thin(mask.astype(np.uint8)).astype(bool)
+    ys, xs = np.nonzero(skeleton)
+    widths = subpixel_widths(gray, mask, skeleton)
+    deep = ndimage.distance_transform_edt(mask)[ys, xs]
+    keep = (deep <= gap) & (widths > 0)
+    ys, xs, widths = ys[keep], xs[keep], widths[keep]
+    if widths.size < 200:
+        return None
+    grid = {(int(y), int(x)): float(w) for y, x, w in zip(ys, xs, widths)}
+
+    values = []
+    for segment in cl.trace(skeleton):
+        if len(segment) < 40:
+            continue
+        points = [(float(x), float(y)) for y, x in segment]
+        line = [grid.get((int(y), int(x))) for y, x in segment]
+        line = [w for w in line if w is not None]
+        if len(line) < 40:
+            continue
+        typical = float(np.median(line))
+        if typical <= 0:
+            continue
+        simplified = tr.douglas_peucker(points, tolerance)
+        if len(simplified) < 2:
+            continue
+        px = np.array([p[0] for p in points], dtype=np.float64)
+        py = np.array([p[1] for p in points], dtype=np.float64)
+        boxes = []
+        for (ax, ay), (bx, by) in zip(simplified, simplified[1:]):
+            dx, dy = bx - ax, by - ay
+            length2 = dx * dx + dy * dy
+            if length2 < 1e-9:
+                continue
+            t = np.clip(((px - ax) * dx + (py - ay) * dy) / length2, 0.0, 1.0)
+            boxes.append(np.hypot(px - (ax + t * dx), py - (ay + t * dy)))
+        if not boxes:
+            continue
+        nearest = np.min(np.vstack(boxes), axis=0)
+        values.append(float(np.sqrt((nearest ** 2).mean())) / typical)
+    if not values:
+        return {'name': pathlib.Path(path).name, 'strokes': 0, 'wobble': None}
+    return {'name': pathlib.Path(path).name, 'strokes': len(values),
+            'wobble': {'median': float(np.median(values)),
+                       'p10': float(np.percentile(values, 10)),
+                       'p90': float(np.percentile(values, 90))}}
+
+
 def in_boxes(y, x, spans, size):
     """Whether a point falls in any of a part's boxes, which are fractions of the picture."""
     width_px, height_px = size
