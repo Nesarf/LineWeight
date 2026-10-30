@@ -953,10 +953,18 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
             box_w, box_h = x1 - x0, y1 - y0
             local = dict(record)
             local['centre'] = shifted
-            layer = (sweep_layer(local, box_w, box_h, scale, paper=paper) if sweep
-                     else stroke_layer(local, box_w, box_h, scale, paper=paper,
-                                       density=widest >= WIDE_STROKE,
-                                       absolute_width=record.get('absolute_width', False)))
+            # **The brush's own edge decides the model, not a global switch.** A hard-edged tool -- a pen, a marker, a
+            # gel pen -- goes through the distance field, where a width is a width and there is no stamp to quantise. A
+            # soft-edged one -- watercolour, an airbrush, a loaded brush -- keeps the stamped model, because the falloff
+            # of a soft dab is exactly what that material looks like, and flattening it into a hard edge would be a loss
+            # rather than a fix. Watercolour is a class of its own here, not the house style.
+            soft = brush_at(record['brush'], record.get('size', 1.0)).get('edge', 'hard') == 'soft'
+            if sweep or not soft:
+                layer = sweep_layer(local, box_w, box_h, scale, paper=paper)
+            else:
+                layer = stroke_layer(local, box_w, box_h, scale, paper=paper,
+                                     density=widest >= WIDE_STROKE,
+                                     absolute_width=record.get('absolute_width', False))
             if outlined and mark.get('layer') in outlined:
                 # **The growth is stated in width units, and a stroke's width is its brush's**, so the scale is
                 # relative to that rather than absolute -- a fine line and a wash both get the same line around them,

@@ -95,7 +95,8 @@ BRUSHES: dict[str, dict[str, float]] = {
     # It costs. A 860-pixel stroke at the ink width goes from 8 ms to 12 ms -- **half again** -- which on a drawing of ten
     # thousand strokes is forty more seconds. That is the trade, and it was made knowing both numbers.
     'wash': {'width': 22.0, 'opacity': 0.35, 'taper_in': 6.1, 'taper_out': 8.2, 'spacing': 0.35,
-             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45},
+             'speed': 0.15, 'corner': 0.20, 'noise': 0.10, 'wobble': 0.14, 'curve': 0.70, 'grain': 0.45,
+             'edge': 'soft'},
 
     # # The second group, with **where each number comes from stated rather than implied.**
     #
@@ -132,7 +133,8 @@ BRUSHES: dict[str, dict[str, float]] = {
     # same fault that once gave the 22-pixel wash a 590-pixel entry and left every wash nothing but taper. An airbrush has
     # no nib to build pressure against in the first place: its entry and exit are a fade, not a taper.
     'airbrush': {'width': 26.0, 'opacity': 0.22, 'taper_in': 1.6, 'taper_out': 1.6, 'spacing': 0.35,
-                 'speed': 0.12, 'corner': 0.10, 'noise': 0.10, 'wobble': 0.12, 'curve': 0.75, 'grain': 0.20},
+                 'speed': 0.12, 'corner': 0.10, 'noise': 0.10, 'wobble': 0.12, 'curve': 0.75, 'grain': 0.20,
+                 'edge': 'soft'},
 
     # **Chalk is grain, and the grain is the point.** The largest in the table, above the wash's 0.45, because a stick of
     # chalk deposits by whether a fragment catches the tooth of the paper rather than by how hard it is pressed.
