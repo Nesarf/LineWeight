@@ -1018,6 +1018,32 @@ finger     30        thumb / index / middle / ring / little，每根 proximal + 
 **这一步之所以成立，靠的是库**：Blender 的路径是 `library_query` 给的，不是我在文件系统里翻出来的。翻是翻不到的
 —— 它不在 PATH 上，也不在任何一个我先前试过的目录里。
 
+### 4.28 「画面 + 部位坐标」的成对数据，第一次做出来了
+
+**要的是这一对，而不是更多模型**：一张画面，和每个部位在**那张画面**上的位置。此前三样东西都填不了它 —— PSD 的
+bbox 在 UV 空间、骨骼名只给「有什么部位」、手工标的头身比只有四个点。而 3D 文件能同时给出两者：**画图与定位用的是
+同一次投影，所以它们不可能错位**。
+
+`tools/render_with_bones.py` 做这件事：打开 `.blend`、渲染一张 PNG、把每根骨骼的头尾用 `world_to_camera_view`
+投到屏幕上，写成 JSON。跑一次 `Cian.blend`：
+
+```
+RENDERED cian-render.png        1024x1536，T-pose 的兽耳少女
+BONES 360 in 1 armature         -> cian-bones.json
+```
+
+**把关键骨骼画回去看，投影是对的**：`LeftEye` 与 `RightEye` 正好落在两只眼睛上，`Head` 在头顶、`Neck` 在脖子、
+`Chest` 在胸、`Spine` 与 `Hips` 在躯干、`Hand.L/R` 在手腕、`Foot.L/R` 在脚踝。
+
+**这次调试留下两条值得记的**：`bpy.ops.view3d.camera_to_view_selected()` 在后台模式下不可用（它要 3D 视图的上下文，
+报的是 `'Mesh' object has no attribute 'view_frame'`），取景改成算术 —— 相机放 -Y、按包围盒与镜头视场角算距离；
+而那个文件的 `scene.camera` **指向一个 Mesh**，所以判定要看**对象的类型**而不是槽位是否为空，否则 `world_to_camera_view`
+会去一个没有 `view_frame` 的对象上找它。
+
+**这份数据的用法**：它是表二最缺的那一层的**真值**。一条线落在哪根骨骼的范围内，就是「这条线属于哪个部位」的答案
+—— 而答案不是猜的，是投影算出来的。同一个文件还能生成任意姿态的成对数据，那意味着「部位 × 线的角色」可以在几十个
+姿态上重复测量，而不必几十次人工标注。
+
 ## 5. 这件事在工程地图上的位置
 
 ### 4.22 表三的第一批：五条画错的模式，而四条现有检查抓不到
