@@ -137,6 +137,67 @@ def widths_of(path, long_side=1600, subpixel=True, regions=None, gap=4.0):
     return result
 
 
+def taper_of(path, long_side=1600, gap=4.0, reach=60):
+    """How long a stroke's entry is, as a multiple of its own width -- or `None` when it has no entry at all.
+
+    **The library's brushes assume a measured 丸ペン entry of 14.3 widths.** That figure came from a physical nib in a book,
+    and it is right for a hand drawing with one. A drawing being traced was made by somebody else with some other tool,
+    and if its strokes do not thin towards their ends then reproducing it with a 14.3-width entry is inventing something
+    the reference does not have.
+
+    Measured here as: walk from a stroke's end along its own centre line until the width stops rising, and divide that
+    distance by the stroke's typical width. A pen that starts at full width gives a length of zero.
+    """
+    image = Image.open(path).convert('L')
+    scale = min(1.0, long_side / float(max(image.size)))
+    if scale < 1.0:
+        image = image.resize((max(1, int(image.size[0] * scale)), max(1, int(image.size[1] * scale))), Image.LANCZOS)
+    gray = np.asarray(image, dtype=np.float32)
+    mask = ink_mask(gray)
+    skeleton = cl.thin(mask.astype(np.uint8)).astype(bool)
+    ys, xs = np.nonzero(skeleton)
+    widths = subpixel_widths(gray, mask, skeleton)
+    deep = ndimage.distance_transform_edt(mask)[ys, xs]
+    keep = (deep <= gap) & (widths > 0)
+    ys, xs, widths = ys[keep], xs[keep], widths[keep]
+    if widths.size < 200:
+        return None
+    # A lookup from a skeleton pixel to its width, so a traced polyline can be walked against the measurement.
+    grid = {(int(y), int(x)): float(w) for y, x, w in zip(ys, xs, widths)}
+
+    entries = []
+    for segment in cl.trace(skeleton):
+        if len(segment) < 40:
+            continue
+        line = [grid.get((int(y), int(x))) for y, x in segment]
+        line = [w for w in line if w is not None]
+        if len(line) < 40:
+            continue
+        typical = float(np.median(line))
+        if typical <= 0:
+            continue
+        peak = max(line)
+        if peak <= typical * 1.15:
+            continue                     # this stroke does not thin at all: no entry to measure
+        for head in (line[:reach], list(reversed(line[-reach:]))):
+            if head[0] > peak * 0.75:
+                continue                 # starts near its own peak: the end was cut, not tapered
+            risen = 0
+            for index, value in enumerate(head):
+                if value >= peak * 0.9:
+                    risen = index
+                    break
+            if risen:
+                entries.append(risen / typical)
+    if not entries:
+        return {'name': pathlib.Path(path).name, 'strokes': 0, 'entry_widths': None}
+    return {'name': pathlib.Path(path).name,
+            'strokes': len(entries),
+            'entry_widths': {'median': float(np.median(entries)),
+                             'p10': float(np.percentile(entries, 10)),
+                             'p90': float(np.percentile(entries, 90))}}
+
+
 def assign(ys, xs, widths, spans, size):
     """The widths of the skeleton points that fall inside one part's boxes.
 
