@@ -213,8 +213,18 @@
     "note": "**The first row of the part-x-role table, and the first fact in this file that a program reads.** The same pairs live in `lineweight/roles.py` as `PART_ROLES`, and `tools/check_learn.py` refuses a difference between the two. It says which role, not how wide -- widths are the measured half and belong in `AESTHETIC-LIBRARY.md`."
   },
 
-  "part_order": {
-    "count": 2,
+  "proportion": {
+    "count": 3,
+    "items": [
+      "figure height: median 6.58 heads, range 5.15 to 6.62 over five drawings, four of them inside 6.55 to 6.62",
+      "shoulder width in heads: not measured yet -- needs a shoulder that is not hidden and a head that is not turned",
+      "eye height within the head: not measured yet -- needs the hairline visible above the brow"
+    ],
+    "source": "measured: five line drawings marked by hand, with `tools/proportion_library.py` carrying the refusal rules. What the corpus could give: 61 search results, 23 left after a saturation cut for colour, 5 of those full-length front or three-quarter views with the jaw visible -- a 22 per cent yield, so five samples is the corpus and not the sample size that was wanted.",
+    "note": "**One proportion of three, because that is all this corpus can answer.** The five were marked by drawing the four landmarks back onto the picture and looking again; the first attempt was out by twenty-seven per cent until that check was added. Two of the three items say `not measured yet` deliberately: a row that hides which of its numbers exist is worse than a row with gaps."
+  },
+
+  "part_order": {    "count": 2,
     "items": [
       ["face", "eye"],
       ["hair", "cloth", "leg", "boot"]
