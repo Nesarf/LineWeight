@@ -70,6 +70,27 @@ def render_project(src, out, sweep=False):
     return out
 
 
+def flatness(path, side=1200):
+    """The share of neighbouring pixels that barely differ, which is what decides how much blur a reference wants.
+
+    **Measured on three references, and it separates them cleanly.** A cel-painted picture is large even areas with sharp
+    borders (0.904 flat here); a soft painting has gradients nearly everywhere (0.739); a thick one is rougher still
+    (0.644). The composer's blur is applied to the *shading*, so a flat reference behind it loses precisely the borders
+    that make its style what it is.
+
+    Read at a reduced size and with the smaller of the two axis differences, so a hard edge in one direction alone does
+    not count as texture: a line is a large change across it and almost none along it.
+    """
+    from PIL import Image
+    import numpy as np
+    image = Image.open(path).convert('L')
+    image.thumbnail((side, side))
+    gray = np.asarray(image, dtype=np.int16)
+    dx = np.abs(np.diff(gray, axis=1))[:-1, :]
+    dy = np.abs(np.diff(gray, axis=0))[:, :-1]
+    return float((np.minimum(dx, dy) < 3).mean())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--reference', required=True)
@@ -83,14 +104,35 @@ def main():
                          'Zero turns the budget off. A safety valve, not a working limit: a fill now rasterises into its '
                          'own box, so twenty-seven thousand areas finish in under eight minutes')
     ap.add_argument('--blur', type=float, default=1.0, help='blur before quantising, at the cut size')
-    ap.add_argument('--sigma', type=float, default=5.0)
-    ap.add_argument('--keep', type=float, default=0.45)
+    ap.add_argument('--sigma', default='5.0',
+                    help='blur applied to the shading; `auto` reads how flat the reference is and picks one. '
+                         'A cel-painted reference is 0.90 flat and wants 1.5, a soft painting is 0.74 and wants 5.0, '
+                         'a thick one is 0.64 and wants 6.0 -- and the flat one behind a 5.0 blur loses the borders '
+                         'that are the whole of its style')
+    ap.add_argument('--keep', default='0.45',
+                    help='how much of the softened shading to mix back; `auto` follows the same flatness reading')
     ap.add_argument('--sweep', action='store_true',
                     help='lay every stroke down as a distance field instead of as stamped discs: the edge loses the '
                          'stamp-pitch scallop, measured at 1.89 pixels of width wobble against 0.76 on the widest '
                          'brush, and the render costs two to eight times more')
     ap.add_argument('--no-render', action='store_true')
     args = ap.parse_args()
+
+    # **The composer's blur is the one parameter that is strongly style-dependent**, and the two numbers that were tuned
+    # on one reference are wrong on another by a visible margin: the 5.0 that suits a soft painting blurs a cel-painted
+    # one until its borders are gone. Flatness -- the share of neighbouring pixels that differ by less than three levels --
+    # separates the three styles cleanly (0.90 cel, 0.74 soft, 0.64 thick) and is cheap to read, so `auto` uses it.
+    if args.sigma == 'auto' or args.keep == 'auto':
+        flat = flatness(args.reference)
+        picked_sigma = 1.5 if flat >= 0.85 else (5.0 if flat >= 0.70 else 6.0)
+        picked_keep = 1.0 if flat >= 0.85 else 0.45
+        if args.sigma == 'auto':
+            args.sigma = '%.1f' % picked_sigma
+        if args.keep == 'auto':
+            args.keep = '%.2f' % picked_keep
+        print('  reference is %.3f flat -> sigma %s, keep %s' % (flat, args.sigma, args.keep))
+    args.sigma = float(args.sigma)
+    args.keep = float(args.keep)
 
     out = pathlib.Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
