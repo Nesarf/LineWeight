@@ -202,8 +202,11 @@ def main():
     gap_light = line_from_shapes.scatter_max(flat, dl, size).reshape(labels.shape)
     tick('colour and lightness gaps')
 
-    lines = edge_line.walks(mask, max(1, int(round(args.min_segment * k))))
+    parts = {}
+    lines = edge_line.walks(mask, max(1, int(round(args.min_segment * k))), timing=parts)
     tick('skeleton and walk')
+    print('  within it: thin %.1fs, trace %.1fs, simplify %.1fs'
+          % (parts.get('thin', 0), parts.get('trace', 0), parts.get('simplify', 0)))
     print('  %d walks, %d points' % (len(lines), sum(len(line) for line in lines)))
     if args.prune_length:
         before = len(lines)

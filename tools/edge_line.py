@@ -189,17 +189,34 @@ def structure(rgb, blur, strong_pct, weak_pct, pair_distance=4, chroma_guard=0.0
     return kept
 
 
-def walks(mask, min_segment):
-    """The mask's structure lines, walked the way a skeleton is walked."""
+def walks(mask, min_segment, timing=None):
+    """The mask's structure lines, walked the way a skeleton is walked.
+
+    **Four steps and the fourth is the one nobody suspects.** Thinning and tracing are the expensive-sounding ones, but
+    simplification runs Douglas-Peucker in Python over every point of every segment -- a recursive walk per segment, tens
+    of thousands of them. `timing`, when given a dict, is filled with the seconds each step took.
+    """
     import copy_linework as cl
+    import time
+    mark = time.perf_counter()
     skel = cl.thin(mask.astype(np.uint8))
+    if timing is not None:
+        now = time.perf_counter()
+        timing['thin'] = now - mark
+        mark = now
     segments = cl.trace(skel)
+    if timing is not None:
+        now = time.perf_counter()
+        timing['trace'] = now - mark
+        mark = now
     out = []
     for seg in segments:
         if len(seg) < min_segment:
             continue
         pts = [(float(x), float(y)) for y, x in seg]
         out.append(silhouette.douglas_peucker(pts, 0.8))
+    if timing is not None:
+        timing['simplify'] = time.perf_counter() - mark
     return out
 
 

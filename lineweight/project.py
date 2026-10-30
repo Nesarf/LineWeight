@@ -333,7 +333,12 @@ class Project:
         self._check_stage(stage)
         self._check_layer(layer)
         commit = (not self.incremental) if commit is None else commit
-        self.counter = _highest_id(self) + 1
+        # **The counter is incremented rather than recomputed.** It used to call `_highest_id`, which walks every mark and
+        # every log entry to guard against a counter that had fallen behind the ids -- once per stroke. On 3926 strokes that
+        # is about seven million comparisons and it was 2.5 of the 3.1 milliseconds each one cost to record. **The guard
+        # belongs where a project is loaded, not where a stroke is added**: a file is the thing that can disagree with
+        # itself, and a project in memory cannot lose an id it just handed out.
+        self.counter += 1
         mark = Mark(id='m%04d' % self.counter, kind='stroke', stage=stage, seq=len(self.marks), layer=layer,
                     geometry={'centre': record['centre'], 'control': record.get('control', []),
                               'pressure': record['pressure'], 'brush': record['brush'],
@@ -367,7 +372,7 @@ class Project:
         """
         self._check_stage(stage)
         commit = (not self.incremental) if commit is None else commit
-        self.counter = _highest_id(self) + 1
+        self.counter += 1
         mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
                     geometry={'points': [list(p) for p in region.points], 'd': region.d,
                               'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])],
@@ -807,15 +812,20 @@ class Project:
         if version != 2:
             raise ValueError('not a version 2 project file (got version %r)' % (version,))
         canvas = d.get('canvas', {})
-        return cls(width=canvas.get('width', 800.0), height=canvas.get('height', 600.0),
-                   title=d.get('title', 'lineweight'),
-                   stages=d.get('stages') or [dict(s) for s in DEFAULT_STAGES],
-                   marks=[Mark.from_dict(m) for m in d.get('marks', [])],
-                   log=d.get('log', []),
-                   counter=int(d.get('counter', 0)),
-                   incremental=bool(d.get('incremental', False)),
-                   turn=int(d.get('turn', 0)),
-                   figure=Figure.from_dict(d['figure']) if d.get('figure') else None)
+        project = cls(width=canvas.get('width', 800.0), height=canvas.get('height', 600.0),
+                      title=d.get('title', 'lineweight'),
+                      stages=d.get('stages') or [dict(s) for s in DEFAULT_STAGES],
+                      marks=[Mark.from_dict(m) for m in d.get('marks', [])],
+                      log=d.get('log', []),
+                      counter=int(d.get('counter', 0)),
+                      incremental=bool(d.get('incremental', False)),
+                      turn=int(d.get('turn', 0)),
+                      figure=Figure.from_dict(d['figure']) if d.get('figure') else None)
+        # **The guard against a stale counter lives here, where a file can actually disagree with itself.** A project
+        # file with a counter smaller than its highest id would hand out an id twice, and a log in which one id means two
+        # strokes is not a record. In memory no such disagreement can arise, so additions just increment.
+        project.counter = _highest_id(project)
+        return project
 
 
 def save_project(project: Project, path: str) -> None:
