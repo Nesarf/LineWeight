@@ -37,6 +37,10 @@ def world_bounds(objects):
 
 def main():
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+    lineart = False
+    if '--lineart' in args:
+        args = [a for a in args if a != '--lineart']
+        lineart = True
     if len(args) < 3:
         print('usage: -- in.blend out.png out.json')
         return 2
@@ -77,6 +81,20 @@ def main():
     scene.render.resolution_percentage = 100
     scene.render.filepath = out_png
     scene.render.image_settings.file_format = 'PNG'
+    # **A lit render is not a line drawing, and the difference decides whether this study can be done at all.** The first
+    # attempt rendered with materials and then looked for lines: it found 0.44 per cent of the pixels, because the only
+    # thin dark structures in a smooth render are shadow edges. Assigning those to bones measured the shadows. The
+    # workbench engine with flat shading draws the same figure in its own line form, which is what the assignment needs.
+    if lineart:
+        scene.render.engine = 'BLENDER_WORKBENCH'
+        shading = scene.display.shading
+        shading.light = 'FLAT'
+        shading.color_type = 'SINGLE'
+        shading.single_color = (1.0, 1.0, 1.0)
+        shading.show_object_outline = True
+        shading.object_outline_color = (0.0, 0.0, 0.0)
+        scene.display.render_aa = '8'
+        scene.render.film_transparent = False
     bpy.ops.render.render(write_still=True)
 
     width = scene.render.resolution_x * scene.render.resolution_percentage / 100.0
