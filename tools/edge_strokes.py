@@ -119,6 +119,37 @@ def width_and_ink(points, gap_colour, gap_light, scale):
     return width, ink, light_gap
 
 
+def main_part(points, box, head=0.16, torso=0.55):
+    """The band where a line **spends most of its length**, not where its midpoint falls.
+
+    **Midpoint is not position.** A strand of hair runs from the crown to the waist, so its midpoint sits in the torso no
+    matter which point is chosen; a wave's edge spans the whole canvas, so its midpoint lands wherever the canvas does.
+    Both were filed wrongly by the first rule, and neither error is a matter of a tighter bound.
+
+    Length is the quantity that matches the question. A stroke that runs through two bands contributes to both and is
+    filed by the larger share, so a hair falling past the shoulders is filed under `head` if it spends most of its run
+    there, and a skirt's outline under `torso` even though its hem reaches the legs. **One label is still a loss of
+    information** -- a strand is not only in one band -- but it is the label `Mark.part` can carry.
+
+    The fractions are where a standing figure's landmarks sit: the head is about a sixth of the height at six heads, and
+    the legs begin a little below halfway because the crotch does not sit at the middle of the silhouette.
+    """
+    y0, y1 = float(box[0]), float(box[1])
+    span = max(1.0, y1 - y0)
+    head_len = torso_len = legs_len = 0.0
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        segment = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+        where = ((ay + by) * 0.5 - y0) / span
+        if where < head:
+            head_len += segment
+        elif where < torso:
+            torso_len += segment
+        else:
+            legs_len += segment
+    best = max((head_len, 'head'), (torso_len, 'torso'), (legs_len, 'legs'))
+    return best[1] if best[0] > 0 else None
+
+
 def part_by_height(y, box, head=0.16, torso=0.55):
     """A first division of the figure by height: `head`, `torso`, `legs`.
 
@@ -293,16 +324,9 @@ def main():
                                     width_profile=[width] * len(scaled))
         added = proj.add_stroke(record, stage='line', layer='ink', note='boundary %d' % i)
         if person_box is not None:
-            mid = pts[len(pts) // 2]
-            mid_y = mid[1] * s
-            mid_x = mid[0] * s
-            # **The person's box is in cut coordinates and the mark in canvas ones**, so the comparison divides by the
-            # same scale the mark was multiplied by.
-            iy = int(mid_y / s) if s else 0
-            ix = int(mid_x / s) if s else 0
-            top, bottom, left, right = person_box
-            if top <= iy <= bottom and left <= ix <= right:
-                added.part = part_by_height(mid_y, (top * s, bottom * s))
+            section = main_part(pts, (person_box[0], person_box[1]))
+            if section:
+                added.part = section
                 added_by_part += 1
         written += 1
     out = pathlib.Path(args.out)
