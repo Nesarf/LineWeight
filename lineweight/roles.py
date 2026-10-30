@@ -211,6 +211,16 @@ def heavier_than(part: str, other: str) -> bool | None:
 TIER_ROLES: tuple[str, ...] = ('shadow', 'contour')
 
 
+#: **The coarse tiers a position rule can give.** `part_by_height` in `tools/edge_strokes.py` knows only where a line sits,
+#: not what it draws: it can say `head`, never `face` or `hair`. This maps those three words onto the tiers `PART_TIERS`
+#: uses, so a line filed by position can still be given a role -- with the understanding that everything in the head gets
+#: the face's treatment, hair included, and everything on the body gets the cloth's.
+#:
+#: **It is a mapping between two vocabularies and not a measurement**, which is why it is separate from `PART_TIERS`:
+#: adding `head` to a tier would have claimed the measurements covered a part nobody measured.
+COARSE_TIERS: dict[str, int] = {'head': 0, 'torso': 1, 'legs': 1}
+
+
 def role_for_part(part: str, allow_tier: bool = True) -> Role | None:
     """The role a named part is drawn in, **or None when nothing decides it.**
 
@@ -228,6 +238,8 @@ def role_for_part(part: str, allow_tier: bool = True) -> Role | None:
     if not allow_tier:
         return None
     tier = tier_of(part)
+    if tier is None:
+        tier = COARSE_TIERS.get(part)
     if tier is None or tier >= len(TIER_ROLES):
         return None
     return ROLES[TIER_ROLES[tier]]
