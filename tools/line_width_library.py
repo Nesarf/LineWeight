@@ -15,6 +15,7 @@ drawing's typical width. That is a property of the ink and nothing else -- no br
     python tools/line_width_library.py --glob "E:\\DaShaoHuo\\downloads\\pixiv-senga\\*.jpg" --limit 12
 """
 import argparse
+import json
 import pathlib
 import sys
 
@@ -48,15 +49,33 @@ def ink_mask(gray):
 
 
 def figure_box(mask):
-    """The rows and columns the ink occupies, which is the figure's own extent."""
-    rows = np.flatnonzero(mask.any(axis=1))
-    cols = np.flatnonzero(mask.any(axis=0))
+    """The figure's extent, taken from **the largest connected mass of ink** rather than from all of it.
+
+    **The bounding box of every ink pixel is not the figure.** A drawing with a decorative border, a dense background or a
+    stray mark in a corner has ink at every edge of the page, so its box is the page -- and every width divided by that box
+    comes out too small. A corpus gathered by a search tag contains many such drawings: the one that exposed this had a
+    small character in a white oval surrounded by cross-and-dot ornament, and its "figure height" came out as the whole
+    image, which is why a survey of forty drawings reported a spread of nearly four times.
+
+    **The largest single mass is the figure** in a character drawing, because head, body and hair are one connected shape
+    while ornament is separate. It fails when the character is drawn as disconnected pieces and the background is one
+    connected field, so the returned box is a guess with a reason, not a fact.
+    """
+    labelled, count = ndimage.label(mask)
+    if count == 0:
+        return None
+    sizes = np.bincount(labelled.ravel())
+    sizes[0] = 0
+    biggest = int(sizes.argmax())
+    mass = labelled == biggest
+    rows = np.flatnonzero(mass.any(axis=1))
+    cols = np.flatnonzero(mass.any(axis=0))
     if rows.size == 0 or cols.size == 0:
         return None
     return int(rows[0]), int(rows[-1]), int(cols[0]), int(cols[-1])
 
 
-def widths_of(path, long_side=1600, subpixel=True):
+def widths_of(path, long_side=1600, subpixel=True, regions=None):
     image = Image.open(path).convert('L')
     scale = min(1.0, long_side / float(max(image.size)))
     if scale < 1.0:
@@ -71,15 +90,17 @@ def widths_of(path, long_side=1600, subpixel=True):
     # **The skeleton, so the width is sampled on the line rather than in the ink's interior.** Sampled anywhere in the
     # mask, a thick patch would contribute its middle and a hairline its own -- the two would not be comparable.
     skeleton = cl.thin(mask.astype(np.uint8)).astype(bool)
+    ys, xs = np.nonzero(skeleton)
     if subpixel:
         widths = subpixel_widths(gray, mask, skeleton)
     else:
         distance = ndimage.distance_transform_edt(mask)
         widths = 2.0 * distance[skeleton]
-    widths = widths[widths > 0]
+    keep = widths > 0
+    ys, xs, widths = ys[keep], xs[keep], widths[keep]
     if widths.size < 20:
         return None
-    return {
+    result = {
         'name': pathlib.Path(path).name,
         'size': image.size,
         'figure_height': height,
@@ -88,6 +109,32 @@ def widths_of(path, long_side=1600, subpixel=True):
         'p10': float(np.percentile(widths, 10)) / height,
         'p90': float(np.percentile(widths, 90)) / height,
     }
+    if regions:
+        result['by_part'] = {part: assign(ys, xs, widths, spans, image.size) for part, spans in regions.items()}
+    return result
+
+
+def assign(ys, xs, widths, spans, size):
+    """The widths of the skeleton points that fall inside one part's boxes.
+
+    **A box, not a traced part.** Labelling which stroke is an eyelash would need a human or a model per stroke; a box
+    says "this region of the picture is the eye" and lets every skeleton point inside answer for it. It is coarser than the
+    convention's vocabulary and precise enough for the only question being asked -- whether two parts have different
+    typical widths.
+    """
+    width_px, height_px = size
+    inside = np.zeros(ys.shape, dtype=bool)
+    for box in spans:
+        x0, y0, x1, y1 = box
+        inside |= ((xs >= x0 * width_px) & (xs <= x1 * width_px)
+                   & (ys >= y0 * height_px) & (ys <= y1 * height_px))
+    chosen = widths[inside]
+    if chosen.size == 0:
+        return None
+    return {'count': int(chosen.size),
+            'median': float(np.median(chosen)),
+            'p10': float(np.percentile(chosen, 10)),
+            'p90': float(np.percentile(chosen, 90))}
 
 
 def subpixel_widths(gray, mask, skeleton, half=7):
@@ -135,7 +182,15 @@ def main():
     ap.add_argument('--max-ratio', type=float, default=6.0,
                     help='reject a drawing whose p90 is this many times its median; a line drawing stays inside the '
                          'range the corpus measured, while a dark garment fills a whole region')
+    ap.add_argument('--regions', default='',
+                    help='a JSON file of {part: [[x0,y0,x1,y1], ...]} with the boxes as fractions of the image, so the '
+                         'widths can be reported by part of the body rather than as one pooled number')
     args = ap.parse_args()
+
+    regions = None
+    if args.regions:
+        regions = json.loads(pathlib.Path(args.regions).read_text(encoding='utf-8'))
+        print('  parts: %s' % ', '.join(sorted(regions)))
 
     folder = pathlib.Path(args.glob).parent
     files = sorted(folder.glob(pathlib.Path(args.glob).name))[:args.limit]
@@ -144,7 +199,7 @@ def main():
     rejected = []
     for path in files:
         try:
-            result = widths_of(path, args.long_side)
+            result = widths_of(path, args.long_side, regions=regions)
         except Exception as problem:  # a corrupt or unusual file must not stop the survey
             print('  %-26s %s' % (path.name[:26], problem))
             continue
@@ -178,6 +233,36 @@ def main():
               % (np.median(ratios), ratios.min(), ratios.max()))
         print('  in head heights (assuming %s heads): typical line is %.3f%% of a head'
               % (HEADS, 100 * np.median(medians) * HEADS))
+
+        if regions:
+            # **The only question this table has to answer.** If two parts of a body do not have different typical widths,
+            # then "what line for what part" is not a table at all and the whole exercise is a way of writing down a
+            # number that carries no information. The threshold is a ratio of medians, so it does not depend on how large
+            # the drawings are or on the units.
+            pooled = {}
+            for row in rows:
+                for part, stats in (row.get('by_part') or {}).items():
+                    if stats:
+                        pooled.setdefault(part, []).append(stats['median'])
+            print()
+            print('  %-16s %5s %12s %12s' % ('part', 'n', 'median', 'as head %'))
+            summary = {}
+            for part in sorted(pooled):
+                values = np.array(pooled[part])
+                summary[part] = float(np.median(values))
+                print('  %-16s %5d %11.4f%% %11.3f%%'
+                      % (part, values.size, 100 * np.median(values),
+                         100 * np.median(values) * HEADS / np.median(medians) if np.median(medians) else 0))
+            if len(summary) >= 2:
+                low = min(summary.values())
+                high = max(summary.values())
+                print()
+                print('  widest part is %.2f x the narrowest (%s over %s)'
+                      % (high / max(low, 1e-9),
+                         ', '.join(p for p, v in summary.items() if v == high),
+                         ', '.join(p for p, v in summary.items() if v == low)))
+                print('  %s the 1.5x threshold that would make a part table worth having'
+                      % ('PASSES' if high / max(low, 1e-9) >= 1.5 else 'FAILS'))
     return 0
 
 
