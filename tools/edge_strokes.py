@@ -98,7 +98,7 @@ def width_and_ink(points, gap_colour, gap_light, scale):
     h, w = gap_colour.shape
     ok = (ys >= 0) & (ys < h) & (xs >= 0) & (xs < w)
     if not ok.any():
-        return W_FINE * scale, COLOUR_FINE
+        return W_FINE * scale, COLOUR_FINE, 0.0
     # **One fancy index instead of a loop of scalars.** `gap_colour[iy, ix]` in Python costs a few microseconds a sample
     # and there are tens of thousands of samples; indexing with two arrays is one call.
     colour = float(np.median(gap_colour[ys[ok], xs[ok]]))
@@ -110,7 +110,12 @@ def width_and_ink(points, gap_colour, gap_light, scale):
         ink = COLOUR_MIDDLE
     else:
         ink = COLOUR_FINE
-    return width, ink
+    # **The lightness gap is returned rather than dropped.** It sits in `gap_light` from the call, was collected in the
+    # first version of this function and thrown away, and it turns out to be the best single predictor of whether a
+    # boundary is a line at all: measured against the artist's own lines it lifts precision from 39.8 to 50.7 per cent at
+    # a cost of 11.5 points of recall, and it beats the colour gap at every operating point.
+    light_gap = float(np.median(gap_light[ys[ok], xs[ok]]))
+    return width, ink, light_gap
 
 
 def main():
@@ -127,6 +132,12 @@ def main():
     ap.add_argument('--prune-reach', type=float, default=25.0)
     ap.add_argument('--prune-angle', type=float, default=20.0)
     ap.add_argument('--merge-reach', type=float, default=18.0)
+    ap.add_argument('--min-light-gap', type=float, default=0.0,
+                    help='drop boundaries whose lightness difference across them is below this. Zero keeps everything. '
+                         'Measured against a reference drawing\'s own lines: 0.04 lifts the share of drawn lines that land '
+                         'on a real one from 39.8%% to 50.7%% and costs 11.5 points of coverage, and it beats the colour '
+                         'gap at every operating point. Length was tried as a second filter and made it worse, because '
+                         'short strokes are eyelashes and long ones are joins the artist did not draw')
     ap.add_argument('--merge-angle', type=float, default=35.0)
     ap.add_argument('--all-joins', action='store_true',
                     help='draw every boundary; by default only those the coarser cut also sees, measured to keep 46 per '
@@ -226,7 +237,9 @@ def main():
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
-        width, ink = width_and_ink(pts, gap_colour, gap_light, s)
+        width, ink, light_gap = width_and_ink(pts, gap_colour, gap_light, s)
+        if light_gap < args.min_light_gap:
+            continue
         scaled = [(x * s, y * s) for x, y in pts]
         record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
                                     width_profile=[width] * len(scaled))
