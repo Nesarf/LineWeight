@@ -346,6 +346,32 @@ def test_a_named_part_beats_a_tier():
     assert roles.role_for_part('under_nose').name == 'shadow'
 
 
+def test_a_rig_word_reaches_the_measured_word_for_the_same_part():
+    """**Two vocabularies, one answer.** A rig calls a part `skirt` or `ahoge`; the measurements call it `cloth` or
+    `hair`. Where the two plainly name the same thing, the translation lets a line filed by bone get a role.
+    """
+    assert roles.role_for_part('skirt').name == 'contour'
+    assert roles.role_for_part('ahoge').name == 'contour'
+    assert roles.role_for_part('toe').name == 'contour'
+    assert roles.role_for_part('skirt').name == roles.role_for_part('cloth').name
+
+
+def test_a_rig_word_with_no_measured_counterpart_answers_nothing():
+    """**The gap is the finding.** The arms and hands have no word in `PART_TIERS`: the corpus was measured on whole
+    figures and the arm was never one of the parts compared. Borrowing the cloth's role here would turn "nobody measured
+    this" into an answer that looks like every other line, which is exactly what the None return exists to prevent.
+    """
+    for part in ('upper', 'lower', 'hand', 'thumb', 'index', 'ear', 'bag'):
+        assert roles.role_for_part(part) is None, part
+
+
+def test_every_translated_word_lands_in_a_measured_tier():
+    """An alias pointing at a word no tier holds would return None while looking like a translation that worked."""
+    for family, alias in roles.BONE_FAMILIES.items():
+        assert roles.tier_of(alias) is not None, '%r maps to %r, which no tier holds' % (family, alias)
+        assert roles.role_for_part(family) is not None, family
+
+
 def a_project_with_two_parts():
     from lineweight import core, project
     p = project.Project(width=200, height=200)

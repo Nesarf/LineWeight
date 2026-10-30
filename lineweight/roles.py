@@ -221,6 +221,33 @@ TIER_ROLES: tuple[str, ...] = ('shadow', 'contour')
 COARSE_TIERS: dict[str, int] = {'head': 0, 'torso': 1, 'legs': 1}
 
 
+#: **A rig's word for a part, mapped onto the six words the measurements use.** A model names 30 families because that
+#: is how many parts are worth moving -- `hair` alone is 134 bones -- while `PART_TIERS` names six because those six are
+#: what an illustrator's drawing was measured on. This translates the first onto the second wherever the correspondence
+#: is plain, and **leaves the rest out on purpose**.
+#:
+#: **What is absent is the finding.** The arms and the hands have no word in `PART_TIERS` at all: the corpus was measured
+#: on full-body drawings, and "the arm" was never one of the parts compared. So `upper`, `lower`, `hand` and the five
+#: fingers are not here -- a line on an arm then has a position and no role. On the first render measured that gap is
+#: **16 per cent of the line**, which is why it is written down rather than papered over with `cloth`.
+#:
+#: **`ear` and `bag` are absent for the same reason as the arms**: bones that exist, parts that nobody measured.
+BONE_FAMILIES: dict[str, str] = {
+    'face': 'face',
+    'eye': 'eye',
+    'hair': 'hair',
+    'ahoge': 'hair',
+    'cloth': 'cloth',
+    'skirt': 'cloth',
+    'ribbon': 'cloth',
+    'belt': 'cloth',
+    'chest': 'cloth',
+    'leg': 'leg',
+    'foot': 'boot',
+    'toe': 'boot',
+}
+
+
 def role_for_part(part: str, allow_tier: bool = True) -> Role | None:
     """The role a named part is drawn in, **or None when nothing decides it.**
 
@@ -240,6 +267,13 @@ def role_for_part(part: str, allow_tier: bool = True) -> Role | None:
     tier = tier_of(part)
     if tier is None:
         tier = COARSE_TIERS.get(part)
+    if tier is None:
+        # **A rig's word translated into a measured one, and only where the two name the same thing.** The absence list
+        # in `BONE_FAMILIES` is load-bearing: an arm falls through to None, which is the honest answer, rather than
+        # borrowing the cloth's role because it is also "not the head".
+        alias = BONE_FAMILIES.get(part)
+        if alias is not None:
+            tier = tier_of(alias)
     if tier is None or tier >= len(TIER_ROLES):
         return None
     return ROLES[TIER_ROLES[tier]]

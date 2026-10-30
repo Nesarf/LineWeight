@@ -18,6 +18,7 @@ is a different fact from one hair bone holding nine hundred, and the family line
 
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -25,9 +26,14 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-sys.path.insert(0, __file__.rsplit('\\', 1)[0])
+TOOLS = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(TOOLS)
+sys.path.insert(0, TOOLS)
+sys.path.insert(0, ROOT)
+
 from copy_linework import thin
 from line_width_library import line_mask
+from lineweight.roles import role_for_part
 
 
 def read_render(path):
@@ -80,9 +86,25 @@ def nearest_bone(points, heads, tails, chunk=2048):
 
 
 def family_of(name):
-    """The part family a bone belongs to: `Hair_Pony_1` -> `hair`, `Upper_arm.L` -> `upper`."""
-    word = re.split(r'[_.\s]', name)[0]
-    return word.lower()
+    """The part family a bone belongs to: `Hair_Pony_1` -> `hair`, `RightEye` -> `eye`.
+
+    **Two naming styles sit in one rig.** `Upper_arm.L` separates with underscores; `RightEye` runs the words together
+    with no separator at all. The first version took whatever stood before the first separator, which turned `RightEye`
+    into a family called `righteye` -- a name that matches nothing, so the eye's line came back with no role while the
+    word `eye` sat in the table the whole time. A false `none` is worse than a missing measurement: it says the corpus
+    has no word for the eye.
+
+    The side word is dropped because it says where the part is, not what it is, so `RightEye` and `LeftEye` both arrive
+    at `eye` while `Upper_arm.L` keeps `upper`.
+    """
+    words = [w for w in re.split(r'[_.\s]', name) if w]
+    if len(words) == 1:
+        words = re.findall(r'[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+', words[0]) or words
+    side = {'left', 'right', 'l', 'r'}
+    for word in words:
+        if word.lower() not in side:
+            return word.lower()
+    return words[0].lower() if words else ''
 
 
 def main():
@@ -120,11 +142,19 @@ def main():
         group[0] += 1
         group[1] += int(count)
     ranked = sorted(families.items(), key=lambda item: item[1][1], reverse=True)
-    print('  %-16s %6s %8s %8s' % ('family', 'bones', 'points', 'share'))
-    for family, (bones, count) in ranked[:16]:
+    covered = sum(count for family, (_b, count) in ranked if role_for_part(family) is not None)
+    total = sum(count for _f, (_b, count) in ranked)
+    print('  %-12s %5s %7s %6s  %s' % ('family', 'bones', 'points', 'share', 'role'))
+    for family, (bones, count) in ranked:
         if count == 0:
             continue
-        print('  %-16s %6d %8d %7.1f%%' % (family, bones, count, 100.0 * count / len(points)))
+        role = role_for_part(family)
+        print('  %-12s %5d %7d %5.1f%%  %s'
+              % (family, bones, count, 100.0 * count / len(points), role.name if role else 'none'))
+    # **The uncovered share is the measurement, not a rounding error.** A family that falls through to `none` is a part
+    # the rig can name and the corpus never compared, so a line there has a position and no role.
+    print('  the measured words cover %.1f%% of the line; %.1f%% has a position and no role'
+          % (100.0 * covered / total if total else 0.0, 100.0 * (total - covered) / total if total else 0.0))
     empty = sum(1 for _family, (_bones, count) in ranked if count == 0)
     print('  families with no line at all: %d of %d' % (empty, len(ranked)))
     attributed = np.bincount(index[near], minlength=len(names))
