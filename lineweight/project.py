@@ -151,19 +151,25 @@ class Mark:
     # carry both a collar and a cuff. **The part is what the role table is keyed on**, so a mark that names one can be
     # given a role by measurement (`roles.role_for_part`) instead of by a human deciding per stroke.
     part: str = ''
+    # **And every part the mark passes through, when it passes through more than one.** A line drawn along an eyelid and
+    # out onto the fringe belongs to both, and forcing either one onto it is how a measurement turns into a claim it
+    # cannot support. Neither field is derived from the other: a mark may name a part and pass through several, or pass
+    # through parts and name none.
+    parts: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {'id': self.id, 'kind': self.kind, 'stage': self.stage, 'seq': self.seq,
                 'geometry': self.geometry, 'appearance': self.appearance,
                 'provenance': self.provenance, 'state': self.state, 'layer': self.layer,
-                'part': self.part}
+                'part': self.part, 'parts': list(self.parts)}
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Mark':
         return cls(id=d['id'], kind=d['kind'], stage=d['stage'], seq=d['seq'],
                    geometry=d.get('geometry', {}), appearance=d.get('appearance', {}),
                    provenance=d.get('provenance', {}), state=d.get('state', LIVE),
-                   layer=d.get('layer', ''), part=d.get('part', ''))
+                   layer=d.get('layer', ''), part=d.get('part', ''),
+                   parts=tuple(d.get('parts', ())))
 
 
 @dataclass

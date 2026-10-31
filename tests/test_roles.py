@@ -414,3 +414,20 @@ def test_the_assignment_can_be_limited_to_what_the_books_name():
     assert assigned == {}
     assert undecided == ['face', 'left_ear']
     assert first.geometry.get('role', '') == ''
+
+
+def test_a_mark_can_carry_the_parts_it_passes_through(tmp_path):
+    """**A line crossing from an eyelid onto the fringe belongs to both.** Forcing one of them onto it turns a measurement
+    into a claim; leaving it unanswered loses the eyelid's only evidence. So `part` stays empty when there is no single
+    answer, `parts` records what the run touched, and both survive the file.
+    """
+    out = Project(width=200, height=200)
+    carried = out.add_stroke(stroke_record([(10, 10), (180, 180)], 'ink', seed=1), stage='line')
+    carried.part = ''
+    carried.parts = ('eye', 'hair')
+    path = str(tmp_path / 'crossing.json')
+    save_project(out, path)
+    again = load_project(path)
+    mark = again.live()[0]
+    assert mark.part == '', 'a run that touched two parts must not claim one of them'
+    assert mark.parts == ('eye', 'hair')

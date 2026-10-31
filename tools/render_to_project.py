@@ -288,32 +288,40 @@ def main():
         one = family_of(names[int(first)])
         other = family_of(names[int(last)])
         if one == other:
-            chosen.append(one)
+            chosen.append((one,))
         else:
-            chosen.append(None)
+            chosen.append((one, other))
             crossing += 1
 
     families = {}
     lengths = {}
+    shared = {}
     written = 0
     for i, seg in enumerate(kept):
-        family = chosen[i]
-        if family is None:
-            continue
-        # **Length rather than point count.** A run is a pixel chain, so its length is its number of pixels; counting
-        # sampled control points would weight a straight run and a wiggly one differently for no reason.
-        lengths[family] = lengths.get(family, 0) + len(seg)
+        touched = chosen[i]
+        # **One part only when the run touched one.** A run that crosses keeps `parts` and leaves `part` empty: `part`
+        # drives the role table, and there is no single role for a line that is half eyelid and half fringe. Its length
+        # is shared between the parts it touched, which is what the drawing itself does -- the ink belongs to both.
+        family = touched[0] if len(touched) == 1 else ''
+        if family:
+            # **Length rather than point count.** A run is a pixel chain, so its length is its number of pixels;
+            # counting sampled control points would weight a straight run and a wiggly one differently for nothing.
+            lengths[family] = lengths.get(family, 0) + len(seg)
+        else:
+            for name in touched:
+                shared[name] = shared.get(name, 0) + len(seg) / float(len(touched))
         points = simplify([(float(x) * scale, float(y) * scale) for y, x in seg], 0.9)
         if len(points) < 2:
             continue
         samples = 6 * (len(points) - 1) + 1
         record = core.stroke_record(points, 'fine', seed=i, resolution=6,
                                     width_profile=[RENDER_WIDTH * scale] * samples)
-        mark = page.add_stroke(record, stage='line', layer='ink',
-                               note='%s near %s' % (family, chosen[i]))
+        mark = page.add_stroke(record, stage='line', layer='ink', note='+'.join(touched))
         mark.part = family
+        mark.parts = touched
         written += 1
-        families[family] = families.get(family, 0) + 1
+        if family:
+            families[family] = families.get(family, 0) + 1
 
     assigned, undecided = page.assign_roles_by_part()
     print('  marks       %d written, %d got a role, %d crossing two parts'
@@ -341,6 +349,15 @@ def main():
         print('  %-12s %6d %8d %8.1f %6.1f%%  %s'
               % (family, count, total, total / count, 100.0 * total / total_length,
                  role.name if role else 'none'))
+
+    if shared:
+        # **The crossing runs get their own table.** They are the ones no single part can claim, and sharing their length
+        # between the parts they touch is what lets the table speak about an eyelid at all: it had no marks before, and
+        # now it has a share of every run that leaves the eye and ends on the fringe.
+        total_shared = sum(shared.values()) or 1.0
+        print('  %-12s %8s %7s' % ('shared', 'length', 'share'))
+        for name, value in sorted(shared.items(), key=lambda pair: pair[1], reverse=True):
+            print('  %-12s %8.0f %6.1f%%' % (name, value, 100.0 * value / total_shared))
 
     out = os.path.abspath(args.out)
     folder = os.path.dirname(out)
