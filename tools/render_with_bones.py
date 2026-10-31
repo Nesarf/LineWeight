@@ -198,6 +198,12 @@ def main():
                 'head_px': [round(head_view.x * width, 1), round((1.0 - head_view.y) * height, 1)],
                 'tail_px': [round(tail_view.x * width, 1), round((1.0 - tail_view.y) * height, 1)],
                 'head_uv': [round(head_view.x, 4), round(1.0 - head_view.y, 4)],
+                # **The depth, because two parts can share a pixel and differ here.** A fringe standing in front of an eye
+                # projects onto the eye's pixels; the 2D distance then says "the fringe is nearer" while the drawing shows
+                # the lid, which is visible precisely because the fringe is not there. Depth is what separates them, and
+                # the renderer already computed it -- it was simply not written down.
+                'head_z': round(head_view.z, 4),
+                'tail_z': round(tail_view.z, 4),
                 'visible': bool(visible),
             }
 
