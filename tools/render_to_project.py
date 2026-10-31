@@ -178,17 +178,36 @@ def main():
     page = project.Project(width=int(round(size[0] * scale)), height=int(round(size[1] * scale)),
                            title='lines from %s' % os.path.basename(args.render))
 
-    # **One bone per mark, decided by the mark's middle.** A mark is short by construction -- the trace splits at every
-    # junction -- so its middle is inside its own span, and the segment distance then measures a point to a limb rather
-    # than to an infinitely long axis.
-    middles = np.asarray([[seg[len(seg) // 2][1], seg[len(seg) // 2][0]] for seg in kept], dtype=np.float64)
-    index, distance = nearest_bone(middles, heads, tails)
+    # **A run is filed only when both of its ends agree on the part.** Three rules were tried and two failed in ways worth
+    # recording. The middle: `eye` got nothing, because the run holding the lid's pixels had its middle out on the hair.
+    # The vote: `skirt` fell from 10217 to 6333 px and `lower` rose from 1829 to 5860, because a skirt contour that sweeps
+    # past the legs spends most of its pixels near them -- a majority is a majority of pixels, not of meaning.
+    #
+    # So neither one point nor a majority settles it. A run whose two ends land in different families is counted as
+    # crossing and left without a part, which is the same choice `role_for_part` makes when it returns None: a part nobody
+    # has decided about must not be filled in with the part that happens to touch it most.
+    ends = np.asarray([[seg[0][1], seg[0][0]] for seg in kept]
+                      + [[seg[-1][1], seg[-1][0]] for seg in kept], dtype=np.float64)
+    end_index, _distance = nearest_bone(ends, heads, tails)
+    half = len(kept)
+    chosen = []
+    crossing = 0
+    for first, last in zip(end_index[:half], end_index[half:]):
+        one = family_of(names[int(first)])
+        other = family_of(names[int(last)])
+        if one == other:
+            chosen.append(one)
+        else:
+            chosen.append(None)
+            crossing += 1
 
     families = {}
     lengths = {}
     written = 0
-    for i, (seg, which) in enumerate(zip(kept, index)):
-        family = family_of(names[int(which)])
+    for i, seg in enumerate(kept):
+        family = chosen[i]
+        if family is None:
+            continue
         # **Length rather than point count.** A run is a pixel chain, so its length is its number of pixels; counting
         # sampled control points would weight a straight run and a wiggly one differently for no reason.
         lengths[family] = lengths.get(family, 0) + len(seg)
@@ -199,13 +218,14 @@ def main():
         record = core.stroke_record(points, 'fine', seed=i, resolution=6,
                                     width_profile=[RENDER_WIDTH * scale] * samples)
         mark = page.add_stroke(record, stage='line', layer='ink',
-                               note='%s near %s' % (family, names[int(which)]))
+                               note='%s near %s' % (family, chosen[i]))
         mark.part = family
         written += 1
         families[family] = families.get(family, 0) + 1
 
     assigned, undecided = page.assign_roles_by_part()
-    print('  marks       %d written, %d got a role' % (written, len(assigned)))
+    print('  marks       %d written, %d got a role, %d crossing two parts'
+          % (written, len(assigned), crossing))
     if undecided:
         # **Grouped by part rather than listed per mark**, because the list is the finding and a list of one word
         # repeated twenty times hides it: these are the parts the corpus never compared, and how many marks each one
