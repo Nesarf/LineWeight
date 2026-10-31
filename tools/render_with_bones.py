@@ -15,6 +15,7 @@ front of the camera. A bone behind the camera reports `visible: false` rather th
 
 import json
 import math
+import os
 import sys
 
 import bpy
@@ -88,10 +89,79 @@ def configure_freestyle(scene):
     lineset.linestyle.thickness = 2.0
 
 
+def camera_depth_range(scene):
+    """The nearest and furthest camera-space depth any bone reaches, which is the range a depth image should cover.
+
+    **The range has to come from the figure, not from the clip.** Mapped over `clip_start..clip_end` the whole character
+    occupies a few of the 65536 levels a 16-bit PNG offers, and the difference depth has to resolve -- 0.09 between an eye
+    and the hair bone behind it -- would be two or three levels. Mapped over the bones' own span, 3.7451 to 3.9898 here,
+    that difference is thousands of levels.
+    """
+    # **The camera's matrix has to be current before it can project anything.** When this tool builds its own camera it
+    # sets `location` and `rotation_euler`, and `matrix_world` is only recomputed when the view layer updates -- which
+    # `render()` does, so the picture came out right while this scan saw a camera still sitting at the origin. Every one of
+    # the 720 bone ends came back with a negative depth and the depth image was skipped without a word.
+    bpy.context.view_layer.update()
+    depths = []
+    armatures = 0
+    for obj in scene.objects:
+        if obj.type != 'ARMATURE':
+            continue
+        armatures += 1
+        for bone in obj.data.bones:
+            for point in (bone.head_local, bone.tail_local):
+                view = world_to_camera_view(scene, scene.camera, obj.matrix_world @ point)
+                if view.z > 0.0:
+                    depths.append(view.z)
+    print('DEPTH range: %d armatures in scene, %d bone ends in front of the camera'
+          % (armatures, len(depths)))
+    if not depths:
+        return None
+    return min(depths), max(depths)
+
+
+def configure_depth(scene, out_png, span):
+    """Write a depth image beside the picture, mapped onto the bones' own range.
+
+    **Depth is what separates a fringe from the lid underneath it.** Two parts can share a pixel and differ here: the eye
+    sits at 3.8196 and the hair bone that had been taking its points at 3.9110, so that bone is behind the eye and cannot
+    have been occluding it. The renderer computes this already; the work is only to get it onto disk in a format that can
+    be read back. No EXR library is installed on this machine, so it is a 16-bit PNG with the range written into the JSON
+    beside it -- 0 is `low`, 1 is `high`.
+    """
+    low, high = span
+    margin = (high - low) * 0.02 + 1e-4
+    scene.view_layers[0].use_pass_z = True
+    scene.use_nodes = True
+    tree = scene.node_tree
+    for node in list(tree.nodes):
+        tree.nodes.remove(node)
+    layers = tree.nodes.new('CompositorNodeRLayers')
+    spread = tree.nodes.new('CompositorNodeMapRange')
+    spread.inputs['From Min'].default_value = low - margin
+    spread.inputs['From Max'].default_value = high + margin
+    spread.inputs['To Min'].default_value = 0.0
+    spread.inputs['To Max'].default_value = 1.0
+    tree.links.new(layers.outputs['Depth'], spread.inputs['Value'])
+    sink = tree.nodes.new('CompositorNodeOutputFile')
+    sink.base_path = os.path.dirname(out_png) or '.'
+    sink.file_slots[0].path = os.path.splitext(os.path.basename(out_png))[0] + '-depth-'
+    sink.format.file_format = 'PNG'
+    sink.format.color_depth = '16'
+    tree.links.new(spread.outputs['Value'], sink.inputs[0])
+    # **The settings are printed because the failure is silent.** The first run wrote the picture and the JSON and no
+    # depth image at all, with nothing on stdout to say why: a compositor output that never fires looks exactly like one
+    # that fired into the wrong place.
+    print('DEPTH span %.4f..%.4f  base %r  slot %r  nodes %d  compositing %s'
+          % (low - margin, high + margin, sink.base_path, sink.file_slots[0].path,
+             len(tree.nodes), bool(scene.render.use_compositing)))
+
+
 def main():
     args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     lineart = False
     freestyle = False
+    depth = False
     page_w, page_h = 1024, 1536
     if '--lineart' in args:
         args = [a for a in args if a != '--lineart']
@@ -99,6 +169,9 @@ def main():
     if '--freestyle' in args:
         args = [a for a in args if a != '--freestyle']
         freestyle = True
+    if '--depth' in args:
+        args = [a for a in args if a != '--depth']
+        depth = True
     if '--size' in args:
         # **Resolution is a parameter because it decides what the line is made of.** A freestyle line is about two
         # pixels wide whatever the page size, so on a 1024 page a diagonal stroke is a two pixel staircase and thinning
@@ -180,6 +253,11 @@ def main():
             background.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
             background.inputs['Strength'].default_value = 1.0
         scene.render.film_transparent = False
+    depth_span = camera_depth_range(scene) if depth else None
+    if depth_span:
+        configure_depth(scene, out_png, depth_span)
+    else:
+        print('DEPTH skipped: requested=%s span=%r' % (depth, depth_span))
     bpy.ops.render.render(write_still=True)
 
     width = scene.render.resolution_x * scene.render.resolution_percentage / 100.0
@@ -207,8 +285,19 @@ def main():
                 'visible': bool(visible),
             }
 
+    payload = {'source': source, 'size': [width, height], 'armatures': bones}
+    if depth_span:
+        low, high = depth_span
+        margin = (high - low) * 0.02 + 1e-4
+        # **The range goes in the JSON because the PNG cannot carry it.** A 16-bit PNG holds a number from 0 to 65535;
+        # which depth that number means is a property of the render, not of the file, so it travels beside the file.
+        payload['depth'] = {
+            'low': round(low - margin, 4),
+            'high': round(high + margin, 4),
+            'note': 'a 16-bit PNG beside the picture maps low to 0 and high to 1',
+        }
     with open(out_json, 'w', encoding='utf-8') as handle:
-        json.dump({'source': source, 'size': [width, height], 'armatures': bones}, handle, ensure_ascii=False, indent=1)
+        json.dump(payload, handle, ensure_ascii=False, indent=1)
     total = sum(len(group) for group in bones.values())
     print('RENDERED %s' % out_png)
     print('BONES %d in %d armature(s) -> %s' % (total, len(bones), out_json))
