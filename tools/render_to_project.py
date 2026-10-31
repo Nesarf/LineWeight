@@ -13,11 +13,14 @@ than the picture it copies. A 1024x1536 render is therefore traced at 2880.
 """
 
 import argparse
+import glob
+import json
 import os
 import subprocess
 import sys
 
 import numpy as np
+from PIL import Image
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(TOOLS)
@@ -108,6 +111,71 @@ def stitch(segments, gap=2.0, straight=0.5, rounds=20):
     return [path for path in paths if len(path) >= 2]
 
 
+def read_bone_depth(path):
+    """Each bone's camera-space depth at both ends, in the order `read_bones` returns the bones.
+
+    Kept beside `read_bones` rather than folded into it, so that tool's return shape does not change for the callers that
+    only want positions.
+    """
+    with open(path, encoding='utf-8') as handle:
+        data = json.load(handle)
+    head, tail = [], []
+    for armature in data['armatures'].values():
+        for bone in armature.values():
+            if not bone.get('visible', True):
+                continue
+            head.append(float(bone.get('head_z', 0.0)))
+            tail.append(float(bone.get('tail_z', 0.0)))
+    return np.asarray(head, dtype=np.float64), np.asarray(tail, dtype=np.float64)
+
+
+def read_depth_image(path, low, high):
+    """The surface depth under every pixel.
+
+    The render writes this as a PNG whose channel runs 0 at `low` to 1 at `high`, at 8 bits rather than the 16 asked for —
+    see `AESTHETIC-LIBRARY.md` 4.30 for why that was left alone. Eight bits resolves 0.0024 across this range, and the
+    difference the route needs is 0.09. The frame also came back with four channels, so the first is taken.
+    """
+    image = Image.open(path)
+    raw = np.asarray(image).astype(np.float64)
+    if raw.ndim == 3:
+        raw = raw[:, :, 0]
+    divisor = 65535.0 if raw.max() > 255.0 else 255.0
+    return low + (raw / divisor) * (high - low)
+
+
+def nearest_bone_in_depth(points, heads, tails, head_z, tail_z, surface, chunk=2048):
+    """The nearest bone when the distance is measured in three dimensions.
+
+    **Depth enters as a distance, not as a filter.** A bone behind the surface the camera sees is further away in three
+    dimensions even while it is nearer in two — which is exactly the fringe over an eye: its bone is 0.09 behind the eye,
+    so it cannot be the surface the drawing shows, and yet it wins on 2D distance. `hypot(flat, |z_bone - z_surface|)`
+    orders the candidates the way the eye would.
+
+    Filtering out bones behind the surface was rejected, because at an outline the surface a pixel shows is the side of
+    the form, and a bone lying below that side is legitimately part of the same part.
+    """
+    ab = tails - heads
+    denom = np.maximum((ab ** 2).sum(axis=1), 1e-9)
+    index = np.empty(len(points), dtype=np.int32)
+    distance = np.empty(len(points), dtype=np.float64)
+    height, width = surface.shape
+    for start in range(0, len(points), chunk):
+        block = points[start:start + chunk]
+        ap = block[:, None, :] - heads[None, :, :]
+        t = np.clip((ap * ab[None, :, :]).sum(axis=2) / denom[None, :], 0.0, 1.0)
+        closest = heads[None, :, :] + t[:, :, None] * ab[None, :, :]
+        flat = np.linalg.norm(block[:, None, :] - closest, axis=2)
+        along = head_z[None, :] + t * (tail_z - head_z)[None, :]
+        ys = np.clip(block[:, 1].astype(np.int64), 0, height - 1)
+        xs = np.clip(block[:, 0].astype(np.int64), 0, width - 1)
+        under = surface[ys, xs][:, None]
+        total = np.hypot(flat, along - under)
+        index[start:start + chunk] = total.argmin(axis=1)
+        distance[start:start + chunk] = total.min(axis=1)
+    return index, distance
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--blend', help='a .blend to render first; the picture and the bones land beside --out')
@@ -124,6 +192,8 @@ def main():
                         help='how far apart two ends may be, as a share of the page long side; 0 turns stitching off')
     parser.add_argument('--stitch-straight', type=float, default=0.0,
                         help='cosine below which a join is a corner rather than a continuation')
+    parser.add_argument('--flat', action='store_true',
+                        help='ignore the depth image and file every run by 2D distance alone')
     parser.add_argument('--canvas-side', type=float, default=0.0, help='ask for a longer page than the rule gives')
     args = parser.parse_args()
 
@@ -153,6 +223,24 @@ def main():
     names, heads, tails, bone_size = read_bones(args.bones)
     if tuple(size) != tuple(bone_size):
         raise SystemExit('the render is %s but the bones were projected into %s' % (size, bone_size))
+
+    # **The surface depth, when the render left one beside the picture.** It is a separate file because it is a separate
+    # measurement: the bones say where a joint is, the image says what is in front of the camera there. Without it the
+    # assignment falls back to 2D distance, which is what every earlier run did.
+    surface = None
+    if not args.flat:
+        with open(args.bones, encoding='utf-8') as handle:
+            span = json.load(handle).get('depth')
+        if span:
+            found = sorted(glob.glob(os.path.splitext(args.render)[0] + '-depth-*.png'))
+            if found:
+                surface = read_depth_image(found[0], span['low'], span['high'])
+                print('  depth       %s, %.4f .. %.4f done by 3D distance'
+                      % (os.path.basename(found[0]), span['low'], span['high']))
+            else:
+                print('  depth       no image beside the render; distance stays 2D')
+        else:
+            print('  depth       the bones carry no depth; distance stays 2D')
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
     runs = trace(skeleton)
@@ -188,7 +276,11 @@ def main():
     # has decided about must not be filled in with the part that happens to touch it most.
     ends = np.asarray([[seg[0][1], seg[0][0]] for seg in kept]
                       + [[seg[-1][1], seg[-1][0]] for seg in kept], dtype=np.float64)
-    end_index, _distance = nearest_bone(ends, heads, tails)
+    if surface is None:
+        end_index, _distance = nearest_bone(ends, heads, tails)
+    else:
+        head_z, tail_z = read_bone_depth(args.bones)
+        end_index, _distance = nearest_bone_in_depth(ends, heads, tails, head_z, tail_z, surface)
     half = len(kept)
     chosen = []
     crossing = 0
