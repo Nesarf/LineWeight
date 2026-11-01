@@ -424,6 +424,8 @@ render_with_bones   .blend → 画面 + 骨骼的屏幕坐标与深度；--depth
 lines_to_bones      每条线归到最近的骨骼；量线量，并报出多少份额落不进那六个词
 render_to_project   渲染 → 工程：一条命令从 .blend 到带部位的工程；--flat 退回 2D 距离
 draw_part_boxes     把部位框画回图上，让标注在测量之前能被看见
+contour_breaks      一条轮廓被切成几段：数不同 mark 的端点靠得比 reach 还近的对数（是上限，不是判据）
+crop_box            从一张图里裁一块，让候选的错误在写下来之前被放大看过
 ```
 
 **已经有数且站得住的**：
