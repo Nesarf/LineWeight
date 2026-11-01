@@ -176,7 +176,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--labels', required=True, help='the area labels written beside the fills project')
     ap.add_argument('--meta', required=True)
-    ap.add_argument('--reference', required=True)
+    ap.add_argument('--reference',
+                    help='the source picture; optional when the meta file records it, which newer shape_pass writes')
     ap.add_argument('--out', required=True)
     ap.add_argument('--canvas-width', type=float, default=0)
     ap.add_argument('--canvas-height', type=float, default=0)
@@ -215,6 +216,13 @@ def main():
 
     labels = np.load(args.labels)
     meta = json.loads(pathlib.Path(args.meta).read_text(encoding='utf-8'))
+    # **The reference can come from the meta file, which is the only record of it.** Newer `shape_pass` writes the path
+    # there; older meta files do not carry it, so a missing flag has to be a sentence rather than `Image.open(None)`.
+    if not args.reference:
+        args.reference = meta.get('reference')
+        if not args.reference:
+            raise SystemExit('no --reference given, and %s does not name one; pass it explicitly, or regenerate that '
+                             'meta file with a shape_pass that records it' % pathlib.Path(args.meta).name)
     w, h = int(meta['cut'][0]), int(meta['cut'][1])
     if labels.shape != (h, w):
         print('  the labels are %s but the meta says %dx%d' % (labels.shape, w, h))

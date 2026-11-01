@@ -350,8 +350,13 @@ def main():
     labels_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(labels_path, labels)
     meta_path = stem.with_name('%s-meta.json' % stem.stem)
+    # **The reference path is recorded, because the next stage needs it and cannot infer it.** `edge_strokes` requires
+    # the picture to measure the lightness across a boundary, so a meta file that does not name its source makes the
+    # pipeline un-rerunnable from its own output. That is exactly what happened when the join was wired in: there was no
+    # way to run the line stage end to end, and the wiring stayed unproven.
     meta_path.write_text(json.dumps({'cut': [w, h], 'canvas': [width, height], 'scale': scale,
-                                     'levels': args.levels, 'blur': blur, 'min_area': area_threshold}),
+                                     'levels': args.levels, 'blur': blur, 'min_area': area_threshold,
+                                     'reference': str(pathlib.Path(args.reference))}),
                          encoding='utf-8')
     print('    areas written to %s' % labels_path.name)
 

@@ -1458,9 +1458,16 @@ after    4109 runs,  6945 pairs within 17.2 px
 **44% 是「上限」的减少量**，因为那 12327 对里本来就有真交界。但方向清楚：接笔把「两条不同 mark 的端点靠得很近」
 这件事减了将近一半。
 
-**要让那一步真跑起来，还需要补上一样**：`shapes-meta.json` 记下参考图路径；或者让 `edge_strokes` 的
-`--reference` 在 `--min-light-gap 0` 时变成可选。**在补上之前，那个新开关没有端到端跑过** —— 这一点写在这里，而不是
-留给别人去发现。
+**两处都补上了，而两侧都验过。** `shape_pass` 现在把参考图路径写进它的 meta；`edge_strokes` 的 `--reference`
+变成可选，缺的时候从 meta 读。
+
+```
+meta 不带 reference、不给 --reference   → 报说明：no --reference given, and shapes-meta.json does not name one
+meta 带 reference、不给 --reference     → 越过那一步，开始切割（29 秒跑到骨架与走线）
+```
+
+**但完整的端到端仍然没跑。** 那需要一次真正的 `shape_pass` 产出（配得上它自己的参考图），再接笔，再出图 —— 而这次
+验的只是「路径能从 meta 里拿到」，不是「接完笔的图画得更好」。**两件事，别混。**
 
 **两条 tissue_adhesion 是同一个机制**：两个特征之间的间隙小于色区量化的步长时，它们成为一个区域，那条边界就
 从来不是候选。手指之间如此，发丝之间如此，而 `--min-light-gap` 又把剩下的低亮度差边界删掉，让粘连更彻底。
