@@ -20,17 +20,24 @@ import numpy as np
 
 
 def endpoints(marks):
-    """The two ends of every mark's centre line, one row per end, with the mark it belongs to."""
-    rows, owner = [], []
+    """The two ends of every mark's centre line, one row per end, with the mark and the outward direction.
+
+    **The outward direction is what separates a break from an occlusion.** Two runs whose ends meet and whose outward
+    directions agree are one line cut in two, which is what a join repairs. Two whose outward directions face each other
+    are head to head: either one line behind something, or two lines meeting, and the pair cannot tell those apart.
+    """
+    rows, owner, heading = [], [], []
     for index, mark in enumerate(marks):
         centre = mark.get('geometry', {}).get('centre') or []
         if len(centre) < 2:
             continue
         rows.append([centre[0][0], centre[0][1]])
         owner.append(index)
+        heading.append((centre[0][0] - centre[1][0], centre[0][1] - centre[1][1]))
         rows.append([centre[-1][0], centre[-1][1]])
         owner.append(index)
-    return np.asarray(rows, dtype=np.float64), np.asarray(owner, dtype=np.int32)
+        heading.append((centre[-1][0] - centre[-2][0], centre[-1][1] - centre[-2][1]))
+    return (np.asarray(rows, dtype=np.float64), np.asarray(owner, dtype=np.int32), heading)
 
 
 def run_lengths(marks):
@@ -61,7 +68,7 @@ def main():
     long_side = float(max(canvas['width'], canvas['height']))
     limit = args.reach * long_side
 
-    points, owner = endpoints(marks)
+    points, owner, heading = endpoints(marks)
     runs = run_lengths(marks)
     print('  %d marks, %d ends, canvas long side %.0f, reach %.1f px'
           % (len(marks), len(points), long_side, limit))
@@ -76,17 +83,38 @@ def main():
     for i, (x, y) in enumerate(points):
         buckets.setdefault((int(x // cell), int(y // cell)), []).append(i)
     pairs = 0
+    agreeing = 0
+    facing = 0
     for i, (x, y) in enumerate(points):
         cx, cy = int(x // cell), int(y // cell)
+        ax, ay = heading[i]
+        span_a = math.hypot(ax, ay)
         for ox in (-1, 0, 1):
             for oy in (-1, 0, 1):
                 for j in buckets.get((cx + ox, cy + oy), ()):
                     if j <= i or owner[j] == owner[i]:
                         continue
-                    if math.hypot(points[j][0] - x, points[j][1] - y) <= limit:
-                        pairs += 1
+                    if math.hypot(points[j][0] - x, points[j][1] - y) > limit:
+                        continue
+                    pairs += 1
+                    if span_a == 0.0:
+                        continue
+                    bx, by = heading[j]
+                    span_b = math.hypot(bx, by)
+                    if span_b == 0.0:
+                        continue
+                    cosine = (ax * bx + ay * by) / (span_a * span_b)
+                    if cosine >= 0.5:
+                        agreeing += 1
+                    elif cosine <= -0.5:
+                        facing += 1
     print('  ends of different marks within %.1f px: %d pairs, %.2f per mark'
           % (limit, pairs, pairs / max(1, len(marks))))
+    # **Two ends that meet are not one thing.** Agreeing directions mean one line cut in two, which is what a join
+    # repairs. Facing directions mean head to head: one line behind something, or two lines meeting, and this pair of
+    # ends cannot tell those apart. So the two columns are different questions and neither is a count of faults.
+    print('    outward directions agree: %d   face each other: %d   neither: %d'
+          % (agreeing, facing, pairs - agreeing - facing))
     return 0
 
 
