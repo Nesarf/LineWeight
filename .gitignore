@@ -24,3 +24,9 @@ build/
 *.ai
 *.svg
 *.jsonl
+
+# **But the hand-written error table is a document, not a corpus.** learn/errors.jsonl is the table of patterns the
+# pipeline got wrong, written by hand after looking at a drawing. The rule above exists to keep measured per-image
+# records out, and a path exception is still a rule rather than a thing to remember. Without this line the table three
+# work is untracked, and a clone would not contain the part that took the longest to find.
+!learn/errors.jsonl
