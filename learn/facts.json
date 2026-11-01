@@ -217,11 +217,11 @@
     "count": 3,
     "items": [
       "figure height: median 6.58 heads, range 5.15 to 6.62 over five drawings, four of them inside 6.55 to 6.62",
-      "shoulder width over head width: 1.36 and 1.64 over two drawings -- more scattered than figure height, and each width is only accurate to about ten pixels",
-      "eye height within the head: 41 and 55 per cent over two drawings, so the head's halfway line at 50 per cent falls between them"
+      "shoulder width over head width: retired as a ratio. The two rows it had do not reproduce from their pictures, and the quantity depends on the pose -- a frontal drawing reads 2.70 and a profile 1.36, a factor of two apart",
+      "eye height within the head: 52.9 to 59.4 per cent over four drawings, median 56.2, so the head's halfway line at 50 per cent falls outside the measured range"
     ],
-    "source": "measured: line drawings marked by hand, with `tools/proportion_library.py` carrying the refusal rules. What the corpus could give: 61 search results, 23 left after a saturation cut for colour, 5 of those full-length front or three-quarter views with the jaw visible -- a 22 per cent yield, so five samples for the figure height is the corpus and not the sample size that was wanted, and the other two rows have two samples each because those quantities need a shoulder that is not hidden and eyes that are drawn clearly.",
-    "note": "**One proportion of three, because that is all this corpus can answer.** The five were marked by drawing the four landmarks back onto the picture and looking again; the first attempt was out by twenty-seven per cent until that check was added. Two of the three items say `not measured yet` deliberately: a row that hides which of its numbers exist is worse than a row with gaps."
+    "source": "measured: line drawings marked by hand, with `tools/proportion_library.py` carrying the refusal rules. What the corpus could give: 61 search results, 23 left after a saturation cut for colour, 5 of those full-length front or three-quarter views with the jaw visible -- a 22 per cent yield, so five samples for the figure height is the corpus and not the sample size that was wanted. The eye row was measured on four of those five under a written definition: head height from the outer top of the head (hair or hood, never an animal ear or a hair ornament) down to the chin, and eye height at the pupil's centre.",
+    "note": "**Two of three, and the third is retired rather than pending.** The five were marked by drawing the four landmarks back onto the picture and looking again; the first attempt was out by twenty-seven per cent until that check was added. Shoulder over head is not a small sample: the two rows it had cannot be reproduced from their pictures, and the quantity moves by a factor of two between a frontal drawing and a profile, so no number of samples would turn it into a proportion. The eye row was re-measured on four drawings once its definition was written down."
   },
 
   "part_order": {    "count": 2,
