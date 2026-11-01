@@ -42,7 +42,7 @@ RENDER_WIDTH = 2.0
 MIN_SEGMENT = 4
 
 
-def stitch(segments, gap=2.0, straight=0.5, rounds=20):
+def stitch(segments, gap=2.0, straight=0.5, rounds=20, report=None):
     """Join the runs whose ends meet, when the direction says one line continues through the join.
 
     **Why this is needed at all.** A hand-drawn line ends at two points, so `copy_linework`'s walk starts at one end and
@@ -63,6 +63,10 @@ def stitch(segments, gap=2.0, straight=0.5, rounds=20):
     backwards rather than a different claim.
     """
     paths = [[(float(y), float(x)) for y, x in seg] for seg in segments]
+    # **The counters are the point of this parameter.** A candidate that does not become a join can fail for two very
+    # different reasons -- the threshold refused it, or the index offered a run that had already been merged away -- and
+    # only the second is a defect. Counting the second is what makes "why are 1655 pairs still here" answerable.
+    stats = {'rounds': 0, 'joined': 0, 'candidates': 0, 'stale': 0}
     for _ in range(rounds):
         ends = {}
         for i, path in enumerate(paths):
@@ -92,7 +96,11 @@ def stitch(segments, gap=2.0, straight=0.5, rounds=20):
                     for ox in (-1, 0, 1):
                         cell = (int(point[0] // gap) + oy, int(point[1] // gap) + ox)
                         for j, which in ends.get(cell, ()):
-                            if j == i or len(paths[j]) < 2:
+                            if j == i:
+                                continue
+                            stats['candidates'] += 1
+                            if len(paths[j]) < 2:
+                                stats['stale'] += 1
                                 continue
                             other = paths[j]
                             near, nxt = (other[0], other[1]) if which == 0 else (other[-1], other[-2])
@@ -119,8 +127,12 @@ def stitch(segments, gap=2.0, straight=0.5, rounds=20):
                         paths[i] = (paths[j][::-1] if which == 0 else paths[j]) + paths[i]
                     paths[j] = []
                     joined += 1
+                    stats['joined'] += 1
+        stats['rounds'] += 1
         if not joined:
             break
+    if report is not None:
+        report.update(stats)
     return [path for path in paths if len(path) >= 2]
 
 
