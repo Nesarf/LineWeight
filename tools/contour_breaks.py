@@ -74,6 +74,10 @@ def main():
     parser.add_argument('project', help='a project file with stroke marks')
     parser.add_argument('--reach', type=float, default=0.0035,
                         help='two ends closer than this share of the canvas long side are candidates')
+    parser.add_argument('--min-run', type=float, default=0.0,
+                        help='count a pair only when both runs exceed this many pixels. **A pair of debris is not a '
+                             'break**: measured on one drawing, 2238 pairs came down to 11 once both runs had to exceed '
+                             '200 px, so the unfiltered count is mostly a count of fragments')
     args = parser.parse_args()
 
     with open(args.project, encoding='utf-8') as handle:
@@ -114,6 +118,14 @@ def main():
                     span = math.hypot(points[j][0] - x, points[j][1] - y)
                     if span > limit:
                         continue
+                    # **Debris meeting debris is not a break.** Without this, the count is dominated by the small
+                    # colour fragments, and a join looks like it repaired thousands of breaks when most of what moved
+                    # was fragments disappearing into each other.
+                    if args.min_run > 0.0:
+                        if length_by_mark.get(int(owner[i]), 0.0) <= args.min_run:
+                            continue
+                        if length_by_mark.get(int(owner[j]), 0.0) <= args.min_run:
+                            continue
                     pairs += 1
                     if span_a == 0.0:
                         continue
