@@ -41,9 +41,9 @@ def endpoints(marks):
 
 
 def run_lengths(marks):
-    """Each mark's own length, in canvas pixels."""
-    out = []
-    for mark in marks:
+    """Each mark's own length in canvas pixels, with the mark it belongs to."""
+    out, owner = [], []
+    for index, mark in enumerate(marks):
         centre = mark.get('geometry', {}).get('centre') or []
         if len(centre) < 2:
             continue
@@ -51,7 +51,22 @@ def run_lengths(marks):
         for a, b in zip(centre, centre[1:]):
             total += math.hypot(b[0] - a[0], b[1] - a[1])
         out.append(total)
-    return np.asarray(out, dtype=np.float64)
+        owner.append(index)
+    return np.asarray(out, dtype=np.float64), np.asarray(owner, dtype=np.int32)
+
+
+def all_points(marks):
+    """Every centre-line control point, with the mark it belongs to.
+
+    **The control points, not the pixel chain.** A simplification leaves them a few pixels apart, and the question
+    asked of them -- is another run anywhere near this end -- is answered at the scale of a reach, which is larger.
+    """
+    rows, owner = [], []
+    for index, mark in enumerate(marks):
+        for point in mark.get('geometry', {}).get('centre') or []:
+            rows.append((point[0], point[1]))
+            owner.append(index)
+    return np.asarray(rows, dtype=np.float64), np.asarray(owner, dtype=np.int32)
 
 
 def main():
@@ -69,7 +84,8 @@ def main():
     limit = args.reach * long_side
 
     points, owner, heading = endpoints(marks)
-    runs = run_lengths(marks)
+    runs, run_owner = run_lengths(marks)
+    length_by_mark = {int(run_owner[k]): float(runs[k]) for k in range(len(runs))}
     print('  %d marks, %d ends, canvas long side %.0f, reach %.1f px'
           % (len(marks), len(points), long_side, limit))
     print('  run length   median %.1f px, p10 %.1f, p90 %.1f, longest %.1f'
@@ -125,6 +141,39 @@ def main():
         spread = np.asarray(agree_distances)
         print('    agreeing pairs lie %.1f px apart at the median, %.1f at p90, %.1f at most (reach %.1f)'
               % (float(np.median(spread)), float(np.percentile(spread, 90)), float(spread.max()), limit))
+
+    # **An end with no other run anywhere near it.** The row `floating_contact` describes a hair tip that stops by fading
+    # into water: nothing in the line layer marks where it ends. That end is isolated -- no other mark passes within the
+    # reach of it -- while an ordinary taper ends beside whatever it was drawn against. A short run finishing in open
+    # space is the first case, a long one is the row's, so the two are counted apart.
+    every, every_owner = all_points(marks)
+    grid = {}
+    for k, (x, y) in enumerate(every):
+        grid.setdefault((int(x // cell), int(y // cell)), []).append(k)
+    median_run = float(np.median(runs)) if len(runs) else 0.0
+    isolated = 0
+    isolated_long = 0
+    for i, (x, y) in enumerate(points):
+        cx, cy = int(x // cell), int(y // cell)
+        found = False
+        for ox in (-1, 0, 1):
+            for oy in (-1, 0, 1):
+                for k in grid.get((cx + ox, cy + oy), ()):
+                    if every_owner[k] == owner[i]:
+                        continue
+                    if math.hypot(every[k][0] - x, every[k][1] - y) <= limit:
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                break
+        if not found:
+            isolated += 1
+            if length_by_mark.get(int(owner[i]), 0.0) > median_run:
+                isolated_long += 1
+    print('    ends with no other run within reach: %d of %d (%.1f%%), %d on a run longer than the median'
+          % (isolated, len(points), 100.0 * isolated / max(1, len(points)), isolated_long))
     return 0
 
 
