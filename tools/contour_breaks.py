@@ -85,6 +85,7 @@ def main():
     pairs = 0
     agreeing = 0
     facing = 0
+    agree_distances = []
     for i, (x, y) in enumerate(points):
         cx, cy = int(x // cell), int(y // cell)
         ax, ay = heading[i]
@@ -94,7 +95,8 @@ def main():
                 for j in buckets.get((cx + ox, cy + oy), ()):
                     if j <= i or owner[j] == owner[i]:
                         continue
-                    if math.hypot(points[j][0] - x, points[j][1] - y) > limit:
+                    span = math.hypot(points[j][0] - x, points[j][1] - y)
+                    if span > limit:
                         continue
                     pairs += 1
                     if span_a == 0.0:
@@ -106,6 +108,7 @@ def main():
                     cosine = (ax * bx + ay * by) / (span_a * span_b)
                     if cosine >= 0.5:
                         agreeing += 1
+                        agree_distances.append(span)
                     elif cosine <= -0.5:
                         facing += 1
     print('  ends of different marks within %.1f px: %d pairs, %.2f per mark'
@@ -115,6 +118,13 @@ def main():
     # ends cannot tell those apart. So the two columns are different questions and neither is a count of faults.
     print('    outward directions agree: %d   face each other: %d   neither: %d'
           % (agreeing, facing, pairs - agreeing - facing))
+    # **How far apart the ones a join should take still are.** "Just outside the reach" and "nowhere near it" are
+    # different problems, and only the first gets better by widening a threshold. Measured on the joined project, the
+    # distribution says which one this is.
+    if agree_distances:
+        spread = np.asarray(agree_distances)
+        print('    agreeing pairs lie %.1f px apart at the median, %.1f at p90, %.1f at most (reach %.1f)'
+              % (float(np.median(spread)), float(np.percentile(spread, 90)), float(spread.max()), limit))
     return 0
 
 
