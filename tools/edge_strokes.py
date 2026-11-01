@@ -28,6 +28,7 @@ sys.path.insert(0, r'E:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from lineweight import core, project
+from render_to_project import stitch
 
 import edge_line
 import line_from_shapes
@@ -193,6 +194,10 @@ def main():
                          'area ratio were tried as second filters and both point the same way -- smaller is more likely '
                          'to be a real line -- but each costs a third of the recall, so neither is applied')
     ap.add_argument('--merge-angle', type=float, default=35.0)
+    ap.add_argument('--stitch-reach', type=float, default=0.0035,
+                    help='two ends further apart than this share of the canvas long side are not joined; 0 turns the '
+                         'join off. **0.35 per cent is the share the 3D route measured**, because a gap between two '
+                         'runs of one contour scales with the picture and not with the pen')
     ap.add_argument('--all-joins', action='store_true',
                     help='draw every boundary; by default only those the coarser cut also sees, measured to keep 46 per '
                          'cent of them and to be the difference between a drawing and a mass of hatching')
@@ -311,6 +316,16 @@ def main():
         bands = np.flatnonzero(biggest.any(axis=1))
         if cols.size and bands.size:
             person_box = (int(bands[0]), int(bands[-1]), int(cols[0]), int(cols[-1]))
+    # **Joining, because "a contour that came out as forty runs" is the fault this drawing shows most.** The rule is
+    # the one the 3D route measured: two ends within a reach, directions agreeing, and a tail may join a tail by
+    # reversing it -- a closed contour's two halves are walked in opposite directions, so refusing that join loses the
+    # contour itself. Points arrive as (x, y) here and as (row, column) there; every distance and every direction in
+    # `stitch` is computed from differences, so the order of the pair does not change an answer.
+    if args.stitch_reach > 0:
+        before = len(lines)
+        lines = stitch(lines, gap=args.stitch_reach * float(max(labels.shape)), straight=0.0)
+        tick('joined %d runs into %d' % (before, len(lines)))
+
     written = 0
     added_by_part = 0
     for i, pts in enumerate(lines):

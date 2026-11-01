@@ -1443,6 +1443,25 @@ ends of different marks within 17.2 px: 12327 pairs, 2.45 per mark
 
 **它仍然比 `none` 强**：`none` 什么也不说，而这个数在改动前后会动。下一次给管线加接笔时，它就是尺子。
 
+**接笔接通了，但只在 mark 层验证过。** `edge_strokes.py` 加了 `--stitch-reach`（默认画布长边的 0.35%），调用的是
+4.30 那条已经验证过的 `stitch`。**而完整管线跑不了** —— `shapes-meta.json` 只记 `blur` / `canvas` / `cut` /
+`levels` / `min_area` / `scale`，**没有参考图路径**，而 `edge_strokes` 的 `--reference` 是必填。
+
+所以在 `lines.json` 自己的 mark 上接了一遍：
+
+```
+before   5028 runs, 12327 pairs within 17.2 px
+after    4109 runs,  6945 pairs within 17.2 px
+段数减 18%，端点对减 44%
+```
+
+**44% 是「上限」的减少量**，因为那 12327 对里本来就有真交界。但方向清楚：接笔把「两条不同 mark 的端点靠得很近」
+这件事减了将近一半。
+
+**要让那一步真跑起来，还需要补上一样**：`shapes-meta.json` 记下参考图路径；或者让 `edge_strokes` 的
+`--reference` 在 `--min-light-gap 0` 时变成可选。**在补上之前，那个新开关没有端到端跑过** —— 这一点写在这里，而不是
+留给别人去发现。
+
 **两条 tissue_adhesion 是同一个机制**：两个特征之间的间隙小于色区量化的步长时，它们成为一个区域，那条边界就
 从来不是候选。手指之间如此，发丝之间如此，而 `--min-light-gap` 又把剩下的低亮度差边界删掉，让粘连更彻底。
 
