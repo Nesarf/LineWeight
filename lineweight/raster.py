@@ -874,11 +874,8 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
         if _np is None:  # pragma: no cover - a screen needs numpy for the lattice
             raise RuntimeError('a tone needs numpy')
         from . import tone as tone_module
-        origin = (min(p[0] for p in points) * scale, min(p[1] for p in points) * scale)
-        build = tone_module.line_screen if spec.get('shape') == 'line' else tone_module.dot_screen
-        screen = build(width, height, float(spec.get('value', 0.5)),
-                       pitch=float(spec.get('pitch', 9.0)) * scale,
-                       angle=float(spec.get('angle', 45.0)), origin=origin)
+        origin = (min(p[0] for p in points), min(p[1] for p in points))
+        screen = tone_module.screen(spec, width, height, scale=scale, origin=origin)
     # **A shape with holes is filled even-odd**, so a point inside a hole counts as outside. Without them the rule
     # stays nonzero, because an offset outline that doubles back at a hairpin must not be erased -- that measurement is
     # in `fill_polygon`'s own docstring and it still holds for every fill that has no holes.

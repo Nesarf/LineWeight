@@ -1,5 +1,6 @@
 """A screen has to deliver the value it was asked for, and to be a screen rather than a tint."""
 import numpy as np
+import pytest
 from scipy import ndimage
 
 from lineweight import tone
@@ -89,4 +90,36 @@ def test_the_lattice_is_phased_to_the_page_and_not_to_the_shape():
     shifted = tone.dot_screen(40, 40, 0.5, pitch=10.0, origin=(40.0, 0.0))
     assert np.allclose(first, same)
     assert not np.allclose(first, shifted)
+
+
+@pytest.mark.parametrize('shape', sorted(tone.SCREENS))
+@pytest.mark.parametrize('value', (0.2, 0.5, 0.8))
+def test_every_screen_in_the_catalogue_delivers_its_value(shape, value):
+    """**The catalogue is only worth having if every entry is honest about its tone.** A shape whose real coverage is
+    something other than what was asked for would silently change the picture every time it replaced a dot."""
+    built = tone.screen({'shape': shape, 'value': value, 'pitch': 10.0}, 400, 400)
+    measured = tone.value_of(built)
+    assert abs(measured - value) < 0.07, (shape, value, measured)
+
+
+def test_an_unknown_shape_is_refused_rather_than_drawn_as_dots():
+    with pytest.raises(ValueError):
+        tone.screen({'shape': 'mezzotint', 'value': 0.5}, 40, 40)
+
+
+def test_the_noise_screen_is_the_only_one_without_a_lattice():
+    """A stochastic texture must not tile, or it would read as a ruling after all."""
+    built = tone.screen({'shape': 'noise', 'value': 0.5, 'pitch': 9.0}, 200, 200)
+    shifted = np.roll(built, 7, axis=1)
+    assert not np.allclose(built, shifted)
+
+
+def test_a_cross_screen_covers_more_than_one_of_its_own_rulings():
+    """Two rulings at the requested value would cover `2v - v²`, which is why the cross solves for a smaller value
+    each time. If it stopped doing that, asking for half would deliver three quarters."""
+    both = tone.screen({'shape': 'cross', 'value': 0.5, 'pitch': 10.0}, 300, 300)
+    one = tone.line_screen(300, 300, 0.5, pitch=10.0)
+    assert abs(tone.value_of(both) - 0.5) < 0.07
+    assert tone.value_of(both) < tone.value_of(one) + 0.4
+
 
