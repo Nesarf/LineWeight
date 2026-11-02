@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 
 import line_agreement as la
 from copy_linework import prune, thin, trace
-from lineweight import core, project
+from lineweight import core, project, psd
 
 
 def _bilinear(field, xs, ys):
@@ -113,6 +113,10 @@ def main():
     #: the ink is in the same pixels, and on this knob the two answers are 80 000 pixels apart.
     parser.add_argument('--width-scale', type=float, default=1.0,
                         help='multiply the measured width; 1.0 reads the ink, ~0.7 matches its area')
+    #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
+    #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
+    #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
+    parser.add_argument('--psd', default='', help='also write this path as a layered PSD')
     args = parser.parse_args()
 
     # **Everything is read at the page's own scale, which is what every threshold here is quoted against.** This used to
@@ -156,6 +160,11 @@ def main():
     print('  %s %dx%d, %d line px, %d runs, %d marks -> %s'
           % (os.path.basename(args.picture), width, height,
              int(mask.sum()), len(runs), written, args.out))
+    if args.psd:
+        layers = psd.layers_from_project(canvas)
+        path = psd.save_psd(layers, args.psd)
+        print('  %d layer%s -> %s'
+              % (len(layers), '' if len(layers) == 1 else 's', path))
     return 0
 
 
