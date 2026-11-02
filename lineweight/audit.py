@@ -260,12 +260,17 @@ def stroke_record_of(mark: dict) -> dict:
 
 
 def mark_polygon(mark: dict) -> list[tuple[float, float]]:
-    """The shape a mark covers, in drawing space."""
+    """The shape a mark covers, in drawing space.
+
+    **An erase is read as a region, because that is what it is.** It carries a polygon exactly as a fill does and differs
+    only in how the renderer composites it -- destination-out rather than over -- so the auditor can measure where it
+    sits even though it cannot re-derive the subtraction from one mark's pixels alone.
+    """
     kind = mark.get('kind')
-    if kind == 'fill':
+    if kind in ('fill', 'erase'):
         points = mark['geometry'].get('points')
         if not points:
-            raise ValueError('fill mark %r has no points' % (mark.get('id'),))
+            raise ValueError('%s mark %r has no points' % (kind, mark.get('id')))
         return [(float(x), float(y)) for x, y in points]
     if kind == 'stroke':
         return outline_polygon(stroke_record_of(mark))
@@ -280,7 +285,7 @@ def mark_shape(mark: dict):
     of the drawing rather than of a re-derivation that could be right while the drawing is wrong.
     """
     kind = mark.get('kind')
-    if kind == 'fill':
+    if kind in ('fill', 'erase'):
         return as_chain(mark['geometry'].get('points') or [])
     if kind == 'stroke':
         return outline_chain_of(stroke_record_of(mark))
@@ -300,7 +305,7 @@ def mark_colour(mark: dict) -> tuple[float, float, float]:
     """A mark's own colour as floats. **The mark's, not a default** -- an audit render that invented a colour would be
     a picture of a drawing that does not exist."""
     appearance = mark.get('appearance', {})
-    if mark.get('kind') == 'fill':
+    if mark.get('kind') in ('fill', 'erase'):
         r, g, b = raster.parse_hex(appearance.get('fill', '#808080'))
     else:
         r, g, b = raster.parse_hex(mark_ink(mark))

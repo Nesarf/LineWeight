@@ -432,6 +432,69 @@ def test_an_unrenderable_kind_is_refused_rather_than_skipped():
     assert 'gradient' in str(err.value)
 
 
+def test_the_eraser_takes_ink_away_and_a_later_mark_sits_on_top_of_the_hole():
+    """**The one mark that removes ink instead of adding it**, and the reason it exists is in the errors table: every
+    copying error measured here is a line in the wrong place, so the repair is a subtraction.
+
+    Read back on one 40x40 square: the erase takes the half it covers to nothing and leaves the other half exactly as
+    it was; a fill drawn after it covers the hole again, because an erase is a mark in the drawing order rather than an
+    instruction to the file."""
+    import numpy as np
+
+    from lineweight.raster import render_marks
+
+    def mark(mid, kind, x0, x1, seq, colour='#FF0000'):
+        points = [(x0, 0.0), (x1, 0.0), (x1, 40.0), (x0, 40.0)]
+        return {'id': mid, 'kind': kind, 'stage': 'colour', 'seq': seq, 'state': LIVE,
+                'geometry': {'points': points, 'd': 'M 0 0 L 40 0 L 40 40 L 0 40 Z'},
+                'appearance': {'fill': colour, 'opacity': 1.0}, 'provenance': {}}
+
+    def alpha(layer):
+        return np.frombuffer(layer.data, dtype=np.uint8).reshape(40, 40, 4)[:, :, 3]
+
+    base, hole = mark('m0001', 'fill', 0.0, 40.0, 0), mark('m0002', 'erase', 20.0, 40.0, 1)
+    drawn = alpha(render_marks([base, hole], 40, 40, 1.0))
+    assert int((drawn[:, 1:20] > 200).sum()) == 760, 'the eraser took ink away from outside its own shape'
+    assert int((drawn[:, 21:] > 0).sum()) == 0, 'the eraser left ink inside its own shape'
+    # **Both edges are half covered and that is the anti-aliasing rule, not a leak.** Coordinates are pixel centres, so
+    # an edge at x=0 or x=20 runs through the centre of that pixel: the shape covers half of it, and destination-out
+    # leaves `255 * (1 - 0.5)` inside the erase and 127 for the fill's own outer edge. A hard edge on either would mean
+    # this mark had a different edge rule from every other mark in the library.
+    assert 0 < int(drawn[0, 20]) < 255, 'the erased edge is not soft'
+    assert 0 < int(drawn[0, 0]) < 255, 'the fill edge is not soft'
+
+    again = mark('m0003', 'fill', 20.0, 40.0, 2, colour='#0000FF')
+    redrawn = alpha(render_marks([base, hole, again], 40, 40, 1.0))
+    assert int((redrawn > 0).sum()) == 1600, 'a mark drawn after the erase must sit on top of the hole'
+
+
+def test_an_erase_is_a_mark_like_any_other_and_survives_a_round_trip():
+    """**A mark that cannot be saved cannot be removed either.** An erase has to carry an id and a place in the drawing
+    order, or a caller could not take back the third correction without rebuilding the first two."""
+    import os
+    import tempfile
+
+    region = region_fill(quads(), 3.0)[0]
+    project = Project(width=500, height=500)
+    erase = project.add_erase(region, note='take back the overlap')
+
+    assert erase.kind == 'erase'
+    assert project.by_id(erase.id).kind == 'erase'
+    # **And the export side is asked rather than assumed.** No exporter can carry a subtraction, so the project answers
+    # with the marks that would be lost -- one place for a caller to ask instead of a silence at the far end.
+    assert [m.id for m in project.unexportable()] == [erase.id]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'p.json')
+        save_project(project, path)
+        back = load_project(path)
+    assert [m.kind for m in back.marks] == ['erase']
+    assert back.by_id(erase.id).geometry['points'] == erase.geometry['points']
+
+    project.add_fill(region_fill(quads(), 3.0)[0], stage='colour')
+    assert [m.id for m in project.unexportable()] == [erase.id], 'a fill is exportable and must not be listed'
+
+
 def test_each_pass_renders_to_a_different_picture():
     """The point of staging: acceptance is per pass, so the passes have to come out separately. If two stages rendered
     identically, one of them is not doing anything."""

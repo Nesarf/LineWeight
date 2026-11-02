@@ -513,7 +513,7 @@ def _resolve_density(layer, width: int, height: int, brush) -> None:
     layer.density_ref = None
 
 
-def blend_at(base: Layer, top: Layer, x0: int, y0: int) -> Layer:
+def blend_at(base: Layer, top: Layer, x0: int, y0: int, mode: str = 'normal') -> Layer:
     """Blends `top` into `base` with `top`'s top-left corner at (x0, y0), and returns the base.
 
     **The offset form exists because a mark does not need the page.** `stroke_layer` allocates a layer the size of the
@@ -521,6 +521,12 @@ def blend_at(base: Layer, top: Layer, x0: int, y0: int) -> Layer:
     of allocation for a picture whose ink covers a twentieth of the page. Drawing into a box the size of the mark and
     blending it at an offset is the same arithmetic over a smaller rectangle -- and the same rule, so a mark rendered
     this way and a mark rendered the old way agree pixel for pixel.
+
+    **`erase` is destination-out, and it is the one mode that takes ink away.** The alpha becomes `base * (1 - top)`
+    and the colour is left as the base had it, because a pixel that has been erased to nothing has no colour to state.
+    It exists for the eraser mark, which is the only mark in this library that a drawing can only lose ink to -- a line
+    can be added anywhere, and every copying error the project has measured is a line in the wrong place rather than a
+    line missing one.
     """
     if _np is None:
         raise RuntimeError('blend_at needs numpy')
@@ -539,13 +545,16 @@ def blend_at(base: Layer, top: Layer, x0: int, y0: int) -> Layer:
     sub_b = b[y0c:y1, x0c:x1].astype(_np.float32) / 255.0
     ba = sub_b[:, :, 3]
     ta = sub_t[:, :, 3]
-    res = sub_b[:, :, :3] * (1.0 - ta)[:, :, None] + sub_t[:, :, :3] * ta[:, :, None]
-    empty = (ba <= 0.004)[:, :, None]
-    res = _np.where(empty, sub_t[:, :, :3], res)
-    alpha = _np.maximum(ba, ta)
     block = _np.empty(sub_t.shape, dtype=_np.float32)
-    block[:, :, :3] = _np.clip(res, 0.0, 1.0)
-    block[:, :, 3] = alpha
+    if mode == 'erase':
+        block[:, :, :3] = sub_b[:, :, :3]
+        block[:, :, 3] = ba * (1.0 - ta)
+    else:
+        res = sub_b[:, :, :3] * (1.0 - ta)[:, :, None] + sub_t[:, :, :3] * ta[:, :, None]
+        empty = (ba <= 0.004)[:, :, None]
+        res = _np.where(empty, sub_t[:, :, :3], res)
+        block[:, :, :3] = _np.clip(res, 0.0, 1.0)
+        block[:, :, 3] = _np.maximum(ba, ta)
     b[y0c:y1, x0c:x1] = (block * 255.0).astype(_np.uint8)
     return base
 
@@ -1017,7 +1026,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
             # **The stroke is already on the page.** Falling through to the shared blend below would composite it a
             # second time, over the whole page, which is both a wrong picture and the cost this branch exists to avoid.
             continue
-        elif kind == 'fill':
+        elif kind in ('fill', 'erase'):
             # **The mark's own box, not the page.** The same argument and the same arithmetic as the stroke branch above:
             # a page-sized buffer per mark is what made twenty-seven thousand fills spend over fifty minutes in the
             # composer on a large reference, and the picture inside a box the size of the mark is identical.
@@ -1052,7 +1061,10 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                 local_geometry['gradient'] = gradient
             local['geometry'] = local_geometry
             layer = fill_layer(local, x1 - x0, y1 - y0, scale)
-            out = blend_at(out, layer, x0, y0)
+            # **The eraser shares every pixel of this branch and differs in one word.** Its geometry is a region like a
+            # fill's, so it gets the same box and the same scanline pass; what changes is the compositing, and that is
+            # destination-out: the ink goes away instead of more going down.
+            out = blend_at(out, layer, x0, y0, mode='erase' if kind == 'erase' else 'normal')
             continue
         else:
             raise ValueError('cannot render a mark of kind %r' % (kind,))

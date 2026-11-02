@@ -392,6 +392,37 @@ class Project:
         self._record('draft' if not commit else 'add', ids=[mark.id])
         return mark
 
+    def add_erase(self, region, stage: str = 'colour', note: str = '', source: str = '',
+                  commit: bool | None = None) -> Mark:
+        """**The eraser, and it is the only mark that takes ink away.**
+
+        A drawing can always gain a line and, until now, could never lose one -- and every copying error this project has
+        measured is a line in the wrong place rather than a line missing. `overdrawn_lines` in `learn/errors.jsonl` is
+        that row; both of the remaining layers (0.05 and 0.0008 per cent of the page) need the surplus *removed*, not
+        more ink added. So an erase is a region composited destination-out in drawing order: it removes what is under it
+        at that point and nothing else, and a mark drawn afterwards sits on top of the hole.
+
+        **Its geometry is a region, the same object a fill takes**, because that is what an eraser is in a drawing
+        program: a shape, not a pressure curve. A stroke-shaped eraser would be a second rasteriser for the same idea.
+
+        **And no exporter can express it, which is why `unexportable()` exists rather than this paragraph alone.** SVG has
+        no erase operation, and a PSD layer stack composites the same way. A project carrying an erase mark renders
+        correctly and exports as if the eraser were absent -- so ask that method before writing a vector file, instead of
+        finding out at the far end.
+        """
+        self._check_stage(stage)
+        commit = (not self.incremental) if commit is None else commit
+        self.counter += 1
+        mark = Mark(id='m%04d' % self.counter, kind='erase', stage=stage, seq=len(self.marks),
+                    geometry={'points': [list(p) for p in region.points], 'd': region.d,
+                              'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])]},
+                    appearance={'fill': '#000000', 'opacity': 1.0},
+                    provenance={'source': source, 'note': note, 'turn': self.turn},
+                    state=LIVE if commit else DRAFT)
+        self.marks.append(mark)
+        self._record('draft' if not commit else 'add', ids=[mark.id])
+        return mark
+
     # ---- revising ---------------------------------------------------------------------------------------------
     #
     # **The hard rule, stated once here because every method below obeys it: an existing mark is never regenerated.**
@@ -799,6 +830,18 @@ class Project:
 
     def live(self) -> list[Mark]:
         return sorted((m for m in self.marks if m.state == LIVE), key=lambda m: m.seq)
+
+    def unexportable(self) -> list[Mark]:
+        """**Marks a renderer can draw and no exporter can carry.** Today that is the eraser alone.
+
+        SVG has no erase operation and a PSD layer stack composites the same way, so a project holding an erase mark
+        renders correctly and exports as though the eraser were absent. That is worth a method rather than a sentence in
+        a docstring: **a caller about to write an SVG has one place to ask, and the list is asserted**, so the day a
+        second kind of mark joins it that is a decision somebody makes rather than a surprise somebody finds. Silence
+        here would be the same failure this project has recorded twice already -- a declared capability that no consumer
+        reads.
+        """
+        return [m for m in self.live() if m.kind == 'erase']
 
     # ---- saving ---------------------------------------------------------------------------------------------
 
