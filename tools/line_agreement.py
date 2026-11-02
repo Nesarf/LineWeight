@@ -104,6 +104,16 @@ def main(argv=None):
     print('  recall          %7.1f%%   the share of the artist\'s line the drawing reaches' % (r['recall'] * 100.0))
     if r['miss_median']:
         print('  missed lines sit %.1f px from the artist\'s at the median' % r['miss_median'])
+    # **How far the drawn line sits from the artist's, over all of it rather than only the misses.** This is the
+    # number to quote as a copying error, because precision at a tolerance says whether a line is close enough but not
+    # how close it is: a drawing can pass at six pixels and still be four away everywhere.
+    to_art = ndimage.distance_transform_edt(~art)
+    distances = to_art[drawn]
+    long_side = float(max(drawn.shape))
+    print('  drawn line sits %.1f px from the artist\'s at the median (p75 %.1f, p90 %.1f), tolerance %.1f px'
+          % (np.median(distances), np.percentile(distances, 75), np.percentile(distances, 90), args.tolerance))
+    print('  that median is %.3f%% of the long side; 1%% is %.0f px and 0.05%% is %.1f px on this page'
+          % (100.0 * np.median(distances) / long_side, 0.01 * long_side, 0.0005 * long_side))
     return 0
 
 

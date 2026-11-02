@@ -77,7 +77,7 @@ def main(argv=None):
     for q in (5, 10, 25, 50, 75, 90, 95):
         print('    p%-3d %5.1f%%' % (q, np.percentile(k, q) * 100.0))
     print()
-    for cut in (0.3, 0.5, 0.7, 0.9):
+    for cut in (0.05, 0.3, 0.5, 0.7, 0.9, 0.95):
         hard = candidate & (kept >= cut)
         print('  keeping %3.0f%% of the depth or more: %7d px  (%.2f%% of the page, %.1f%% of the candidates)'
               % (cut * 100, int(hard.sum()), 100.0 * hard.sum() / hard.size, 100.0 * hard.sum() / candidate.sum()))
