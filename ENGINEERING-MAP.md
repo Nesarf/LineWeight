@@ -518,6 +518,7 @@ width_share         墨宽除以墨自己的纵向跨度，加墨占整页的份
 line_field          线与它所在的场：闭/开运算按粗细分，不用阈值 —— 带明暗的场上也能找到线
 tone                网点：六种形状（dot/ellipse/square/line/cross/noise），值为覆盖比，0.5 处实测误差在 0.005 内
 line_agreement      画的线与参考图自己的线直接比：precision 与 recall，判「画多了」还是「画少了」
+erase_ceiling       完美擦除的上限；对称差同时报成「页面的份额」与「参考墨量的份额」，后者才能跨图纸比较
 edge_scale          边缘的硬度：两个结构元各量一次深度再比 —— 线是「一次发生」，渐变不是
 crop_box            从一张图里裁一块，让候选的错误在写下来之前被放大看过
 ```

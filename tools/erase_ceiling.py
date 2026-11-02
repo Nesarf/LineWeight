@@ -61,20 +61,33 @@ def main(argv=None):
     print('  reference line  %8d px   (%.2f%%)' % (art.sum(), 100.0 * art.sum() / page))
     print('  drawn line      %8d px   (%.2f%%)' % (drawn.sum(), 100.0 * drawn.sum() / page))
     print()
-    print('  %-8s %10s %10s %11s %8s %10s'
-          % ('keep<=', 'drawn px', 'SD px', 'precision', 'recall', 'erased px'))
-    print('  %-8s %10d %10d %10.1f%% %7.1f%% %10d'
-          % ('all', drawn.sum(), sd(drawn), 100.0 * (to_art[drawn] <= args.tolerance).mean(), 100.0, 0))
+    print('  %-8s %10s %10s %10s %11s %8s %10s'
+          % ('keep<=', 'drawn px', 'SD px', 'SD/ink', 'precision', 'recall', 'erased px'))
+    print('  %-8s %10d %10d %9.1f%% %10.1f%% %7.1f%% %10d'
+          % ('all', drawn.sum(), sd(drawn), 100.0 * sd(drawn) / max(1, art.sum()),
+             100.0 * (to_art[drawn] <= args.tolerance).mean(), 100.0, 0))
     for t in CUTS:
         kept = drawn & (to_art <= t)
         if not kept.any():
             continue
         to_kept = ndimage.distance_transform_edt(~kept)
-        print('  %-8s %10d %10d %10.1f%% %7.1f%% %10d'
-              % ('%g' % t, kept.sum(), sd(kept),
+        print('  %-8s %10d %10d %9.1f%% %10.1f%% %7.1f%% %10d'
+              % ('%g' % t, kept.sum(), sd(kept), 100.0 * sd(kept) / max(1, art.sum()),
                  100.0 * (to_art[kept] <= args.tolerance).mean(),
                  100.0 * (to_kept[art] <= args.tolerance).mean(),
                  int((drawn & (to_art > t)).sum())))
+    print()
+    # **The same difference under the page's own rule and under the ink's.** The thresholds this project carries --
+    # 1, 0.05, 0.0008 per cent -- are shares of the *page*, and a page holds whatever ink the drawing happens to hold.
+    # Measured over eleven line drawings, the symmetric difference comes out at 15 to 35 per cent of the reference's
+    # ink whatever its absolute size, because it is made of boundary pixels and a boundary's length follows the ink. So
+    # an absolute figure compares one drawing with itself across two attempts, and a share compares two drawings.
+    threshold = int(0.01 * page)
+    print('  **Two readings of the same difference.** It is %d px, which is %.3f per cent of the page and %.1f per cent'
+          % (sd(drawn), 100.0 * sd(drawn) / page, 100.0 * sd(drawn) / max(1, art.sum())))
+    print('  of this reference\'s ink. The one per cent threshold is %d px -- %.1f per cent of this reference\'s ink.'
+          % (threshold, 100.0 * threshold / max(1, art.sum())))
+    print('  The page figure is what the project quotes; the ink figure is what travels between drawings.')
     print()
     print('  **The precision column is 100 by construction at every cut** -- what survives is *defined* as being within')
     print('  the cut -- so the number to read is the symmetric difference, and what makes it up is the next question.')
