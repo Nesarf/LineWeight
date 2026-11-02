@@ -35,12 +35,15 @@ import line_from_shapes
 import shape_pass
 import value_pass
 
-#: The two widths a line can draw at, on the cut grid. **The fine one is for a change of light and the heavy one for a
-#: change of material.** Below 0.8 a line disappears when the canvas is scaled up; above 2.2 it reads as an ink blot.
-#: The earlier version took one width from the total colour difference, so a shadow line on a cheek was drawn as heavily
-#: as the join between hair and skin, and the whole picture came out over-inked.
-W_FINE = 0.5
-W_MATERIAL = 1.0
+#: **The two widths a line can draw at, as a share of the page's long side rather than as pixels on the cut grid.** A
+#: width in cut pixels changes with the size of the cut: the same 1.0 came out 2.02 px on a 2880 page, which is 0.0703
+#: per cent of the ink's height against the 0.1179 that is the lowest of the eleven line drawings in the library.
+#: Quoted against the page, 0.0013 to 0.0032 of the long side is 3.7 to 9.2 px at 2880, inside the artists' range of
+#: 0.1179 to 0.3266 per cent. The fine one is for a change of light and the heavy one for a change of material; the
+#: earlier version took one width from the total colour difference, so a shadow line on a cheek was drawn as heavily as
+#: the join between hair and skin, and the whole picture came out over-inked.
+W_FINE_SHARE = 0.0008
+W_MATERIAL_SHARE = 0.0020
 
 #: The colour gap at which a join counts as a change of material rather than a change of light. Quoted on the normalised
 #: 0..1 channels the tables hold, where a hue or saturation change of this much is visible at a glance.
@@ -82,7 +85,7 @@ def boundary(labels):
     return mask, ya, xa, np.concatenate(low), np.concatenate(high)
 
 
-def width_and_ink(points, gap_colour, gap_light, scale):
+def width_and_ink(points, gap_colour, gap_light, page_long):
     """How heavy a line should be and how dark, **from one pass over its own samples**.
 
     **Two questions, one measurement.** A line's weight and its ink are both decided by the same number -- the median
@@ -100,12 +103,12 @@ def width_and_ink(points, gap_colour, gap_light, scale):
     h, w = gap_colour.shape
     ok = (ys >= 0) & (ys < h) & (xs >= 0) & (xs < w)
     if not ok.any():
-        return W_FINE * scale, COLOUR_FINE, 0.0
+        return W_FINE_SHARE * page_long, COLOUR_FINE, 0.0
     # **One fancy index instead of a loop of scalars.** `gap_colour[iy, ix]` in Python costs a few microseconds a sample
     # and there are tens of thousands of samples; indexing with two arrays is one call.
     colour = float(np.median(gap_colour[ys[ok], xs[ok]]))
     material = min(1.0, max(0.0, colour / MATERIAL_GAP))
-    width = (W_FINE + (W_MATERIAL - W_FINE) * material) * scale
+    width = (W_FINE_SHARE + (W_MATERIAL_SHARE - W_FINE_SHARE) * material) * page_long
     if material >= 0.60:
         ink = COLOUR_MATERIAL
     elif material >= 0.30:
@@ -239,6 +242,9 @@ def main():
     canvas_w = int(args.canvas_width or declared[0] or round(max(2880.0, float(max(w, h)))))
     canvas_h = int(args.canvas_height or declared[1] or round(canvas_w * h / float(w)))
     s = canvas_w / float(w)
+    # **A line's width is a share of the page, not a count of cut pixels.** The cut is an internal resolution: the same
+    # drawing cut coarser would draw the same line thinner, which is what the constant widths used to do.
+    page_long = float(max(canvas_w, canvas_h))
 
     # **Every pixel quantity is quoted at the 2880 reference**, the same convention the gradient route uses: a length floor
     # means something different on a thousand pixel cut and on a two thousand four hundred one.
@@ -339,7 +345,7 @@ def main():
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
-        width, ink, light_gap = width_and_ink(pts, gap_colour, gap_light, s)
+        width, ink, light_gap = width_and_ink(pts, gap_colour, gap_light, page_long)
         if light_gap < args.min_light_gap:
             continue
         scaled = [(x * s, y * s) for x, y in pts]

@@ -51,6 +51,10 @@ def measure(path, long_side):
         'width': int(width),
         'height': int(height),
         'skel': int(skel.sum()),
+        # **How much of the page the line covers, because width alone does not price a line layer.** Two drawings can
+        # share a median width and differ by a factor of two in how much ink they put down, and the second number is
+        # the one that decides whether a picture reads as drawing or as a mass of lines.
+        'coverage': float(blob.mean()) * 100.0,
         'median_px': median,
         'p10_px': float(np.percentile(widths, 10)),
         'p90_px': float(np.percentile(widths, 90)),
@@ -84,7 +88,8 @@ def main(argv=None):
         raise SystemExit('no files match %r' % args.glob)
 
     rows, skipped = [], []
-    print('  %-22s %10s %10s %10s %8s %8s' % ('file', 'median %', 'p10 %', 'p90 %', 'p90/med', 'span'))
+    print('  %-22s %10s %10s %10s %8s %8s %9s'
+          % ('file', 'median %', 'p10 %', 'p90 %', 'p90/med', 'span', 'ink %'))
     for path in paths:
         r = measure(path, args.long_side)
         name = os.path.basename(path)
@@ -97,20 +102,23 @@ def main(argv=None):
             print('  %-22s %9.4f%%  skipped: this is a filled shape, not a line' % (name, r['share']))
             continue
         rows.append(r)
-        print('  %-22s %9.4f%% %9.4f%% %9.4f%% %8.2f %8d'
+        print('  %-22s %9.4f%% %9.4f%% %9.4f%% %8.2f %8d %8.2f%%'
               % (name, r['share'], r['p10_px'] / r['span'] * 100.0, r['p90_px'] / r['span'] * 100.0,
-                 r['ratio'], r['span']))
+                 r['ratio'], r['span'], r['coverage']))
 
     if not rows:
         raise SystemExit('nothing measured')
     shares = sorted(r['share'] for r in rows)
     ratios = sorted(r['ratio'] for r in rows)
+    covers = sorted(r['coverage'] for r in rows)
     print()
     print('  %d drawings' % len(rows))
     print('  width / ink height    median %.4f%%   range %.4f%% .. %.4f%%   spread %.2fx'
           % (st.median(shares), shares[0], shares[-1], shares[-1] / max(shares[0], 1e-9)))
     print('  p90 / median          median %.2f     range %.2f .. %.2f'
           % (st.median(ratios), ratios[0], ratios[-1]))
+    print('  ink / page            median %.2f%%   range %.2f%% .. %.2f%%'
+          % (st.median(covers), covers[0], covers[-1]))
     if skipped:
         print('  skipped %d, all above %.1f%%' % (len(skipped), args.max_share))
     return 0
