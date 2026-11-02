@@ -32,10 +32,16 @@ from lineweight import core, project
 from lineweight.roles import role_for_part
 from lines_to_bones import family_of, nearest_bone, read_bones, read_render
 
-#: **One number for the whole picture, and that is the renderer's choice rather than an artist's.** A mark's width here
-#: says only that the renderer drew a line at this point. It is carried through because a project requires a width, not
-#: because it is a measurement of anything -- see `AESTHETIC-LIBRARY.md` 4.30.
-RENDER_WIDTH = 2.0
+#: **The width a traced line is written at, as a share of the page's long side.** It was a constant 2.0 drawing units,
+#: which made every traced picture the same thickness whatever its size: on a 2880 long side that is 0.073 per cent of
+#: the ink's height, against a median of 0.2219 per cent over eleven line drawings whose lowest is 0.1179. A constant
+#: therefore puts every traced drawing below the range artists occupy, and the fault is the constant rather than the
+#: render. See `AESTHETIC-LIBRARY.md` 4.30 for the measurement and `learn/errors.jsonl` `hairline_stroke` for the check.
+#:
+#: **0.0026 is the middle of that range, not a measurement of any one line.** freestyle draws every line at one
+#: thickness, so what this number states is only that a line on a page this size has to be several pixels wide before
+#: the ink reads as ink. The width a particular contour wants comes from the brush table once the line is drawn again.
+WIDTH_SHARE = 0.0026
 
 #: A run shorter than this is a spur hanging off a junction, not a mark a hand would make. `prune` removes those from the
 #: skeleton first, and this is the second filter for whatever survives.
@@ -290,6 +296,10 @@ def main():
     scale = canvas_long / float(max(size))
     page = project.Project(width=int(round(size[0] * scale)), height=int(round(size[1] * scale)),
                            title='lines from %s' % os.path.basename(args.render))
+    # **One width for the whole traced picture, and it is a fact about the page rather than about the drawing.** The
+    # renderer had one thickness for every line, so the traced widths cannot carry a width decision -- but they do have
+    # to be wide enough that the ink reads as ink, which is a question about pixels on this page and nothing else.
+    line_width = WIDTH_SHARE * float(max(page.width, page.height))
 
     # **A run is filed only when both of its ends agree on the part.** Three rules were tried and two failed in ways worth
     # recording. The middle: `eye` got nothing, because the run holding the lid's pixels had its middle out on the hair.
@@ -340,7 +350,7 @@ def main():
             continue
         samples = 6 * (len(points) - 1) + 1
         record = core.stroke_record(points, 'fine', seed=i, resolution=6,
-                                    width_profile=[RENDER_WIDTH * scale] * samples)
+                                    width_profile=[line_width] * samples)
         mark = page.add_stroke(record, stage='line', layer='ink', note='+'.join(touched))
         mark.part = family
         mark.parts = touched
