@@ -18,7 +18,6 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
 from scipy import ndimage
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -26,9 +25,9 @@ ROOT = os.path.dirname(TOOLS)
 sys.path.insert(0, TOOLS)
 sys.path.insert(0, ROOT)
 
+import line_agreement as la
 from copy_linework import prune, thin, trace
 from lineweight import core, project
-from line_width_library import line_mask
 
 
 def _bilinear(field, xs, ys):
@@ -99,18 +98,33 @@ def main():
     parser.add_argument('--out', required=True)
     parser.add_argument('--prune', type=int, default=4, help='skeleton spurs shorter than this are cut')
     parser.add_argument('--min-segment', type=int, default=6, help='runs shorter than this are dropped')
+    #: **The reference's line, defined once and shared with every tool that measures against it.** `line_agreement`
+    #: reads the same function at the same floor, so a project built here is measured against the very set it was built
+    #: from -- without that, part of any difference is the difference between two definitions of "the line", and there
+    #: is no way to tell an error of drawing from an error of definition. The floor's own reasoning is in
+    #: `line_agreement`: 12 takes in soft value boundaries (17.88 per cent of a page), 40 does not (7.50).
+    parser.add_argument('--floor', type=float, default=la.FLOOR)
+    parser.add_argument('--element', type=int, default=la.ELEMENT)
+    #: **The one knob where "matches the artist" and "matches the pixels" point at different values.** 1.0 uses the
+    #: width measured across the line, which puts the median at 0.2085 per cent of the long side against an artist's
+    #: 0.2219 -- inside their range. About 0.7 makes the drawn area equal to the reference's, and the symmetric
+    #: difference falls from 291 677 to 213 233, at a median of 0.146 per cent which is in the bottom quarter of the
+    #: artists' range. **Neither is wrong**: one asks whether the line looks like a drawn line, the other asks whether
+    #: the ink is in the same pixels, and on this knob the two answers are 80 000 pixels apart.
+    parser.add_argument('--width-scale', type=float, default=1.0,
+                        help='multiply the measured width; 1.0 reads the ink, ~0.7 matches its area')
     args = parser.parse_args()
 
-    image = Image.open(args.picture).convert('L')
-    gray = np.asarray(image, dtype=np.float64)
-    mask = line_mask(gray)
-    # **The page follows the same rule as the rest of the tools**, so this project can be measured against one the
-    # pipeline produced: a long side of at least 2880, never smaller than what it copies. Without it, a reference at 800
-    # px and an output at 2880 px cannot be compared at any fixed pixel threshold -- a 200 px run is 25 per cent of one
-    # canvas and 7 per cent of the other.
-    canvas_long = max(2880.0, float(max(image.size)))
-    scale = canvas_long / float(max(image.size))
-    canvas = project.Project(width=int(round(image.size[0] * scale)), height=int(round(image.size[1] * scale)),
+    # **Everything is read at the page's own scale, which is what every threshold here is quoted against.** This used to
+    # take the ink at the source picture's resolution and then scale the coordinates, and the difference is not
+    # cosmetic: `line_mask` keeps only what is thinner than 2.5 *source* pixels, so on a small reference a line that is
+    # six pixels on the 2880 page is 2.3 at the source and barely survives -- the mask loses the heavy lines and the
+    # trace inherits a picture that is thinner than the one it copies.
+    gray = la.load_gray(args.picture, la.LONG_SIDE)
+    mask = la.artist_line(gray, element=args.element, floor=args.floor)
+    height, width = mask.shape
+    scale = 1.0
+    canvas = project.Project(width=width, height=height,
                              title='lines of %s' % os.path.basename(args.picture))
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
@@ -132,7 +146,7 @@ def main():
         # was given. Simplifying first would put the width profile at control-point resolution and describe a different
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, w * scale) for w in px_widths]
+        widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
                                     width_profile=widths, absolute_width=True)
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
@@ -140,7 +154,7 @@ def main():
 
     project.save_project(canvas, args.out)
     print('  %s %dx%d, %d line px, %d runs, %d marks -> %s'
-          % (os.path.basename(args.picture), image.size[0], image.size[1],
+          % (os.path.basename(args.picture), width, height,
              int(mask.sum()), len(runs), written, args.out))
     return 0
 
