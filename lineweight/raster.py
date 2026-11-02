@@ -866,16 +866,20 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
         raise ValueError('fill mark %r has no points' % (mark.get('id'),))
     layer = Layer(width, height)
     # **A screen is built here, once, and handed to the scanline loop row by row.** `tone` on a fill says the area's
-    # value is rendered as dots or lines rather than as a flat tint; the pitch and the angle belong to the page, so the
-    # lattice is phased to where this shape actually sits.
+    # value is rendered as dots or lines rather than as a flat tint. The pitch and the angle belong to the page, so the
+    # lattice is phased to the page as well -- **and that means the origin the screen is given must be the page's,
+    # not this shape's corner.** `screen` builds a lattice over the whole layer, so its rows and columns are already
+    # page coordinates; passing the shape's own minimum corner offsets the lattice a second time, and two neighbours
+    # then start their cells at different phases. Measured: one 200-wide fill and two 100-wide neighbours at pitch 9
+    # gave 5809 differing pixels, and a neighbour whose corner is off by half a cell came out half a cell out of step.
+    # A screen belongs to the page, which is exactly what leaving `origin` at its default says.
     screen = None
     spec = geometry.get('tone')
     if spec:
         if _np is None:  # pragma: no cover - a screen needs numpy for the lattice
             raise RuntimeError('a tone needs numpy')
         from . import tone as tone_module
-        origin = (min(p[0] for p in points), min(p[1] for p in points))
-        screen = tone_module.screen(spec, width, height, scale=scale, origin=origin)
+        screen = tone_module.screen(spec, width, height, scale=scale)
     # **A shape with holes is filled even-odd**, so a point inside a hole counts as outside. Without them the rule
     # stays nonzero, because an offset outline that doubles back at a hairpin must not be erased -- that measurement is
     # in `fill_polygon`'s own docstring and it still holds for every fill that has no holes.

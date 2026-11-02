@@ -123,3 +123,30 @@ def test_a_cross_screen_covers_more_than_one_of_its_own_rulings():
     assert tone.value_of(both) < tone.value_of(one) + 0.4
 
 
+def test_splitting_a_screened_area_does_not_move_the_lattice():
+    """**A screen belongs to the page, so where a shape is cut must not move the cells.**
+
+    Splitting one area into two fills is the commonest thing a project does -- every colour boundary does it -- and a
+    lattice phased to each shape's own corner puts every such boundary out of step. That was the behaviour: one
+    200-wide fill and two 100-wide neighbours differed on 5809 pixels, and a neighbour whose corner fell half a cell
+    off came out half a cell out of step. Read back: the two halves, away from the seam they share, have to reproduce
+    the one fill pixel for pixel."""
+    from lineweight import raster
+
+    def fill(points, width=200, height=100):
+        mark = {'id': 't',
+                'geometry': {'points': [list(p) for p in points],
+                             'tone': {'shape': 'dot', 'value': 0.5, 'pitch': 9.0}},
+                'appearance': {'fill': '#000000', 'opacity': 1.0}}
+        layer = raster.fill_layer(mark, width, height, scale=1.0)
+        return np.frombuffer(layer.data, dtype=np.uint8).reshape(height, width, 4)[:, :, 3]
+
+    whole = fill([(0, 0), (200, 0), (200, 100), (0, 100)])
+    left = fill([(0, 0), (100, 0), (100, 100), (0, 100)])
+    right = fill([(100, 0), (200, 0), (200, 100), (100, 100)])
+    # The seam itself is soft on both sides -- each half covers a boundary pixel by half -- so the comparison starts
+    # a pixel or two away from it. What is being read is the phase of the cells, which shows up immediately.
+    assert np.array_equal(left[:, :98], whole[:, :98])
+    assert np.array_equal(right[:, 102:], whole[:, 102:])
+
+
