@@ -12,9 +12,10 @@ them, which is what "the same brush, bigger" means.
 
 import statistics
 
+import numpy as np
 import pytest
 
-from lineweight import core
+from lineweight import core, raster
 
 
 A_PATH = [(0, 0), (30, 2), (60, 14), (95, 6), (130, 20), (170, 4), (210, 16)]
@@ -79,3 +80,35 @@ def test_a_smaller_size_keeps_its_variation():
     for size in (0.5, 1.0, 2.0, 3.0):
         record = core.stroke_record(A_PATH, 'fine', seed=7, size=size)
         assert core.stroke_variation(record) < core.UNIFORM_FLOOR, size
+
+
+def test_a_brush_is_read_against_the_page_its_table_was_drawn_on():
+    """**The table's widths were fixed on one page and never said which.**
+
+    `BRUSH_REFERENCE_LONG` names it: 800 long, inferred from the canvas the drawing tools of that period work on and
+    confirmed by what the widths come to there -- `fine` covers 0.2331 per cent of the page, against an artist's median
+    of 0.2219, where the same number on a 2880 page covers 0.0648 and falls below the lowest of eleven. So the width
+    follows the page the record names, and the record is the only thing allowed to say: **not the canvas**, because a
+    thumbnail fills a canvas smaller than the drawing, and six tests broke when the renderer started believing its own
+    size instead of the record's."""
+    for name in ('fine', 'ink', 'wash'):
+        small = sum(core.stroke_widths(core.stroke_record(A_PATH, name, seed=3, page_long=1440)))
+        large = sum(core.stroke_widths(core.stroke_record(A_PATH, name, seed=3, page_long=2880)))
+        assert small / 1440 == pytest.approx(large / 2880, rel=0.01), name
+
+
+def test_the_share_a_brush_covers_is_the_same_on_two_page_sizes():
+    """The same rule, read off the picture rather than off the table: the alpha a column carries, over the page's own
+    length. This is the number the eye sees, so it is the one that has to hold."""
+    def share(name, page_long):
+        mid = 240.0
+        record = core.stroke_record([(page_long * 0.2, mid), (page_long * 0.8, mid)], name,
+                                    seed=5, page_long=page_long)
+        layer = raster.sweep_layer(record, page_long, 480, scale=1.0)
+        alpha = np.frombuffer(layer.data, dtype=np.uint8).reshape(480, page_long, 4)[:, :, 3]
+        columns = np.arange(page_long)
+        middle = (columns > page_long * 0.3) & (columns < page_long * 0.7)
+        return float(np.median(alpha[:, middle].sum(axis=0) / 255.0)) / page_long
+
+    for name in ('ink', 'maru'):
+        assert share(name, 1440) == pytest.approx(share(name, 2880), rel=0.03), name

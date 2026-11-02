@@ -31,7 +31,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only on a machine without numpy
     _np = None
 
-from .core import BRUSHES, brush_at, mark_ink, stroke_widths
+from .core import BRUSHES, BRUSH_REFERENCE_LONG, brush_at, mark_ink, stroke_widths
 from .roles import DEFAULT_INK
 
 
@@ -304,6 +304,11 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
             # finely the path happened to be sampled.
             layer.density_ref = [0.0] * (width * height)
         layer.density_colour = colour
+    # **A brush's width is fixed on a page, and the page is the record's to state.** The canvas does not overrule it --
+    # a thumbnail or a crop fills a canvas smaller than the drawing -- so a record without a page is read against the
+    # one the table itself was drawn on, which is the behaviour every record written before the field existed had. Only
+    # the brush table is affected; a supplied profile is already in the units a picture was measured in.
+    page_factor = float(record.get('page_long') or BRUSH_REFERENCE_LONG) / BRUSH_REFERENCE_LONG
     gamma = float(brush.get('curve', 1.0))
     centre = record['centre']
     pressure = record['pressure']
@@ -364,7 +369,7 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 base = float(widths[min(i, len(widths) - 1)])
                 radius = max(0.5, base * (p / median_pressure) * scale * 0.5 * width_scale)
             else:
-                radius = max(0.5, brush['width'] * (p ** gamma) * scale * 0.5 * width_scale)
+                radius = max(0.5, brush['width'] * page_factor * (p ** gamma) * scale * 0.5 * width_scale)
             # **The step is a fraction of the radius this dab will actually be stamped at.** A floor of half a pixel
             # keeps a hairline from spending its whole budget on steps, and the factor comes from the brush because
             # that is where a texture would be chosen.
@@ -1084,6 +1089,12 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         return layer
 
     points = _np.asarray([(x * scale, y * scale) for x, y in centre], dtype=_np.float64)
+    # **The page comes from the record, and the canvas deliberately does not overrule it.** A brush's width is a share
+    # of the page it was fixed on, but the canvas is not that page: a thumbnail, a crop and a test all fill a canvas far
+    # smaller than the drawing, and reading the page off one would thin every brush to a hair -- measured, six tests
+    # that draw a stroke on a 500-pixel canvas broke the moment the renderer started believing its own size. So a
+    # caller that knows the page says so on the record, and a record that says nothing is read against the table's own
+    # page. Every reader of that number -- this path, the vector paths, the auditor -- reads the same one.
     widths = _np.asarray(stroke_widths(record), dtype=_np.float64) * scale
     if widths.size != points.shape[0]:
         widths = _np.resize(widths, points.shape[0])

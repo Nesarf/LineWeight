@@ -58,6 +58,20 @@ from .curve import Cubic
 # offset, and it was caught by the existing tests rather than by reading it back.
 #
 # **Only the 14.3x ratio is measured. The split between 入り and 抜き is not.**
+#: **The page a brush table's `width` was fixed on, which is a different page from the one the pixel thresholds use and
+#: was never written down: 800 pixels long, and that figure is inferred rather than recorded.** Two independent things
+#: point at it. The canvas the drawing tools of that period use -- `tools/first_drawing.py` works on 800x600 and is the
+#: tool that draws straight from the table with no supplied profile. And what the table's own widths come to there:
+#: `fine` covers **0.2331 per cent** of the page, against a median of **0.2219 per cent** over eleven uncoloured line
+#: drawings, while the same brush read against a 2880 page covers 0.0648 and sits below their lowest at 0.1179 -- which
+#: is exactly the fault `learn/errors.jsonl` records as `hairline_stroke`. **Naming the base is the whole point,
+#: because it was implicit**: one number meant a legitimate line on one canvas and a line that disappears on another.
+#:
+#: The thresholds and the screen pitch keep 2880, and the two bases stay separate on purpose: one is where the cutting
+#: and the screening parameters were calibrated, the other is where a brush's width was drawn. Merging them would have
+#: made one of the two wrong by a factor of 3.6.
+BRUSH_REFERENCE_LONG = 800.0
+
 BRUSHES: dict[str, dict[str, float]] = {
     # name:            width  opacity taper_in taper_out spacing  speed   corner  noise  wobble
     # **`noise` is the term that decides whether a line breathes, and it was far too small to see.** The pressure is
@@ -106,7 +120,10 @@ BRUSHES: dict[str, dict[str, float]] = {
     #   and at 1.0 it breaks into beads.
     # - **`taper_in + taper_out` is 14.3 in total**, from a measured 丸ペン whose 入り and 抜き are both 5.0 mm on a
     #   0.35 mm nib. **Only that total is measured**; how it splits between the ends is carried over, and is a choice.
-    # - **`width` is that material's drawn width at 300 dpi**, where 1 mm is 11.8 pixels: a statement about the tool.
+    # - **`width` is that material's drawn width on the page named by `BRUSH_REFERENCE_LONG`** -- 800 pixels long, a
+    #   page of its own and not the 2880 the thresholds use. The figures were first written at 300 dpi, where 1 mm is
+    #   11.8 pixels: that is the provenance of the numbers rather than the rule that reads them, and the rule is the
+    #   constant above, because a width is a length on a page and a record has to say which page.
     #
     # The response curve, the tremor and the noise are **carried over from the range the first four brushes occupy**
     # (noise 0.10 to 0.26, wobble 0.14 to 0.38) and placed inside it by how hard the tool is: a soft brush answers
@@ -1138,7 +1155,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   width_profile: list[float] | None = None,
                   alpha_profile: list[float] | None = None,
                   absolute_width: bool = False,
-                  size: float = 1.0) -> dict:
+                  size: float = 1.0, page_long: float = 0.0) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1198,6 +1215,11 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # fraction, so a record that stored only a width would lose every relative quantity the brush is made of. Absent
         # means one, so a record written before sizes existed expands exactly as it did.
         'size': float(size),
+        # **The page this record was drawn for, as a length.** A brush's width, a screen's pitch and every pixel
+        # threshold are lengths on a page, so a record that leaves the page out states a width that reads differently
+        # on every canvas. Zero means "not stated"; `stroke_widths` then falls back to the reference page rather than
+        # to whichever canvas happens to be rendering it -- a renderer may override it, no other reader needs to.
+        'page_long': float(page_long),
         'width_profile': [float(w) for w in width_profile] if width_profile else [],
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
@@ -1253,7 +1275,7 @@ def mark_ink(mark: dict) -> str:
             or roles.ink(mark.get('geometry', {}).get('role', '')))
 
 
-def stroke_widths(record: dict) -> list[float]:
+def stroke_widths(record: dict, page_long: float = 0.0) -> list[float]:
     """The width the brush reaches at each recorded pressure sample.
 
     **The response curve is applied here, at expansion, rather than being baked into the record.** A record holds what
@@ -1261,6 +1283,12 @@ def stroke_widths(record: dict) -> list[float]:
     width early and feels soft, over one it needs real pressure and feels like a pen. Because the curve lives on this
     side, the same recorded stroke can be re-expanded with a different one, which is the practical difference between
     keeping the line and keeping only its outline.
+
+    **A brush's width is fixed on a page, so it is read against one.** `page_long` names that page; absent it comes
+    from the record, and absent again from `BRUSH_REFERENCE_LONG`, which is the page the table itself was drawn on. A
+    measured profile needs none of this -- it is already in the units the tracer read off a picture -- so the factor
+    reaches the brush table only. The canvas is deliberately never consulted: a thumbnail or a crop fills a canvas far
+    smaller than the drawing, so a caller that knows the page states it and every reader of that number agrees.
     """
     brush = brush_at(record['brush'], record.get('size', 1.0))
     gamma = float(brush.get('curve', 1.0))
@@ -1274,7 +1302,10 @@ def stroke_widths(record: dict) -> list[float]:
         # `ref.py` measures a width distribution out of real artwork, and without somewhere to put it the measurement
         # has nowhere to land except the brush table, which is per-brush and therefore cannot be per-stroke.
         return [scale * float(w) for w in supplied]
-    return [brush['width'] * scale * (float(p) ** gamma) for p in record['pressure']]
+    # The page the brush's width is quoted against: the caller's if it knows, else the record's, else the table's own.
+    page = float(page_long or record.get('page_long') or BRUSH_REFERENCE_LONG)
+    width = brush['width'] * scale * (page / BRUSH_REFERENCE_LONG)
+    return [width * (float(p) ** gamma) for p in record['pressure']]
 
 
 def outline_polygon(record: dict) -> list[tuple[float, float]]:
