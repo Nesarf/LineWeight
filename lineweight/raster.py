@@ -720,7 +720,8 @@ def parse_hex(colour: str) -> tuple[int, int, int]:
 
 
 def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: float = 1.0,
-                 scale: float = 1.0, fill_rule: str = 'nonzero', holes=None, gradient=None) -> None:
+                 scale: float = 1.0, fill_rule: str = 'nonzero', holes=None, gradient=None,
+                 tone=None) -> None:
     """Fills a closed polygon into `layer`, by scanline.
 
     **Nonzero, and this was even-odd until a referee measured it.** The old reasoning was that even-odd is what a
@@ -774,6 +775,10 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
             gden = 1.0
         grad = (gx0, gy0, gdx, gdy, gden, parse_hex(gradient['colour0']), parse_hex(gradient['colour1']))
     for py in range(y0, y1 + 1):
+        # **A screen is a lattice on the page, not a texture on the shape.** `tone` arrives already phased to the page,
+        # so this loop only reads it: an area drawn beside another at the same pitch continues its neighbour's dots
+        # instead of starting a fresh lattice at its own corner.
+        tone_row = tone[py] if tone is not None else None
         yc = py + 0.5
         crossings: list[tuple[float, int]] = []
         for xs, ys in scaled:
@@ -824,6 +829,8 @@ def fill_polygon(layer: 'Layer', points, colour: tuple[int, int, int], alpha: fl
                 if cover <= 0:
                     continue
                 a = alpha * min(1.0, cover)
+                if tone_row is not None:
+                    a *= tone_row[px]
                 index = row + px * 4
                 old_a = layer.data[index + 3] / 255.0
                 new_a = a + old_a * (1 - a)
@@ -858,13 +865,28 @@ def fill_layer(mark: dict, width: int, height: int, scale: float = 1.0) -> 'Laye
     if not points:
         raise ValueError('fill mark %r has no points' % (mark.get('id'),))
     layer = Layer(width, height)
+    # **A screen is built here, once, and handed to the scanline loop row by row.** `tone` on a fill says the area's
+    # value is rendered as dots or lines rather than as a flat tint; the pitch and the angle belong to the page, so the
+    # lattice is phased to where this shape actually sits.
+    screen = None
+    spec = geometry.get('tone')
+    if spec:
+        if _np is None:  # pragma: no cover - a screen needs numpy for the lattice
+            raise RuntimeError('a tone needs numpy')
+        from . import tone as tone_module
+        origin = (min(p[0] for p in points) * scale, min(p[1] for p in points) * scale)
+        build = tone_module.line_screen if spec.get('shape') == 'line' else tone_module.dot_screen
+        screen = build(width, height, float(spec.get('value', 0.5)),
+                       pitch=float(spec.get('pitch', 9.0)) * scale,
+                       angle=float(spec.get('angle', 45.0)), origin=origin)
     # **A shape with holes is filled even-odd**, so a point inside a hole counts as outside. Without them the rule
     # stays nonzero, because an offset outline that doubles back at a hairpin must not be erased -- that measurement is
     # in `fill_polygon`'s own docstring and it still holds for every fill that has no holes.
     fill_polygon(layer, points, parse_hex(appearance.get('fill', '#808080')),
                  float(appearance.get('opacity', 1.0)), scale,
                  holes=geometry.get('holes') or None,
-                 gradient=geometry.get('gradient') or None)
+                 gradient=geometry.get('gradient') or None,
+                 tone=screen)
     return layer
 
 

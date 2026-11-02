@@ -369,7 +369,8 @@ class Project:
         return mark
 
     def add_fill(self, region, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
-                 blend: str = 'normal', note: str = '', source: str = '', commit: bool | None = None) -> Mark:
+                 blend: str = 'normal', note: str = '', source: str = '', commit: bool | None = None,
+                 tone: dict | None = None) -> Mark:
         """A fill is a mark like any other, so it can be deleted by id.
 
         **This is the difference that matters.** `region_fill()` used to hand back bare `d` strings; a caller could
@@ -382,7 +383,8 @@ class Project:
         mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
                     geometry={'points': [list(p) for p in region.points], 'd': region.d,
                               'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])],
-                              'gradient': getattr(region, 'gradient', None)},
+                              'gradient': getattr(region, 'gradient', None),
+                              'tone': tone},
                     appearance={'fill': colour, 'opacity': opacity, 'blend': blend},
                     provenance={'source': source, 'note': note, 'turn': self.turn},
                     state=LIVE if commit else DRAFT)

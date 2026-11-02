@@ -28,17 +28,23 @@ DEFAULT_ANGLE = 45.0
 DEFAULT_PITCH = 9.0
 
 
-def dot_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE):
+def dot_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE, origin=(0.0, 0.0)):
     """Coverage, where one is ink, for a value drawn as a rotated lattice of dots.
 
     `value` runs from nought (paper) to one (solid ink); anything outside that range is clamped by the two early returns
     rather than by the arithmetic, because a screen of value zero should cost nothing to build.
+
+    **`origin` is where this patch sits on the page.** A screen belongs to the page and not to the shape it fills: two
+    adjacent areas screened at the same pitch have to continue each other's lattice, or the seam between them reads as a
+    change of tone. An area rasterised into its own box therefore has to be told where its box is.
     """
     if value <= 0.0:
         return np.zeros((height, width), dtype=np.float64)
     if value >= 1.0:
         return np.ones((height, width), dtype=np.float64)
     row, column = np.mgrid[0:height, 0:width]
+    row = row + float(origin[1])
+    column = column + float(origin[0])
     theta = np.deg2rad(angle)
     along = column * np.cos(theta) + row * np.sin(theta)
     across = -column * np.sin(theta) + row * np.cos(theta)
@@ -49,7 +55,7 @@ def dot_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE):
     return np.clip(radius + 0.5 - distance, 0.0, 1.0)
 
 
-def line_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE):
+def line_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE, origin=(0.0, 0.0)):
     """The same value as parallel lines, which is the other screen a comic uses for a flat tone.
 
     A dot grows in two directions and a line grows in one, so the coverage relation is linear rather than square-rooted:
@@ -60,6 +66,8 @@ def line_screen(width, height, value, pitch=DEFAULT_PITCH, angle=DEFAULT_ANGLE):
     if value >= 1.0:
         return np.ones((height, width), dtype=np.float64)
     row, column = np.mgrid[0:height, 0:width]
+    row = row + float(origin[1])
+    column = column + float(origin[0])
     theta = np.deg2rad(angle)
     across = -column * np.sin(theta) + row * np.cos(theta)
     dv = (across % pitch) - pitch / 2.0

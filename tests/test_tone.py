@@ -51,3 +51,42 @@ def test_a_dot_edge_softens_the_way_a_stroke_edge_does():
     screen = tone.dot_screen(80, 80, 0.4, pitch=14.0)
     partial = ((screen > 0.0) & (screen < 1.0)).sum()
     assert partial > 100
+
+
+def _rect(x0, y0, x1, y1):
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+
+
+def test_a_fill_with_a_tone_is_screened_rather_than_flat():
+    """The point of the whole thing: a fifty per cent area has to come out as dots covering half, not as grey."""
+    from lineweight import raster
+    mark = {'geometry': {'points': _rect(0, 0, 60, 60),
+                         'tone': {'value': 0.5, 'pitch': 10.0, 'angle': 45.0}},
+            'appearance': {'fill': '#000000', 'opacity': 1.0}}
+    layer = raster.fill_layer(mark, 60, 60)
+    alpha = np.frombuffer(layer.data, dtype=np.uint8)[3::4]
+    assert alpha.min() == 0, 'a screen must leave paper between the dots'
+    assert alpha.max() > 200, 'and ink inside them'
+    cover = (alpha > 127).sum() / alpha.size
+    assert abs(cover - 0.5) < 0.08, cover
+
+
+def test_a_fill_without_a_tone_is_still_flat():
+    from lineweight import raster
+    mark = {'geometry': {'points': _rect(0, 0, 40, 40)},
+            'appearance': {'fill': '#808080', 'opacity': 1.0}}
+    layer = raster.fill_layer(mark, 40, 40)
+    alpha = np.frombuffer(layer.data, dtype=np.uint8)[3::4]
+    inside = alpha[:40 * 40].reshape(40, 40)[5:35, 5:35]
+    assert inside.min() == inside.max()
+
+
+def test_the_lattice_is_phased_to_the_page_and_not_to_the_shape():
+    """Two areas screened at the same pitch have to continue each other, which they only do if the screen knows where
+    the area sits. Read back: the same origin reproduces the screen, a shifted origin does not."""
+    first = tone.dot_screen(40, 40, 0.5, pitch=10.0, origin=(0.0, 0.0))
+    same = tone.dot_screen(40, 40, 0.5, pitch=10.0, origin=(0.0, 0.0))
+    shifted = tone.dot_screen(40, 40, 0.5, pitch=10.0, origin=(40.0, 0.0))
+    assert np.allclose(first, same)
+    assert not np.allclose(first, shifted)
+
