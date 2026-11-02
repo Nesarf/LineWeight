@@ -183,6 +183,54 @@ def layers_from_document(document: Document, scale: float = 1.0) -> list[Layer]:
     return made
 
 
+#: The layer a mark lands on when it names none. A project with no figure has no sheet list to choose from, and a mark
+#: has to go somewhere rather than be dropped -- but the name is deliberately not the default `to_app` uses, so a project
+#: exported both ways does not silently merge two different things into one sheet.
+DEFAULT_LAYER = 'LINE'
+
+
+def layers_from_project(drawn, scale: float = 1.0, width: int | None = None,
+                        height: int | None = None) -> list[Layer]:
+    """One PSD layer per drawing layer, **each rendered by the renderer the picture comes from.**
+
+    **Why this exists beside `layers_from_document`.** That one fills a contour with an even-odd scanline that has no
+    anti-aliasing, and thickens a polyline by stamping hard discs -- so every line it writes has a staircase edge, while
+    the same project rendered to PNG has a soft one. Two destinations, two pictures, and the one the application opens is
+    the one a person judges the drawing by. This takes the renderer's own bytes instead: a layer in the file is the layer
+    in the picture, by construction rather than by agreement.
+
+    **The order is the drawing's own.** A mark's `Mark.layer` names its sheet; the sheets come out in the order those
+    names first appear, which is bottom to top in the file, because that is the order `render_marks` composites in. A
+    project with no figure puts everything on `DEFAULT_LAYER`.
+
+    **An erase is scoped to its own sheet**, and that is the honest limit: it removes ink on the layer it is on, so a
+    correction meant to cross sheets has to be made on the sheet it belongs to.
+    """
+    from . import raster
+
+    w = int(width or round(drawn.width * scale))
+    h = int(height or round(drawn.height * scale))
+    groups: dict[str, list[dict]] = {}
+    for mark in drawn.live():
+        groups.setdefault(mark.layer or DEFAULT_LAYER, []).append(mark.to_dict())
+    if not groups:
+        raise ValueError('a PSD needs at least one layer')
+
+    made: list[Layer] = []
+    for name, marks in groups.items():
+        rendered = raster.render_marks(marks, w, h, scale)
+        canvas = Layer(name, w, h)
+        canvas.data = bytearray(rendered.data)
+        # **The colour of a transparent pixel is white, because a consumer composites "colour, masked by alpha".**
+        # Black there paints the whole canvas black wherever nothing was drawn; that is what SAI showed once, with every
+        # layer named correctly beside a blank page.
+        for i in range(0, len(canvas.data), 4):
+            if canvas.data[i + 3] == 0:
+                canvas.data[i] = canvas.data[i + 1] = canvas.data[i + 2] = 255
+        made.append(canvas)
+    return made
+
+
 def _fill_polygon(layer: Layer, points: list[tuple[float, float]], colour: tuple[int, int, int],
                   alpha: float) -> None:
     """Even-odd scanline fill. A closed contour is all this ever receives."""

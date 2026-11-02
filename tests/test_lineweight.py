@@ -562,6 +562,43 @@ def test_the_illustrator_script_flips_y_and_keeps_the_palette():
         'ExportType.SVGFORMAT does not exist in Illustrator 28.5 and must not be emitted as code'
 
 
+def test_a_psd_layer_from_a_project_is_the_layer_the_renderer_drew():
+    """**The application opens what a person judges the drawing by**, so a layer in the file has to be the layer in the
+    picture. `layers_from_document` fills an outline with an even-odd scanline that has no anti-aliasing, and thickens a
+    polyline by stamping hard discs -- so every edge it writes is a staircase, while the renderer softens a stroke by a
+    pixel exactly as a brush does. Read back: a stroke's edge carries intermediate alpha, and the alpha channel is the
+    renderer's own bytes rather than a second rasteriser's opinion about the same geometry."""
+    from lineweight import core, project as project_module, raster
+    from lineweight.psd import layers_from_project
+
+    drawn = project_module.Project(width=200, height=120)
+    drawn.add_stroke(core.stroke_record([(20, 60), (100, 40), (180, 60)], 'ink', seed=3), stage='line')
+    layers = layers_from_project(drawn, scale=1.0)
+
+    assert [layer.name for layer in layers] == ['LINE']
+    alphas = layers[0].data[3::4]
+    assert 0 in alphas and 255 in alphas
+    assert any(0 < a < 255 for a in alphas), 'the edge is hard: no pixel carries partial coverage'
+    reference = raster.render_marks([m.to_dict() for m in drawn.live()], 200, 120, 1.0)
+    assert bytes(alphas) == bytes(reference.data[3::4])
+
+
+def test_each_drawing_layer_becomes_one_psd_layer_in_drawing_order():
+    """**The order is the drawing's own**, bottom to top, because that is the order the renderer composites in. A file
+    whose layers were sorted into a house order would look right and edit wrong."""
+    from lineweight import core, project as project_module
+    from lineweight.psd import layers_from_project
+
+    drawn = project_module.Project(width=120, height=80)
+    drawn.add_stroke(core.stroke_record([(10, 30), (110, 30)], 'fine', seed=1), stage='line', layer='hair')
+    drawn.add_stroke(core.stroke_record([(10, 60), (110, 60)], 'fine', seed=2), stage='line', layer='face')
+    layers = layers_from_project(drawn)
+
+    assert [layer.name for layer in layers] == ['hair', 'face']
+    for layer in layers:
+        assert any(layer.data[3::4]), '%s has no ink in it' % layer.name
+
+
 def test_the_psd_round_trips_its_layers(tmp_path):
     """The bytes have to be walked back out, because a writer that reports success after writing is exactly the
     failure this project keeps meeting -- and a checker that shares the writer's bug is not a check."""
