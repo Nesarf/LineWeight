@@ -31,6 +31,7 @@ from lineweight import core, project
 from render_to_project import stitch
 
 import edge_line
+import edge_scale
 import line_from_shapes
 import shape_pass
 import value_pass
@@ -85,7 +86,7 @@ def boundary(labels):
     return mask, ya, xa, np.concatenate(low), np.concatenate(high)
 
 
-def width_and_ink(points, gap_colour, gap_light, page_long):
+def width_and_ink(points, gap_colour, gap_light, page_long, hardness_map=None):
     """How heavy a line should be and how dark, **from one pass over its own samples**.
 
     **Two questions, one measurement.** A line's weight and its ink are both decided by the same number -- the median
@@ -103,7 +104,7 @@ def width_and_ink(points, gap_colour, gap_light, page_long):
     h, w = gap_colour.shape
     ok = (ys >= 0) & (ys < h) & (xs >= 0) & (xs < w)
     if not ok.any():
-        return W_FINE_SHARE * page_long, COLOUR_FINE, 0.0
+        return W_FINE_SHARE * page_long, COLOUR_FINE, 0.0, 1.0
     # **One fancy index instead of a loop of scalars.** `gap_colour[iy, ix]` in Python costs a few microseconds a sample
     # and there are tens of thousands of samples; indexing with two arrays is one call.
     colour = float(np.median(gap_colour[ys[ok], xs[ok]]))
@@ -120,7 +121,14 @@ def width_and_ink(points, gap_colour, gap_light, page_long):
     # boundary is a line at all: measured against the artist's own lines it lifts precision from 39.8 to 50.7 per cent at
     # a cost of 11.5 points of recall, and it beats the colour gap at every operating point.
     light_gap = float(np.median(gap_light[ys[ok], xs[ok]]))
-    return width, ink, light_gap
+    # **The hardness of the transition, which is the property that separates a drawn line from a modelled shadow.** A
+    # line keeps its depth when the measuring element grows; a ramp does not. See `tools/edge_scale.py` and
+    # `AESTHETIC-LIBRARY.md` 4.30 -- on one painted page the structures that keep 70 per cent or more cover 7.15 per
+    # cent of the picture, against the 7.82 per cent of ink that eleven uncoloured line drawings carry.
+    hardness = 1.0
+    if hardness_map is not None:
+        hardness = float(np.median(hardness_map[ys[ok], xs[ok]]))
+    return width, ink, light_gap, hardness
 
 
 def main_part(points, box, head=0.16, torso=0.55):
@@ -197,6 +205,13 @@ def main():
                          'and it beats the colour gap at every operating point. Zero restores every candidate. Length and '
                          'area ratio were tried as second filters and both point the same way -- smaller is more likely '
                          'to be a real line -- but each costs a third of the recall, so neither is applied')
+    ap.add_argument('--min-hardness', type=float, default=0.0,
+                    help='drop boundaries whose transition is softer than this: the share of the structure\'s depth that '
+                         'a forty-one-pixel element still finds, on the 2880 reference. **A line is a step and a shadow is '
+                         'a ramp, so this is the axis the lightness gap cannot express** -- a strong ramp and a faint '
+                         'line have the same lightness difference. Measured on one painted page, keeping 0.7 leaves '
+                         '7.15 per cent of the picture, against the 7.82 per cent of ink eleven uncoloured line drawings '
+                         'carry. **0 turns it off and leaves the lightness gap alone**, which is the older behaviour')
     ap.add_argument('--merge-angle', type=float, default=35.0)
     ap.add_argument('--stitch-reach', type=float, default=0.0035,
                     help='two ends further apart than this share of the canvas long side are not joined; 0 turns the '
@@ -249,6 +264,18 @@ def main():
     # **Every pixel quantity is quoted at the 2880 reference**, the same convention the gradient route uses: a length floor
     # means something different on a thousand pixel cut and on a two thousand four hundred one.
     k = float(max(w, h)) / 2880.0
+    # **The hardness of every transition, measured once for the whole cut.** Two element sizes, quoted at the 2880
+    # reference and scaled to this cut, so a line and a shadow are told apart by whether the change happens at once
+    # rather than by how large it is. `floor=0` keeps every pixel in the set and lets the caller threshold the ratio.
+    # **On the 0..255 scale `edge_scale` measures on, because its guard is `max(wide, 1.0)`.** `rgb` is 0..1 here, so a
+    # grey built straight from it made every depth smaller than one and the guard clamped the denominator to 1.0 --
+    # which turned the ratio into the depth itself, and every candidate came out at a hardness of 0.03.
+    _gray = (0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]).astype(np.float64) * 255.0
+    _small = max(3, int(round(edge_scale.SMALL * k)))
+    _large = max(_small + 2, int(round(edge_scale.LARGE * k)))
+    _dsmall, _dlarge, _lsmall, _llarge = edge_scale.scales(_gray, small=_small, large=_large)
+    _cand, hardness_map, _narrow = edge_scale.hardness(_dsmall, _dlarge, _lsmall, _llarge, floor=0.0)
+    tick('hardness at elements %d and %d' % (_small, _large))
 
     table, _counts = shape_pass.colour_table(labels, rgb)
     light, sat, hue = line_from_shapes.rgb_stats(table)
@@ -342,12 +369,19 @@ def main():
 
     written = 0
     added_by_part = 0
+    # **Diagnostics on why a boundary was dropped.** A filter that silently removes everything looks the same from the
+    # outside as a picture with no lines in it, so both distributions are reported beside the count that survives.
+    seen_hardness, kept_hardness = [], []
     for i, pts in enumerate(lines):
         if len(pts) < 2:
             continue
-        width, ink, light_gap = width_and_ink(pts, gap_colour, gap_light, page_long)
-        if light_gap < args.min_light_gap:
+        width, ink, light_gap, hardness = width_and_ink(pts, gap_colour, gap_light, page_long, hardness_map)
+        seen_hardness.append(hardness)
+        if args.min_light_gap > 0 and light_gap < args.min_light_gap:
             continue
+        if args.min_hardness > 0 and hardness < args.min_hardness:
+            continue
+        kept_hardness.append(hardness)
         scaled = [(x * s, y * s) for x, y in pts]
         record = core.stroke_record(scaled, 'fine', seed=i, resolution=1, colour=ink,
                                     width_profile=[width] * len(scaled))
@@ -361,6 +395,10 @@ def main():
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     project.save_project(proj, str(out))
+    if seen_hardness:
+        a = np.asarray(seen_hardness)
+        print('  hardness of every candidate: p10 %.2f, median %.2f, p90 %.2f; kept %d of %d'
+              % (np.percentile(a, 10), np.median(a), np.percentile(a, 90), len(kept_hardness), len(seen_hardness)))
     print('  %d lines on a %dx%d canvas, written to %s' % (written, canvas_w, canvas_h, out))
     print('  %d of them fall on the figure and carry a part; the rest are background boundaries' % added_by_part)
     tick('records written')

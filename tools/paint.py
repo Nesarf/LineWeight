@@ -108,6 +108,13 @@ def main():
                     help='passed to edge_strokes: drop boundaries whose lightness difference across them is below this. '
                          'It is the precision-for-recall dial and it was set to 0.04 by a measurement, so it is exposed '
                          'rather than buried -- see the help on edge_strokes for what 0.04 buys and what 0 restores')
+    ap.add_argument('--min-hardness', type=float, default=0.7,
+                    help='passed to edge_strokes: drop boundaries softer than this, where hardness is the share of the '
+                         'transition a forty-one-pixel element still finds. **0.7 by default because it is the value '
+                         'that names a quantity rather than a taste**: on one painted page the transitions that keep 70 '
+                         'per cent or more cover 7.15 per cent of the picture, and eleven uncoloured line drawings carry '
+                         '7.82 per cent of ink. Zero turns it off. The default lightness gap is set to 0 when this is '
+                         'in use, because the two filters ask the same question and the hardness one answers it better')
     ap.add_argument('--max-shapes', type=int, default=30000,
                     help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
                          'Zero turns the budget off. A safety valve, not a working limit: a fill now rasterises into its '
@@ -176,7 +183,8 @@ def main():
                       '--labels', shapes.with_name('%s-labels.npy' % shapes.stem),
                       '--meta', shapes.with_name('%s-meta.json' % shapes.stem),
                       '--reference', args.reference, '--out', lines,
-                      '--min-light-gap', str(args.min_light_gap)])
+                      '--min-light-gap', str(args.min_light_gap),
+                      '--min-hardness', str(args.min_hardness)])
         project = shapes
         if not args.no_render:
             render_project(lines, strokes, args.sweep)
