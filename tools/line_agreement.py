@@ -25,7 +25,12 @@ from scipy import ndimage
 
 LONG_SIDE = 2880
 ELEMENT = 9
-FLOOR = 12.0
+#: How much darker than its field a pixel must be before it counts as the reference's line. **40, measured against 12.**
+#: At 12 the set includes every soft value boundary as well as the drawn line -- 17.88 per cent of the page -- and a
+#: drawing scored against it can reach 79 per cent precision without its lines being where an artist would put them. At
+#: 40 the set is 7.50 per cent and the same drawing scores 58.7, which is the honest number. The cost is that a soft
+#: pencil line disappears from the set as well, so 40 suits ink and not every medium.
+FLOOR = 40.0
 TOLERANCE = 6.0
 #: The ink threshold for the drawn layer only. A line layer is drawn on a pale page, so a fixed threshold is right
 #: there; the reference goes through the top hat instead.

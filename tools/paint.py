@@ -104,6 +104,10 @@ def main():
                          '8.2 points of recall (64.9 to 73.1) while the share of drawn line landing on the artist\'s own '
                          'line rose by 1.3 (78.0 to 79.3) -- so the finer cut was strictly better on both numbers. The '
                          'picture it draws is busier, and that is recorded in AESTHETIC-LIBRARY rather than argued away')
+    ap.add_argument('--min-light-gap', type=float, default=0.04,
+                    help='passed to edge_strokes: drop boundaries whose lightness difference across them is below this. '
+                         'It is the precision-for-recall dial and it was set to 0.04 by a measurement, so it is exposed '
+                         'rather than buried -- see the help on edge_strokes for what 0.04 buys and what 0 restores')
     ap.add_argument('--max-shapes', type=int, default=30000,
                     help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
                          'Zero turns the budget off. A safety valve, not a working limit: a fill now rasterises into its '
@@ -171,7 +175,8 @@ def main():
         run('lines', [HERE / 'edge_strokes.py',
                       '--labels', shapes.with_name('%s-labels.npy' % shapes.stem),
                       '--meta', shapes.with_name('%s-meta.json' % shapes.stem),
-                      '--reference', args.reference, '--out', lines])
+                      '--reference', args.reference, '--out', lines,
+                      '--min-light-gap', str(args.min_light_gap)])
         project = shapes
         if not args.no_render:
             render_project(lines, strokes, args.sweep)
