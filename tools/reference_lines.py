@@ -66,7 +66,8 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0):
     count = len(run)
     points, widths = [], []
     for i in range(count):
-        y, x = run[i]
+        y, x = float(run[i][0]), float(run[i][1])
+        yi, xi = int(round(y)), int(round(x))
         prev = run[max(0, i - 1)]
         nxt = run[min(count - 1, i + 1)]
         ty, tx = float(nxt[0] - prev[0]), float(nxt[1] - prev[1])
@@ -78,7 +79,7 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0):
         nx, ny = -ty, tx
         # **The reach follows the local half width.** A fixed window clips a heavy line and swallows its neighbour on a
         # fine one; two pixels beyond the measured half width is enough to see both edges of anything narrower than that.
-        reach = max(4.0, 2.0 * float(edt[y, x]) + extra)
+        reach = max(4.0, 2.0 * float(edt[yi, xi]) + extra)
         offsets = np.arange(-reach, reach + step, step)
         vals = _bilinear(field, x + nx * offsets, y + ny * offsets)
         total = float(vals.sum())
@@ -88,7 +89,13 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0):
             continue
         shift = float((offsets * vals).sum() / total)
         points.append((x + nx * shift, y + ny * shift))
-        widths.append(total * step)
+        # **And the section is capped by the distance transform, because a cross-section does not know where its line
+        # ends.** On a dense drawing nearly half the marks came back with a median width of more than twice the
+        # reference's, and the lines were not wrong: the window reached across to the ink of the neighbouring stroke and
+        # measured the gap between two lines as if it were the thickness of one. The distance transform cannot be fooled
+        # that way -- it is the distance to the nearest empty pixel, which is the thickness along the narrowest direction
+        # -- so it is the ceiling and the section is the refinement.
+        widths.append(min(total * step, 2.0 * float(edt[yi, xi])))
     return points, widths
 
 
@@ -133,6 +140,10 @@ def main():
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
     runs = trace(skeleton)
+    # **`render_to_project.stitch` was tried here and made it worse** -- 6138 marks against 5310, because it joins runs by
+    # binning their ends into a grid, which is right for a closed contour walked from both ways and wrong for an open
+    # line whose ends are genuine. So the runs stay as the skeleton broke them, and the ink comes out at 1.04 to 1.11
+    # times the reference's rather than twice it once the comparison uses the same definition.
     kept = [run for run in runs if len(run) >= args.min_segment]
     # **The ink's own width and centre, from a cross-section at each skeleton point.** This wrote a constant `2 * scale`
     # for every mark, which is the same fault `render_to_project` had: a traced picture came out at one thickness whatever
