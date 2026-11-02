@@ -244,7 +244,12 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--levels', type=int, default=20, help='quantisation levels per channel')
     ap.add_argument('--blur', type=float, default=1.0)
-    ap.add_argument('--min-area', type=int, default=150, help='shapes below this, at the cut size, are folded away')
+    ap.add_argument('--min-area', type=int, default=40,
+                    help='shapes below this, at the cut size, are folded away. **40, measured against 150**: the small '
+                         'areas are where the detail is, and folding them away folds away the boundaries between them. '
+                         'On one reference that was 8.2 points of recall (64.9 to 73.1) for 1.3 points of precision '
+                         '(78.0 to 79.3), so the finer cut was strictly better on both -- the picture is busier and '
+                         'that is recorded in AESTHETIC-LIBRARY rather than argued away')
     ap.add_argument('--max-shapes', type=int, default=30000,
                     help='how many areas the picture may be cut into; above this the minimum area rises until it fits. '
                          'Zero turns the budget off. **A safety valve rather than a working limit**: it was set at six '
