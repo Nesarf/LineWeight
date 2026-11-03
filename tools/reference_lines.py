@@ -141,6 +141,45 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
     return points, widths, edges, depths
 
 
+def ink_mask(gray, mode='both', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0):
+    """Which pixels of the reference are ink, on one of three definitions.
+
+    **The top hat is the one every measurement in this project was quoted against, and it has a blind spot.** It keeps a
+    pixel when it is darker than a size-`element` grey closing of itself, which finds a *thin* structure; a solid band
+    wider than `element` is closed over and the band's interior stops being ink at all. Read off `150673997`'s difference
+    plate, that is the whole of the largest area the copy was missing: the skirt hem, the sleeve and the dark mass in the
+    corner come back as **rings**, the tracer walks the ring, and the copy draws a hairline along a band twenty pixels wide
+    while the band's interior lands in the extra-ink colour. No width or edge could have fixed that, because the width it
+    was handed was the thickness of the ring.
+
+    **Both relative definitions fail inside a solid mass for the same reason**: each asks whether a pixel is darker than
+    its surroundings, and the middle of a filled region has no surroundings that are lighter. The field's answer to that
+    is **the size of its window**, and the size is measured rather than chosen: on `150673997` the field finds 236 890
+    line pixels at 15, 685 611 at 41 and 752 836 at 61, against the top hat's 618 557. At 41 the union is 880 711 --
+    within a thousand of what the fixed threshold finds (879 924) -- so the window has grown big enough to see the paper
+    around a band twenty pixels wide.
+
+    **The union earns the default, and `150721001` is why it has to be the union and not the fixed threshold.** That
+    drawing's ink is pale (depth 0.4733 against 0.2069), and a level of 200 there finds *fewer* pixels than the top hat --
+    it throws away 76 492 of the artist's own pale lines -- while the union adds 7 736. A relative test costs nothing on
+    a drawing it suits and cannot halve one it does not; one fixed number has to be right about every drawing at once,
+    which is the mistake the brush table already carries a story about.
+
+    The cost is stated: on a drawing with pale washes the field takes the washes as ink, and the trace then describes a
+    wash's edge as a line. What neither definition keeps is a broad wash with no edge at all, which is not a line and
+    should not be traced as one.
+    """
+    if mode == 'level':
+        return gray < level
+    if mode == 'field':
+        local = ndimage.median_filter(gray, size=window)
+        return (local - gray) > floor
+    if mode == 'both':
+        local = ndimage.median_filter(gray, size=window)
+        return la.artist_line(gray, element=element, floor=floor) | ((local - gray) > floor)
+    return la.artist_line(gray, element=element, floor=floor)
+
+
 def _smooth_depths(values, window=5):
     """The depth along one line, with single-point spikes removed.
 
@@ -310,6 +349,24 @@ def main():
     #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
     #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
     parser.add_argument('--psd', default='', help='also write this path as a layered PSD')
+    #: **Which pixels count as the reference's ink, and the answers differ by more than they look.** See `ink_mask`: the
+    #: top hat, which every earlier measurement was quoted against, comes back as a *ring* around any band wider than its
+    #: element, so the trace drew a hairline down the middle of a twenty-pixel hem. The default is the union with a field
+    #: test, which keeps the top hat's thin strokes and adds the bands; measured, it moves the copy's ink on the page from
+    #: 9.22 to 11.99 per cent of the same measure where the artist has 14.23.
+    parser.add_argument('--ink', choices=('tophat', 'field', 'both', 'level'), default='both',
+                        help='both (default: the top hat and a local-median field), tophat (the eleven-drawing '
+                             'baseline), field (the field alone) or level (darker than --ink-level)')
+    #: **How far a field sample reaches, and the size is measured rather than chosen.** At 15 the median window never sees
+    #: paper inside close hatching; at 41 the union reaches 880 711 pixels on `150673997`, within a thousand of a fixed
+    #: threshold at 200, so the window has grown enough to see around a band twenty pixels wide.
+    parser.add_argument('--ink-window', type=int, default=41,
+                        help='with --ink field or both: the median window, in pixels')
+    #: **The one definition with no blind spot inside a filled region**, because it never asks about the surroundings. 200
+    #: is `drawn_line`'s own threshold inverted. It is not the default and the second drawing is why: on a pale drawing it
+    #: throws away 76 492 of the artist's own lines while the union adds 7 736.
+    parser.add_argument('--ink-level', type=float, default=200.0,
+                        help='with --ink level: a pixel is ink when its grey is below this')
     args = parser.parse_args()
 
     # **Everything is read at the page's own scale, which is what every threshold here is quoted against.** This used to
@@ -318,7 +375,7 @@ def main():
     # six pixels on the 2880 page is 2.3 at the source and barely survives -- the mask loses the heavy lines and the
     # trace inherits a picture that is thinner than the one it copies.
     gray = la.load_gray(args.picture, la.LONG_SIDE)
-    mask = la.artist_line(gray, element=args.element, floor=args.floor)
+    mask = ink_mask(gray, args.ink, args.element, args.floor, window=args.ink_window, level=args.ink_level)
     height, width = mask.shape
     scale = 1.0
     canvas = project.Project(width=width, height=height,
@@ -330,6 +387,7 @@ def main():
         'source': os.path.basename(args.picture),
         'floor': args.floor,
         'element': args.element,
+        'ink': args.ink if args.ink != 'level' else 'level %g' % args.ink_level,
         'prune': args.prune,
         'min_segment': args.min_segment,
         'width_source': args.width_source,
