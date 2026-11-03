@@ -45,7 +45,7 @@ def _bilinear(field, xs, ys):
             + field[y1, x0] * (1 - fx) * fy + field[y1, x1] * fx * fy)
 
 
-def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0):
+def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0, source='section'):
     """The ink's own centre and thickness across a skeleton run, at sub-pixel positions.
 
     **The skeleton is a pixel path; the ink is not.** A skeleton pixel names a corner of the grid, so its own distance to
@@ -95,7 +95,17 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0):
         # measured the gap between two lines as if it were the thickness of one. The distance transform cannot be fooled
         # that way -- it is the distance to the nearest empty pixel, which is the thickness along the narrowest direction
         # -- so it is the ceiling and the section is the refinement.
-        widths.append(min(total * step, 2.0 * float(edt[yi, xi])))
+        #
+        # **`source` exists so the three ways of getting a width can be compared on one skeleton, which is the same
+        # experiment as holding a brush fixed and changing only how it is loaded.** `edt` is the plain thickness,
+        # `fixed` is what this tool did before any of it (a constant), and `section` is the pair above.
+        ceiling = 2.0 * float(edt[yi, xi])
+        if source == 'edt':
+            widths.append(ceiling)
+        elif source == 'fixed':
+            widths.append(1.0)
+        else:
+            widths.append(min(total * step, ceiling))
     return points, widths
 
 
@@ -120,6 +130,11 @@ def main():
     #: the ink is in the same pixels, and on this knob the two answers are 80 000 pixels apart.
     parser.add_argument('--width-scale', type=float, default=1.0,
                         help='multiply the measured width; 1.0 reads the ink, ~0.7 matches its area')
+    #: Which reading of the ink becomes the width. **`section` is the default and the pair that works**: the plain
+    #: thickness from the distance transform ignores the way a line thins at a corner, and a fixed one ignores the
+    #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
+    #: measurement with no scale.
+    parser.add_argument('--width-source', choices=('section', 'edt', 'fixed'), default='section')
     #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
     #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
     #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
@@ -154,7 +169,7 @@ def main():
     edt = ndimage.distance_transform_edt(mask)
     written = 0
     for i, run in enumerate(kept):
-        px_points, px_widths = subpixel_axis(mask, run, edt=edt)
+        px_points, px_widths = subpixel_axis(mask, run, edt=edt, source=args.width_source)
         if len(px_points) < 2:
             continue
         # **`resolution=1` keeps every cross-section**, because `catmull` at one sample per segment returns the points it
