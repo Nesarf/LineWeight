@@ -106,6 +106,12 @@ def measure(path, samples=400, reach=REACH, step=STEP):
     mask = la.artist_line(gray)
     skeleton = thin(mask.astype(np.uint8))
     edt = ndimage.distance_transform_edt(mask)
+    # **The field is the local median, not the ends of the window.** Reading it at the ends coupled it to the ink depth:
+    # a lighter line puts more of its own transition inside the window, so the "field" darkened as the ink lightened, and
+    # a crossed experiment then said deeper ink makes a line harder while the artists' drawings said the opposite. The
+    # local median has no window to be inside of, and it is the same field `line_mask` compares a pixel against -- one
+    # definition rather than two.
+    local = ndimage.median_filter(gray, size=15)
     runs = [run for run in trace(skeleton) if len(run) >= 16]
     if not runs:
         return []
@@ -129,11 +135,9 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         low, high = float(section.min()), float(section.max())
         if high - low < 40.0:
             continue
-        # **The field is read at the two ends of the section, the ink at its darkest.** A tenth of the samples at each
-        # end rather than a fixed six: the window now varies with the line, and six out of a short section would be
-        # reaching into the transition it is supposed to sit outside of.
-        edge_samples = max(2, len(section) // 10)
-        field = 0.5 * (float(section[:edge_samples].mean()) + float(section[-edge_samples:].mean()))
+        # **The field comes from the local median and the ink from the section's darkest sample**, so neither is a
+        # property of how wide the window happens to be.
+        field = float(local[yi, xi])
         width = crossing_width(section)
         rows.append({'edge': width if width is not None else 0.0,
                      'depth': max(0.0, (field - low) / 255.0),
