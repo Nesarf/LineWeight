@@ -154,7 +154,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     print('  %-34s %8s %9s %9s %9s %9s'
-          % ('picture', 'samples', 'edge px', 'ink depth', 'field', 'p10 edge'))
+          % ('picture', 'samples', 'edge px', 'ink depth', 'depth p10..90', 'field'))
     for path in args.picture:
         rows = measure(path, samples=args.samples, reach=args.reach)
         name = path.replace('\\', '/').rsplit('/', 1)[-1]
@@ -164,9 +164,13 @@ def main(argv=None):
         edges = np.array([row['edge'] for row in rows])
         depths = np.array([row['depth'] for row in rows])
         fields = np.array([row['field'] for row in rows])
-        print('  %-34s %8d %9.2f %9.3f %9.3f %9.2f'
+        # **The spread of the depth, not only its middle.** An artist's pale ink is pale in patches -- pooled in places,
+        # dry in others -- and a single median cannot say so; a crossed experiment read uniform pale and patchy pale as
+        # the same thing and produced a contradiction with the drawings that took a round to find.
+        spread = '%.3f..%.3f' % (float(np.percentile(depths, 10)), float(np.percentile(depths, 90)))
+        print('  %-34s %8d %9.2f %9.3f %9s %9.3f'
               % (name, len(rows), float(np.median(edges)), float(np.median(depths)),
-                 float(np.median(fields)), float(np.percentile(edges, 10))))
+                 spread, float(np.median(fields))))
     return 0
 
 
