@@ -93,7 +93,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
     if edt is None:
         edt = ndimage.distance_transform_edt(mask)
     count = len(run)
-    points, widths, edges = [], [], []
+    points, widths, edges, depths = [], [], [], []
     for i in range(count):
         y, x = float(run[i][0]), float(run[i][1])
         yi, xi = int(round(y)), int(round(x))
@@ -115,6 +115,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         if total <= 1e-6:
             points.append((float(x), float(y)))
             widths.append(1.0)
+            depths.append(1.0)
             continue
         shift = float((offsets * vals).sum() / total)
         points.append((x + nx * shift, y + ny * shift))
@@ -122,9 +123,17 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # more bilinear sample per offset and it is the only place the paper's own softness is visible -- a mask is
         # binary by construction and cannot carry it.
         if gray is not None:
-            width = crossing_width(_bilinear(gray, x + nx * offsets, y + ny * offsets), step)
+            section = _bilinear(gray, x + nx * offsets, y + ny * offsets)
+            width = crossing_width(section, step)
             if width is not None:
                 edges.append(width)
+            # **The ink's depth on the same section: how dark this line is here, as a share of black.** An artist's
+            # line is not one value along its length -- the water in a wash pools and thins, a nib lays down more where
+            # it lingers -- and a renderer that gives every point the same alpha cannot say so. This is the field that
+            # can: `alpha_profile` multiplies the brush's opacity along the stroke.
+            depths.append(min(1.0, max(0.0, (255.0 - float(section.min())) / 255.0)))
+        else:
+            depths.append(1.0)
         # **And the section is capped by the distance transform, because a cross-section does not know where its line
         # ends.** On a dense drawing nearly half the marks came back with a median width of more than twice the
         # reference's, and the lines were not wrong: the window reached across to the ink of the neighbouring stroke and
@@ -142,7 +151,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             widths.append(1.0)
         else:
             widths.append(min(total * step, ceiling))
-    return points, widths, edges
+    return points, widths, edges, depths
 
 
 def main():
@@ -211,8 +220,8 @@ def main():
     edt = ndimage.distance_transform_edt(mask)
     written = 0
     for i, run in enumerate(kept):
-        px_points, px_widths, px_edges = subpixel_axis(mask, run, gray=gray, edt=edt,
-                                                       source=args.width_source)
+        px_points, px_widths, px_edges, px_depths = subpixel_axis(mask, run, gray=gray, edt=edt,
+                                                                  source=args.width_source)
         if len(px_points) < 2:
             continue
         # **`resolution=1` keeps every cross-section**, because `catmull` at one sample per segment returns the points it
@@ -231,7 +240,8 @@ def main():
         else:
             edge = 0.0
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
-                                    width_profile=widths, absolute_width=True, edge=edge)
+                                    width_profile=widths, absolute_width=True, edge=edge,
+                                    alpha_profile=px_depths)
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
