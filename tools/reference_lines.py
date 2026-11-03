@@ -111,7 +111,14 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             # line is not one value along its length -- the water in a wash pools and thins, a nib lays down more where
             # it lingers -- and a renderer that gives every point the same alpha cannot say so. This is the field that
             # can: `alpha_profile` multiplies the brush's opacity along the stroke.
-            depths.append(min(1.0, max(0.0, (255.0 - float(section.min())) / 255.0)))
+            #
+            # **Read inside this line's own half width, because a section does not know where its line ends.** The width
+            # was capped by the distance transform for exactly this reason; the depth was not, and a section taken where
+            # two hatched strokes cross found the *other* stroke's core and reported this one as darker than it is. That
+            # is what the beads were: the deep samples sat on the junctions and every crossing got a dark disc.
+            own = np.abs(offsets) <= float(edt[yi, xi]) + 0.5
+            darkest = float(section[own].min()) if own.any() else float(section.min())
+            depths.append(min(1.0, max(0.0, (255.0 - darkest) / 255.0)))
         else:
             depths.append(1.0)
         # **And the section is capped by the distance transform, because a cross-section does not know where its line
@@ -132,6 +139,33 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         else:
             widths.append(min(total * step, ceiling))
     return points, widths, edges, depths
+
+
+def _smooth_depths(values, window=5):
+    """The depth along one line, with single-point spikes removed.
+
+    **A section's darkest sample is a value at a point; an artist's ink is a value along a line.** Where two strokes cross
+    the section reaches the fused core and reports this line darker than it is, and those over-reads sit exactly where
+    marks meet -- measured on `150673997`, ink under one mark has a median grey of 158 and under three 136, while the
+    artist's own ink is flat across the same places (146 to 154, no trend). A median over five samples removes a spike
+    one sample wide and keeps a line that is darker for fifty: the junction excess went from 18 grey levels to 10.
+
+    **One value per run was tried and is worse.** It removes the rest of the junction excess but it also takes the
+    picture below the ink it needs -- the page goes from 6.25 to 5.65 per cent of ink and the hatch strokes stop crossing
+    `artist_line`'s floor at all, so a row of eight separate strokes reads as one pale mass. The banding that survives
+    here is not what makes a copied stroke look like a chain of lozenges; the capsules' own geometry is, because a
+    four-pixel stroke cut into six-pixel pieces is drawn as six-pixel capsules and the union of their round ends is
+    scalloped. That is a join, not a value.
+    """
+    if len(values) < window:
+        return list(values)
+    half = window // 2
+    out = []
+    for i in range(len(values)):
+        lo = max(0, i - half)
+        hi = min(len(values), i + half + 1)
+        out.append(float(np.median(values[lo:hi])))
+    return out
 
 
 def _edge_of(measured, pinned, scale):
@@ -271,7 +305,7 @@ def main():
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
-                                    alpha_profile=px_depths)
+                                    alpha_profile=_smooth_depths(px_depths))
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
@@ -295,7 +329,7 @@ def main():
         record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
-                                    alpha_profile=px_depths)
+                                    alpha_profile=_smooth_depths(px_depths))
         canvas.add_stroke(record, stage='line', layer='ink', note='fragment %d' % j)
         written += 1
     canvas.settings['fragment_marks'] = borrows

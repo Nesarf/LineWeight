@@ -58,7 +58,12 @@ def render(project_path, out_path):
     marks = [mark.to_dict() for mark in drawn.live()]
     if not marks:
         raise SystemExit('the project has no live marks: %s' % project_path)
-    layer = raster.render_marks(marks, int(round(drawn.width)), int(round(drawn.height)), 1.0, sweep=True)
+    # **One compositing rule, and it is already the right one for a trace.** `blend_at` keeps the *maximum* alpha where
+    # two marks overlap, so pieces of one ink do not deepen at the seams -- which was worth checking, because the dark
+    # beads on a copy look exactly like a compositing fault and were not one: they came from the depth read, see
+    # `reference_lines.subpixel_axis`.
+    layer = raster.render_marks(marks, int(round(drawn.width)), int(round(drawn.height)), 1.0,
+                                sweep=True)
     raster.save_png(layer, out_path, background=(255, 255, 255))
     return drawn
 
