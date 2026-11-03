@@ -215,14 +215,15 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             room_ceiling = float(room[yi, xi])
             widths.append(room_ceiling if measured is None else min(measured, room_ceiling))
         else:
-            # **The ring width is not the width this source uses, and two measurements say so.** Applied here -- with a
-            # hollow wider than the rim, and only where the section had stopped at the rim -- it takes the page's ink to
-            # 14.33 per cent against the artist's 14.09 (a ratio of 1.017) and the normalised share to 0.934 from 0.843,
-            # which is the closest anything has come. It also takes `width share` to 1.387 and `ink reached` from 0.951 to
-            # 0.878: the copy ends up with the right amount of ink in strokes that are too few and too wide. **The ink is
-            # right and the distribution is wrong**, so what is missing is more lines rather than wider ones, and this
-            # branch keeps the extent.
-            widths.append(min(total * step, ceiling))
+            # **The ceiling is `room`, not twice the transform, and that is the whole correction.** `2 * edt` is the
+            # distance to the nearest non-ink, which is half a *rim* on a band the top hat hollowed; `room` is twice that
+            # except on such a band, where it is the two rims plus the hollow. Taking the smaller of the section's extent
+            # and `room` is therefore safe in both places and needs no test: on ordinary ink the mask extent is what it
+            # always was, on a band the extent either crosses the whole band -- and then it and `room` agree -- or it
+            # stops at the rim, and then `room` supplies the rest. Requiring the section to have stopped at the rim first
+            # was tried and is wrong: on the widest bands the section does cross the band, so the condition excluded
+            # exactly the ink it was written for.
+            widths.append(min(total * step, float(room[yi, xi])))
     return points, widths, edges, depths
 
 
@@ -252,8 +253,8 @@ def _half_depth_width(section, offsets):
     return (sides[0] + sides[1]) * float(offsets[1] - offsets[0])
 
 
-def ink_mask(gray, mode='both', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0):
-    """Which pixels of the reference are ink, on one of three definitions.
+def ink_mask(gray, mode='coverage', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0, share=0.2):
+    """Which pixels of the reference are ink, on one of four definitions.
 
     **The top hat is the one every measurement in this project was quoted against, and it has a blind spot.** It keeps a
     pixel when it is darker than a size-`element` grey closing of itself, which finds a *thin* structure; a solid band
@@ -266,20 +267,22 @@ def ink_mask(gray, mode='both', element=la.ELEMENT, floor=la.FLOOR, window=41, l
     **Both relative definitions fail inside a solid mass for the same reason**: each asks whether a pixel is darker than
     its surroundings, and the middle of a filled region has no surroundings that are lighter. The field's answer to that
     is **the size of its window**, and the size is measured rather than chosen: on `150673997` the field finds 236 890
-    line pixels at 15, 685 611 at 41 and 752 836 at 61, against the top hat's 618 557. At 41 the union is 880 711 --
-    within a thousand of what the fixed threshold finds (879 924) -- so the window has grown big enough to see the paper
-    around a band twenty pixels wide.
+    line pixels at 15, 685 611 at 41 and 752 836 at 61, against the top hat's 618 557. At 41 the union is 880 711.
 
-    **The union earns the default, and `150721001` is why it has to be the union and not the fixed threshold.** That
-    drawing's ink is pale (depth 0.4733 against 0.2069), and a level of 200 there finds *fewer* pixels than the top hat --
-    it throws away 76 492 of the artist's own pale lines -- while the union adds 7 736. A relative test costs nothing on
-    a drawing it suits and cannot halve one it does not; one fixed number has to be right about every drawing at once,
-    which is the mistake the brush table already carries a story about.
+    **`coverage` is the union's answer to a question the union gets wrong: how big the mask should be.** Measured against
+    a share of each picture's own field-to-darkest range, the union comes to 86.5 per cent of it on `150673997` and 127 per
+    cent on `150721001` -- and that factor carries straight into the width, which is why one drawing ends up with 14 per
+    cent too little ink and the other with 45 per cent too much. Normalising each picture by its own range before
+    thresholding removes the factor: it is the same definition `accept.py` quotes as an amount of ink.
 
-    The cost is stated: on a drawing with pale washes the field takes the washes as ink, and the trace then describes a
-    wash's edge as a line. What neither definition keeps is a broad wash with no edge at all, which is not a line and
-    should not be traced as one.
+    The cost of `coverage` is stated: a pale wash is ink under it, where the top hat would leave it alone.
     """
+    if mode == 'coverage':
+        field = float(np.percentile(gray, 95))
+        dark = float(np.percentile(gray, 0.5))
+        if field - dark < 8.0:
+            return np.zeros(gray.shape, dtype=bool)
+        return np.clip((field - gray) / (field - dark), 0.0, 1.0) >= share
     if mode == 'level':
         return gray < level
     if mode == 'field':
@@ -473,7 +476,7 @@ def main():
     #: element, so the trace drew a hairline down the middle of a twenty-pixel hem. The default is the union with a field
     #: test, which keeps the top hat's thin strokes and adds the bands; measured, it moves the copy's ink on the page from
     #: 9.22 to 11.99 per cent of the same measure where the artist has 14.23.
-    parser.add_argument('--ink', choices=('tophat', 'field', 'both', 'level'), default='both',
+    parser.add_argument('--ink', choices=('coverage', 'tophat', 'field', 'both', 'level'), default='coverage',
                         help='both (default: the top hat and a local-median field), tophat (the eleven-drawing '
                              'baseline), field (the field alone) or level (darker than --ink-level)')
     #: **How far a field sample reaches, and the size is measured rather than chosen.** At 15 the median window never sees
