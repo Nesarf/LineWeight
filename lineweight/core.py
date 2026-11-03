@@ -1155,7 +1155,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   width_profile: list[float] | None = None,
                   alpha_profile: list[float] | None = None,
                   absolute_width: bool = False,
-                  size: float = 1.0, page_long: float = 0.0) -> dict:
+                  size: float = 1.0, page_long: float = 0.0, edge: float = 0.0) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1220,6 +1220,12 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # on every canvas. Zero means "not stated"; `stroke_widths` then falls back to the reference page rather than
         # to whichever canvas happens to be rendering it -- a renderer may override it, no other reader needs to.
         'page_long': float(page_long),
+        # **How many pixels the boundary takes to go from ink to paper**, which is a property of the material rather
+        # than of the geometry: a nib on paper crosses over two to four pixels, a rasteriser with one pixel of
+        # anti-aliasing crosses in one. It lives on the record for the same reason the page does -- so the raster, the
+        # vector paths and the exporter all read one number instead of three defaults. Zero means unset, and the
+        # renderer's own one pixel applies.
+        'edge': float(edge),
         'width_profile': [float(w) for w in width_profile] if width_profile else [],
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],

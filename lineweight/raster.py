@@ -963,6 +963,13 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'absolute_width': bool(geometry.get('absolute_width', False)),
+                      # **Every field the renderer reads has to be named here**, and this is the third place a
+                      # record is rebuilt from a document: `stroke_record` writes one, `add_stroke` copies it into a
+                      # mark through a whitelist, and this rebuilds a working dict for the rasteriser. A field added
+                      # to the first and not to the other two is a field that renders as a default -- measured, twice,
+                      # for `page_long` and `edge` in the same afternoon.
+                      'page_long': float(geometry.get('page_long') or 0.0),
+                      'edge': float(geometry.get('edge') or 0.0),
                       'colour_int': parse_hex(mark_ink(mark))}
             # **Above `WIDE_STROKE` the deposition is integrated, below it the maximum is used.** The ripple along
             # a stroke is the same fraction of its mean at every width -- 0.37 on the ink brush at four pixels and at
@@ -1101,6 +1108,11 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         return layer
 
     points = _np.asarray([(x * scale, y * scale) for x, y in centre], dtype=_np.float64)
+    # **How soft the edge is, from the record, because it is a property of the material.** A line drawn with this
+    # renderer's own one pixel of anti-aliasing crosses in 1.75 to 2.00 pixels on measured copies; an artist's line
+    # crosses in 2.70 to 4.43 -- see `tools/edge_scale.py` for the same difference read the other way. Zero means the
+    # record does not say, and one pixel is what this file has always done.
+    edge = max(1e-6, float(record.get('edge') or 1.0))
     # **The page comes from the record, and the canvas deliberately does not overrule it.** A brush's width is a share
     # of the page it was fixed on, but the canvas is not that page: a thumbnail, a crop and a test all fill a canvas far
     # smaller than the drawing, and reading the page off one would thin every brush to a hair -- measured, six tests
@@ -1157,11 +1169,17 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         else:
             t = _np.clip(((gx - ax) * dx + (gy - ay) * dy) / length2, 0.0, 1.0)
             distance = _np.hypot(gx - (ax + t * dx), gy - (ay + t * dy))
-        # **Half a width either side, with one pixel of anti-aliasing at the edge** -- the same statement the dab's own
-        # coverage makes, so a two-pixel line looks the same under either model.
+        # **Half a width either side, with `edge` pixels of anti-aliasing at the boundary** -- the same statement the
+        # dab's own coverage makes, so a two-pixel line looks the same under either model. **`edge = 1` is the shipped
+        # behaviour and the algebra is identical to it**; a wider value softens the transition without moving where the
+        # line's boundary sits, because the half-coverage point stays at `distance == half`.
+        #
+        # **The reason it is a parameter is measured, not stylistic.** Walking across a line on eleven artist drawings,
+        # the grey takes 2.70 to 4.43 pixels to fall from the field to the ink at the median, while a copy drawn with
+        # this renderer crosses in 1.75 to 2.00 -- which is exactly what `edge_scale` reports as "the copy is harder".
         half = 0.5 * (widths[i] + (widths[i + 1] - widths[i]) * _np.clip(
             (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0, 0.0, 1.0))
-        coverage = _np.clip(half + 0.5 - distance, 0.0, 1.0)
+        coverage = _np.clip((half + 0.5 * edge - distance) / max(edge, 1e-6), 0.0, 1.0)
         here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * (
             (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0))
         ink[y0:y1, x0:x1] = _np.maximum(ink[y0:y1, x0:x1], here)

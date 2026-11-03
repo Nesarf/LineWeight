@@ -351,6 +351,13 @@ class Project:
                               'seed': record.get('seed', 0), 'resolution': record.get('resolution', 14),
                               'role': record.get('role', ''),
                               'absolute_width': bool(record.get('absolute_width', False)),
+                              # **The two lengths that are not about the line's shape, and both were dropped here.**
+                              # `page_long` makes a brush's width a share of a page instead of absolute pixels;
+                              # `edge` makes the boundary soft the way a material is. Neither reached a document
+                              # until it was looked for, which is the whitelist doing what the note below says it
+                              # does -- and the reason a new record field is not finished until it is named here.
+                              'page_long': float(record.get('page_long') or 0.0),
+                              'edge': float(record.get('edge') or 0.0),
                               'width_profile': list(record.get('width_profile') or []),
                               'alpha_profile': list(record.get('alpha_profile') or [])},
                     # **Only a colour the caller actually chose is written down.** An absent colour is the answer

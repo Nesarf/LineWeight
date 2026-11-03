@@ -135,6 +135,12 @@ def main():
     #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
     #: measurement with no scale.
     parser.add_argument('--width-source', choices=('section', 'edt', 'fixed'), default='section')
+    #: **The one number measured off the artists that the renderer had no way to express.** Walking across a line on
+    #: eleven of their drawings, the grey takes 2.70 to 4.43 pixels to fall from the field to the ink; this renderer
+    #: crosses in 1.75 to 2.00, which is what `edge_scale` was reporting as "the copy is harder than the artist". Zero
+    #: leaves the renderer's own one pixel alone.
+    parser.add_argument('--edge', type=float, default=0.0,
+                        help='pixels the boundary takes from ink to paper; 0 keeps the renderer\'s one')
     #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
     #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
     #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
@@ -178,7 +184,7 @@ def main():
         points = [(x * scale, y * scale) for x, y in px_points]
         widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
-                                    width_profile=widths, absolute_width=True)
+                                    width_profile=widths, absolute_width=True, edge=args.edge)
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
