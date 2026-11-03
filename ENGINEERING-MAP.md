@@ -507,6 +507,7 @@ learn/facts.json    20 个键，每条带出处，check_learn.py 校验七类静
                     两条被代码读到：part_roles → roles.PART_ROLES，part_order → roles.PART_TIERS
 model/              骨架 279 骨、36 帧姿态、4 套体块轮廓
 Mark.part / parts   单一部位，与一条线经过的每个部位（跨部位时 part 为空、parts 记两端）
+Project.settings    这一份是怎么做出来的：工具名与各参数。**没有它，一个目录里两代产物分不清谁是谁**
 roles.py            部位 → 角色 → 宽度倍率；四级来源（书 / 测量的偏序 / 位置词 / 骨骼家族的翻译）
 line_width_library  亚像素宽度、入笔长度、按部位分箱、语料清单
 render_with_bones   .blend → 画面 + 骨骼的屏幕坐标与深度；--depth 另写一张表面深度图

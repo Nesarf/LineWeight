@@ -207,6 +207,10 @@ class Project:
     # file written before this existed is in, and it stays legal. Once a figure is declared, it is validated and every
     # mark must name one of its layers -- which is the whole point: **a body that cannot exist cannot be drawn on.**
     figure: 'object' = None
+    # **这一份是怎么做出来的，写在它自己里面。** 一个目录里可以同时躺着两代产物 —— 真的躺过，而差别只在一列数上显形、
+     # 另外几列看着正常，为此重测了两次才发现。marks 说的是这幅画，这里说的是这一次运行：工具名、各个参数、页面基准。
+     # 默认为空，所以在这个字段存在之前写下的文件读回来一个字都不变。
+    settings: dict = field(default_factory=dict)
 
     # ---- the figure -----------------------------------------------------------------------------------------
 
@@ -862,6 +866,11 @@ class Project:
                 'counter': self.counter,
                 'incremental': self.incremental,
                 'turn': self.turn,
+                # **What produced this file, in its own words.** A directory can hold two generations of output at once
+                # -- it did, and the difference showed in one measured column while the others looked normal, which cost
+                # two re-measurements to notice. Marks describe the drawing; this describes the run. Empty by default,
+                # so a file written before the field existed reads back unchanged.
+                'settings': self.settings,
                 'figure': self.figure.to_dict() if self.figure is not None else None}
 
     @classmethod
@@ -878,6 +887,7 @@ class Project:
                       counter=int(d.get('counter', 0)),
                       incremental=bool(d.get('incremental', False)),
                       turn=int(d.get('turn', 0)),
+                      settings=dict(d.get('settings') or {}),
                       figure=Figure.from_dict(d['figure']) if d.get('figure') else None)
         # **The guard against a stale counter lives here, where a file can actually disagree with itself.** A project
         # file with a counter smaller than its highest id would hand out an id twice, and a log in which one id means two

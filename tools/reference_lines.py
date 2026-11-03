@@ -179,6 +179,20 @@ def main():
     scale = 1.0
     canvas = project.Project(width=width, height=height,
                              title='lines of %s' % os.path.basename(args.picture))
+    # **这个文件自己说明它是哪一次运行做出来的。** 一个目录里可以同时躺着两代产物 —— 真的躺过，而差别只在一列测量上
+    # 显形、另外三列看着正常，为此重测了两次。参数全写在这里，所以「这个数能不能和那个数比」不再靠记忆回答。
+    canvas.settings = {
+        'tool': 'reference_lines',
+        'source': os.path.basename(args.picture),
+        'floor': args.floor,
+        'element': args.element,
+        'prune': args.prune,
+        'min_segment': args.min_segment,
+        'width_source': args.width_source,
+        'width_scale': args.width_scale,
+        'edge': args.edge if args.edge else 'per line',
+        'page_long': la.LONG_SIDE,
+    }
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
     runs = trace(skeleton)
