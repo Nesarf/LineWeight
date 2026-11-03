@@ -521,6 +521,7 @@ tone                网点：六种形状（dot/ellipse/square/line/cross/noise�
 line_agreement      画的线与参考图自己的线直接比：precision 与 recall，判「画多了」还是「画少了」
 erase_ceiling       完美擦除的上限；对称差同时报成「页面的份额」与「参考墨量的份额」，后者才能跨图纸比较
 edge_scale          边缘的硬度：两个结构元各量一次深度再比 —— 线是「一次发生」，渐变不是
+edge_profile        边缘剖面：沿法线穿过一条线，量灰度从场走到墨要多少像素 —— 画师 2.70 .. 4.43，栅格线 1.75 .. 2.00
 crop_box            从一张图里裁一块，让候选的错误在写下来之前被放大看过
 ```
 
