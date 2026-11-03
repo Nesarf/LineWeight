@@ -56,7 +56,12 @@ def crossing_width(profile):
     if high - low < 40.0:
         return None
     normalised = (high - profile) / (high - low)      # 0 in the field, 1 in the ink
-    centre = len(profile) // 2
+    # **The centre is the darkest sample, not the middle of the window.** The section is taken across a skeleton point,
+    # and the skeleton is a pixel path -- `reference_lines` spends a whole function moving points off it because it is
+    # not the centre of the ink. Reading the middle of the window as "the line" therefore splits a section whose dark
+    # part sits to one side, and both halves then fail to find a level that is only on the other side of it: measured,
+    # 60 of 80 sections were refused that way on one drawing.
+    centre = int(np.argmin(profile))
     widths = []
     # **Both directions, and the indices run outward in both.** The left half is reversed so index nought is the centre
     # there too, which means "further into the field" is a larger index on both sides -- the first version compared in

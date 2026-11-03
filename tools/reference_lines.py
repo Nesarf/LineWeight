@@ -56,7 +56,8 @@ def crossing_width(profile, step=0.25):
     if high - low < 40.0:
         return None
     normalised = (high - profile) / (high - low)
-    centre = len(profile) // 2
+    # **The centre is the darkest sample, not the middle of the window** -- see the same note in `edge_profile`.
+    centre = int(np.argmin(profile))
     found = []
     # **The left half is reversed so index nought is the centre on both sides**, which makes "further into the field" a
     # larger index in both. Comparing the other way returns nothing at all -- see the same note in `edge_profile`.
