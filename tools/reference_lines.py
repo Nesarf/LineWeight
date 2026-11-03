@@ -45,7 +45,32 @@ def _bilinear(field, xs, ys):
             + field[y1, x0] * (1 - fx) * fy + field[y1, x1] * fx * fy)
 
 
-def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0, source='section'):
+def crossing_width(profile, step=0.25):
+    """How far along a grey section the ink takes to go from ten to ninety per cent, both sides averaged.
+
+    **The same measure `tools/edge_profile.py` reports for a whole picture**, applied to one line's own section. It is
+    here rather than imported because the two read sections at different scales, and a shared helper with a scale
+    argument would be a third thing to keep in step.
+    """
+    low, high = float(profile.min()), float(profile.max())
+    if high - low < 40.0:
+        return None
+    normalised = (high - profile) / (high - low)
+    centre = len(profile) // 2
+    found = []
+    for side in (normalised[:centre + 1][::-1], normalised[centre:]):
+        inside = np.flatnonzero(side >= 0.9)
+        outside = np.flatnonzero(side <= 0.1)
+        if not inside.size or not outside.size:
+            continue
+        before = outside[outside < inside[0]]
+        if not before.size:
+            continue
+        found.append((inside[0] - before[-1]) * step)
+    return float(np.mean(found)) if found else None
+
+
+def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section'):
     """The ink's own centre and thickness across a skeleton run, at sub-pixel positions.
 
     **The skeleton is a pixel path; the ink is not.** A skeleton pixel names a corner of the grid, so its own distance to
@@ -58,13 +83,17 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0, source='section'):
     as the offset to apply, and its extent as the width. **That is what turns a centre line into something the ink agrees
     with**, and it costs one bilinear sample per offset rather than a new skeletoniser.
 
-    Returns `(points, widths)` in image pixels, one entry per run point.
+    **`gray` is read on the same section when it is given**, and what it measures is how wide that line's own edge is --
+    a property of the pen and the paper rather than of the picture, which is why one number for the whole drawing is the
+    wrong shape and was measured to be so.
+
+    Returns `(points, widths, edges)` in image pixels, one entry per run point; `edges` is empty when no grey was given.
     """
     field = mask.astype(np.float64)
     if edt is None:
         edt = ndimage.distance_transform_edt(mask)
     count = len(run)
-    points, widths = [], []
+    points, widths, edges = [], [], []
     for i in range(count):
         y, x = float(run[i][0]), float(run[i][1])
         yi, xi = int(round(y)), int(round(x))
@@ -89,6 +118,13 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0, source='section'):
             continue
         shift = float((offsets * vals).sum() / total)
         points.append((x + nx * shift, y + ny * shift))
+        # **The same section, read on the grey instead of on the ink, is how wide this line's edge is.** It costs one
+        # more bilinear sample per offset and it is the only place the paper's own softness is visible -- a mask is
+        # binary by construction and cannot carry it.
+        if gray is not None:
+            width = crossing_width(_bilinear(gray, x + nx * offsets, y + ny * offsets), step)
+            if width is not None:
+                edges.append(width)
         # **And the section is capped by the distance transform, because a cross-section does not know where its line
         # ends.** On a dense drawing nearly half the marks came back with a median width of more than twice the
         # reference's, and the lines were not wrong: the window reached across to the ink of the neighbouring stroke and
@@ -106,7 +142,7 @@ def subpixel_axis(mask, run, edt=None, step=0.25, extra=2.0, source='section'):
             widths.append(1.0)
         else:
             widths.append(min(total * step, ceiling))
-    return points, widths
+    return points, widths, edges
 
 
 def main():
@@ -135,12 +171,12 @@ def main():
     #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
     #: measurement with no scale.
     parser.add_argument('--width-source', choices=('section', 'edt', 'fixed'), default='section')
-    #: **The one number measured off the artists that the renderer had no way to express.** Walking across a line on
-    #: eleven of their drawings, the grey takes 2.70 to 4.43 pixels to fall from the field to the ink; this renderer
-    #: crosses in 1.75 to 2.00, which is what `edge_scale` was reporting as "the copy is harder than the artist". Zero
-    #: leaves the renderer's own one pixel alone.
+    #: **How many pixels a line's boundary takes from ink to paper, measured from the line itself.** One value for the
+    #: whole drawing was the first version and it does not fit: across three drawings the right number ran from 2.0 to
+    #: beyond 3.5, and one line was softer than any value could reach. So the default reads each line's own section, and
+    #: this flag exists to pin it when the question is "what does one constant do" rather than "what does this line need".
     parser.add_argument('--edge', type=float, default=0.0,
-                        help='pixels the boundary takes from ink to paper; 0 keeps the renderer\'s one')
+                        help='pin the edge in pixels; 0 measures it from each line\'s own section')
     #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
     #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
     #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
@@ -175,7 +211,8 @@ def main():
     edt = ndimage.distance_transform_edt(mask)
     written = 0
     for i, run in enumerate(kept):
-        px_points, px_widths = subpixel_axis(mask, run, edt=edt, source=args.width_source)
+        px_points, px_widths, px_edges = subpixel_axis(mask, run, gray=gray, edt=edt,
+                                                       source=args.width_source)
         if len(px_points) < 2:
             continue
         # **`resolution=1` keeps every cross-section**, because `catmull` at one sample per segment returns the points it
@@ -183,8 +220,18 @@ def main():
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
         widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
+        # **The edge is this line's own, unless the caller pins it.** One constant was measured not to fit the set: on
+        # three drawings the value that matched ran from 2.0 to beyond 3.5, and one could not be reached at all because
+        # its line is softer than this renderer can express. The section already carries the number, so it is read
+        # there -- a line drawn with a dry pen and a line drawn with a wet one stop being the same mark.
+        if args.edge > 0:
+            edge = args.edge
+        elif px_edges:
+            edge = min(8.0, max(1.0, float(np.median(px_edges)) * scale))
+        else:
+            edge = 0.0
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
-                                    width_profile=widths, absolute_width=True, edge=args.edge)
+                                    width_profile=widths, absolute_width=True, edge=edge)
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
