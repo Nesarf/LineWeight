@@ -53,6 +53,11 @@ def _bilinear(field, xs, ys):
 #: noise. Widening a stroke by the radius of its nearest pinhole is how a line gets fat, so a hole below this radius is
 #: treated as no hole at all. Two and a half pixels is one brush width -- smaller than that there is nothing to see across.
 HOLE_RADIUS = 2.5
+#: **And how big one may be before it stops being a hollow and becomes a region.** A contour drawn around an arm leaves a
+#: hole with a radius of a hundred pixels or more; adding that to the ink around it does not measure a band, it measures
+#: the picture. Measured without this cap, the width of the widest line came out at twenty-five per cent of the page.
+#: Twelve pixels is the radius of a hollow twice the top hat's element, which is the widest band that filter can hollow.
+HOLE_CEILING = 12.0
 
 
 def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
@@ -78,9 +83,10 @@ def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
     labels, count = ndimage.label(holes)
     per_hole = np.zeros(count + 1, dtype=np.float64)
     per_hole[1:] = np.asarray(ndimage.maximum(radius_map, labels, index=np.arange(1, count + 1)))
-    # **A hole too small to be a hollow is not a hollow.** Setting its radius to zero and then requiring a positive radius
-    # keeps the two conditions in one test, so a pinhole can never widen anything by accident.
-    per_hole[per_hole < hole_radius] = 0.0
+    # **A hole too small to be a hollow is not a hollow, and neither is one too big to be anything but a region.** Both
+    # ends of the range are set to zero, so a pinhole can never widen a stroke and a contour's inside can never widen it
+    # either; what survives is a hollow the ink could plausibly have been drawn around.
+    per_hole[(per_hole < hole_radius) | (per_hole > HOLE_CEILING)] = 0.0
     if not (per_hole > 0).any():
         return plain
     # **`~holes`, not `holes`, and the difference is the whole of whether this works.** `distance_transform_edt` measures
@@ -183,9 +189,15 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # experiment as holding a brush fixed and changing only how it is loaded. `edt` is the plain thickness, `fixed`
         # is what this tool did before any of it (a constant), `section` is the mask's extent along the section, and
         # `halfdepth` is where the grey reaches half the line's own depth -- see `_half_depth_width`.
-        ceiling = float(room[yi, xi])
+        #
+        # **Two ceilings, because the two sources are wrong in different places.** The plain transform is the right guard
+        # for a mask extent -- it stops a section reaching the next stroke -- and it is the wrong answer on a hollow band,
+        # where it measures the rim; `ring_room` is that correction and it belongs to the reading that needs it. Taking
+        # the ring width onto the mask extent as well was tried and made the picture worse on every row: width share went
+        # to 1.387 and `p90 / median` to 4.08, because a hollow's radius is not stable enough to be a width on its own.
+        ceiling = 2.0 * float(edt[yi, xi])
         if source == 'edt':
-            widths.append(2.0 * float(edt[yi, xi]))
+            widths.append(ceiling)
         elif source == 'fixed':
             widths.append(1.0)
         elif source == 'halfdepth':
@@ -194,7 +206,8 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             # tried and is not kept: at 2.5 times, `p90 / median` on `150673997` went from 2.06 to 4.83, because a section
             # beside another stroke comes back several times too wide and the factor let it through. A reading off the
             # grey is used only where the mask has no opinion to overrule, which is not the same as having a better one.
-            widths.append(ceiling if measured is None else min(measured, ceiling))
+            room_ceiling = float(room[yi, xi])
+            widths.append(room_ceiling if measured is None else min(measured, room_ceiling))
         else:
             widths.append(min(total * step, ceiling))
     return points, widths, edges, depths
