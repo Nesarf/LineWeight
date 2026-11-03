@@ -45,6 +45,26 @@ def bilinear(field, xs, ys):
             + field[y1, x0] * (1 - fx) * fy + field[y1, x1] * fx * fy)
 
 
+def _crossing_index(values, level):
+    """Where `values`, falling from the ink outward, passes `level` -- interpolated between two samples.
+
+    **The index of the first sample below a level is not the crossing.** Measured against ramps of known width, taking the
+    sample index gave ratios of 2.00, 1.25 and 0.89 for transitions over two, five and ten samples: the error is
+    quantisation, and it changes with the answer, which is the one thing a length must not do. Interpolating between the
+    two samples that straddle the level removes it.
+    """
+    below = np.flatnonzero(values <= level)
+    if not below.size:
+        return None
+    i = int(below[0])
+    if i == 0:
+        return 0.0
+    high, low = float(values[i - 1]), float(values[i])
+    if high == low:
+        return float(i)
+    return (i - 1) + (high - level) / (high - low)
+
+
 def crossing_width(profile):
     """How far along the section the ink goes from 10 to 90 per cent, averaged over the two sides.
 
@@ -63,18 +83,14 @@ def crossing_width(profile):
     # 60 of 80 sections were refused that way on one drawing.
     centre = int(np.argmin(profile))
     widths = []
-    # **Both directions, and the indices run outward in both.** The left half is reversed so index nought is the centre
-    # there too, which means "further into the field" is a larger index on both sides -- the first version compared in
-    # the other direction and returned nothing at all, which is how a column of zeros was found where an edge should be.
+    # **The left half is reversed so index nought is the centre on both sides**, which makes "further into the field" a
+    # larger index in both -- and the crossing is found by interpolation rather than by the first sample past a level.
     for side in (normalised[:centre + 1][::-1], normalised[centre:]):
-        deep = np.flatnonzero(side >= 0.9)
-        shallow = np.flatnonzero(side <= 0.1)
-        if not deep.size or not shallow.size:
+        near = _crossing_index(side, 0.9)
+        far = _crossing_index(side, 0.1)
+        if near is None or far is None or far <= near:
             continue
-        beyond = shallow[shallow > deep[-1]]
-        if not beyond.size:
-            continue
-        widths.append((beyond[0] - deep[-1]) * STEP)
+        widths.append((far - near) * STEP)
     return float(np.mean(widths)) if widths else None
 
 

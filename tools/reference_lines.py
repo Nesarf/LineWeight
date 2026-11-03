@@ -27,6 +27,7 @@ sys.path.insert(0, ROOT)
 
 import line_agreement as la
 from copy_linework import prune, thin, trace
+from edge_profile import crossing_width
 from lineweight import core, project, psd
 
 
@@ -43,34 +44,6 @@ def _bilinear(field, xs, ys):
     y1 = np.clip(y0 + 1, 0, height - 1)
     return (field[y0, x0] * (1 - fx) * (1 - fy) + field[y0, x1] * fx * (1 - fy)
             + field[y1, x0] * (1 - fx) * fy + field[y1, x1] * fx * fy)
-
-
-def crossing_width(profile, step=0.25):
-    """How far along a grey section the ink takes to go from ten to ninety per cent, both sides averaged.
-
-    **The same measure `tools/edge_profile.py` reports for a whole picture**, applied to one line's own section. It is
-    here rather than imported because the two read sections at different scales, and a shared helper with a scale
-    argument would be a third thing to keep in step.
-    """
-    low, high = float(profile.min()), float(profile.max())
-    if high - low < 40.0:
-        return None
-    normalised = (high - profile) / (high - low)
-    # **The centre is the darkest sample, not the middle of the window** -- see the same note in `edge_profile`.
-    centre = int(np.argmin(profile))
-    found = []
-    # **The left half is reversed so index nought is the centre on both sides**, which makes "further into the field" a
-    # larger index in both. Comparing the other way returns nothing at all -- see the same note in `edge_profile`.
-    for side in (normalised[:centre + 1][::-1], normalised[centre:]):
-        deep = np.flatnonzero(side >= 0.9)
-        shallow = np.flatnonzero(side <= 0.1)
-        if not deep.size or not shallow.size:
-            continue
-        beyond = shallow[shallow > deep[-1]]
-        if not beyond.size:
-            continue
-        found.append((beyond[0] - deep[-1]) * step)
-    return float(np.mean(found)) if found else None
 
 
 def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section'):
@@ -127,7 +100,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # binary by construction and cannot carry it.
         if gray is not None:
             section = _bilinear(gray, x + nx * offsets, y + ny * offsets)
-            width = crossing_width(section, step)
+            width = crossing_width(section)
             if width is not None:
                 edges.append(width)
             # **The ink's depth on the same section: how dark this line is here, as a share of black.** An artist's
