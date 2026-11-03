@@ -300,8 +300,10 @@ def main():
     #: on, 17,858 extra marks moved the ink on the page from 6.4677 to 6.4902 per cent -- a third of one per cent -- while
     #: the depth spread went from 1.016 to 1.152 and the picture showed dark beads where fragments piled on top of the
     #: line they borrowed from. Source-over composites, so re-laying ink that is already there deepens it: a fragment's
-    #: ink is redundant in area and additive in alpha. The reason they were tried stands (they are 25.8 per cent of the
-    #: skeleton path), and the reason they do not work is the whole of the finding.
+    #: ink is redundant in area and additive in alpha. **Re-tested once the runs were joined, since a joined fragment is
+    #: no longer the same tape**: 7,937 borrowed marks then move the ink from 6.04 to 6.10 per cent, depth spread
+    #: 1.071 -> 0.921, but width share 1.000 -> 1.109 and edge 1.093 -> 1.168. Still not worth it -- two rows away from
+    #: one for six hundredths of a per cent of ink.
     parser.add_argument('--fragments', action='store_true',
                         help='also draw runs shorter than --min-segment, borrowing their appearance from the nearest')
     #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
