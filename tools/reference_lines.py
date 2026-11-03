@@ -128,17 +128,47 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # that way -- it is the distance to the nearest empty pixel, which is the thickness along the narrowest direction
         # -- so it is the ceiling and the section is the refinement.
         #
-        # **`source` exists so the three ways of getting a width can be compared on one skeleton, which is the same
-        # experiment as holding a brush fixed and changing only how it is loaded.** `edt` is the plain thickness,
-        # `fixed` is what this tool did before any of it (a constant), and `section` is the pair above.
+        # **`source` exists so the ways of getting a width can be compared on one skeleton**, which is the same
+        # experiment as holding a brush fixed and changing only how it is loaded. `edt` is the plain thickness, `fixed`
+        # is what this tool did before any of it (a constant), `section` is the mask's extent along the section, and
+        # `halfdepth` is where the grey reaches half the line's own depth -- see `_half_depth_width`.
         ceiling = 2.0 * float(edt[yi, xi])
         if source == 'edt':
             widths.append(ceiling)
         elif source == 'fixed':
             widths.append(1.0)
+        elif source == 'halfdepth':
+            measured = _half_depth_width(section, offsets) if gray is not None else None
+            widths.append(ceiling if measured is None else min(measured, ceiling))
         else:
             widths.append(min(total * step, ceiling))
     return points, widths, edges, depths
+
+
+def _half_depth_width(section, offsets):
+    """How wide the ink is where the grey is halfway between the field and the darkest sample.
+
+    **The width the trace asks for is a grey question, and the mask cannot answer it.** A mask is a threshold: where a pale
+    stroke crosses the floor it simply stops, so the width it reports follows how dark the ink is rather than how wide the
+    stroke is. Measured against the artist's own half-depth width on 23 773 sections, the recorded width was 0.73 of the
+    truth on a pale drawing and 1.14 on a denser one, and inside each drawing the ratio climbed with the ink's depth
+    (0.67 at depth 0.10 to 1.13 at 0.70). Two drawings, one estimator, opposite directions -- which is what a threshold
+    does and what a profile does not.
+
+    **Half depth rather than a fixed grey**, because the same stroke is not equally dark everywhere and the artist's pale
+    passages must not come out thin for being pale. The two sides are averaged from the darkest sample, so an asymmetric
+    line is measured as a whole line.
+    """
+    low, high = float(section.min()), float(section.max())
+    if high - low < 20.0:
+        return None
+    normalised = (high - section) / (high - low)      # 1 at the darkest sample
+    centre = int(np.argmin(section))
+    sides = []
+    for side in (normalised[:centre + 1][::-1], normalised[centre:]):
+        above = np.flatnonzero(side >= 0.5)
+        sides.append(float(above[-1]) if above.size else 0.0)
+    return (sides[0] + sides[1]) * float(offsets[1] - offsets[0])
 
 
 def ink_mask(gray, mode='both', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0):
@@ -328,7 +358,15 @@ def main():
     #: thickness from the distance transform ignores the way a line thins at a corner, and a fixed one ignores the
     #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
     #: measurement with no scale.
-    parser.add_argument('--width-source', choices=('section', 'edt', 'fixed'), default='section')
+    #: **Which reading of the ink becomes the width.** `section` is the default: the mask's extent along the cross
+    #: section, capped by the distance transform. `halfdepth` reads the grey instead -- where it reaches half the line's
+    #: own depth -- and is the more honest estimate of the two, measured against the artist's own profile: on
+    #: `150721001` the recorded width went from 1.14 times the measured one to 1.00, flat across every width band. It is
+    #: not the default yet because the same change leaves `150673997` where it was (0.73), and the reason is known: there
+    #: the width is held down by the distance transform, which on a band wider than the top hat's element measures the
+    #: *ring* rather than the band. Until that is fixed, switching the default would trade one drawing's width error for
+    #: another's, and `width share` moves the wrong way on both.
+    parser.add_argument('--width-source', choices=('section', 'halfdepth', 'edt', 'fixed'), default='section')
     #: **How many pixels a line's boundary takes from ink to paper, measured from the line itself.** One value for the
     #: whole drawing was the first version and it does not fit: across three drawings the right number ran from 2.0 to
     #: beyond 3.5, and one line was softer than any value could reach. So the default reads each line's own section, and

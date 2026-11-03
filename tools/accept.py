@@ -23,6 +23,13 @@ cent of the time. Meanwhile a one-pixel skeleton cannot reach more than 70.2 per
 pixels at all, so grading a traced copy against a hundred per cent grades it against something the method cannot produce.
 The row therefore compares what the copy reaches with what the skeleton it was traced through reaches: at one, the copy
 delivers everything its own description covered, and the trace's shortfall is a separate and honestly separate question.
+
+**Two of the six rows are coupled and must be read together.**
+`width share` is the width of the ink under `cl.INK`, a fixed grey, so it grows with `edge` almost one for one: a softer
+boundary puts more pixels below the threshold. `edge` also has to be given correctly or the copy reads as too hard. So a
+copy can be right on both and read as eleven per cent wide on the first (that is `150673997`), while another reads
+thirty-four per cent wide because its lines are thin enough for the same absolute `edge` to be a larger share of them
+(that is `150721001`). Neither row is wrong; a reader who takes one alone will spend a round tuning the other one's error.
 """
 import argparse
 import os
