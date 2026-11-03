@@ -47,7 +47,53 @@ def _bilinear(field, xs, ys):
             + field[y1, x0] * (1 - fx) * fy + field[y1, x1] * fx * fy)
 
 
-def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section'):
+#: **How big a hollow has to be before the ink around it counts as a band rather than a line.** The width of a ring is the
+#: two sides plus the hole between them, but only a hollow that is one: the union mask on `150673997` holds 5 037 holes
+#: and 1 196 983 hole pixels, more than the ink itself, and almost all of them are pinholes from hatching and paper
+#: noise. Widening a stroke by the radius of its nearest pinhole is how a line gets fat, so a hole below this radius is
+#: treated as no hole at all. Two and a half pixels is one brush width -- smaller than that there is nothing to see across.
+HOLE_RADIUS = 2.5
+
+
+def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
+    """How far the ink reaches from each pixel: twice the transform, or the whole band where the ink is a ring.
+
+    **The distance transform answers "how far to the nearest pixel that is not ink", which is half a width on a solid
+    stroke and half a *ring* on a hollow one.** The top hat hollows out any band wider than its element, so on such a band
+    the transform reports the thickness of the rim: measured on 2 935 sections taken on a ring, `2 * edt` came out at 0.41
+    of the artist's own half-depth width, and `4 * edt + 2 * hole radius` -- the two rims plus the hollow between them --
+    at 0.81.
+
+    **The ring correction is applied only where the hollow is closer than the outside**, which is what "on a ring" means
+    geometrically, and only to holes above `hole_radius`. Both conditions are needed: without the first, a line beside a
+    hole would be widened by it; without the second, a pinhole in hatching would do the same. Where neither holds the
+    answer is the plain `2 * edt`, so a mask with no holes costs one comparison per pixel and nothing else.
+    """
+    plain = 2.0 * edt
+    filled = ndimage.binary_fill_holes(mask)
+    holes = filled & ~mask
+    if not holes.any():
+        return plain
+    radius_map = ndimage.distance_transform_edt(holes)
+    labels, count = ndimage.label(holes)
+    per_hole = np.zeros(count + 1, dtype=np.float64)
+    per_hole[1:] = np.asarray(ndimage.maximum(radius_map, labels, index=np.arange(1, count + 1)))
+    # **A hole too small to be a hollow is not a hollow.** Setting its radius to zero and then requiring a positive radius
+    # keeps the two conditions in one test, so a pinhole can never widen anything by accident.
+    per_hole[per_hole < hole_radius] = 0.0
+    if not (per_hole > 0).any():
+        return plain
+    # **`~holes`, not `holes`, and the difference is the whole of whether this works.** `distance_transform_edt` measures
+    # the distance to the nearest *zero* pixel, so transforming `holes` reports the depth into a hole and nought everywhere
+    # outside it -- which is where every ink pixel is. Transforming `~holes` reports, for each ink pixel, the distance to
+    # the nearest hole, which is the quantity the formula needs. The first version had it the other way round, every test
+    # came out zero, and the ring correction changed not one number while looking entirely in place.
+    far, index = ndimage.distance_transform_edt(~holes, return_indices=True)
+    here = per_hole[labels[index[0], index[1]]]
+    return np.where((far <= edt) & (here > 0), 4.0 * edt + 2.0 * here, plain)
+
+
+def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section', room=None):
     """The ink's own centre and thickness across a skeleton run, at sub-pixel positions.
 
     **The skeleton is a pixel path; the ink is not.** A skeleton pixel names a corner of the grid, so its own distance to
@@ -64,11 +110,16 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
     a property of the pen and the paper rather than of the picture, which is why one number for the whole drawing is the
     wrong shape and was measured to be so.
 
-    Returns `(points, widths, edges)` in image pixels, one entry per run point; `edges` is empty when no grey was given.
+    Returns `(points, widths, edges, depths)` in image pixels, one entry per run point; `edges` is empty when no grey was
+    given. **`room` is how far the ink reaches from each pixel** -- `ring_room`'s answer, which is twice the transform
+    except on a band the top hat hollowed out. Passing it is optional so the function still works on a mask with no
+    holes, and when it is left out the plain transform is the ceiling, which is what every earlier measurement used.
     """
     field = mask.astype(np.float64)
     if edt is None:
         edt = ndimage.distance_transform_edt(mask)
+    if room is None:
+        room = 2.0 * edt
     count = len(run)
     points, widths, edges, depths = [], [], [], []
     for i in range(count):
@@ -132,13 +183,17 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # experiment as holding a brush fixed and changing only how it is loaded. `edt` is the plain thickness, `fixed`
         # is what this tool did before any of it (a constant), `section` is the mask's extent along the section, and
         # `halfdepth` is where the grey reaches half the line's own depth -- see `_half_depth_width`.
-        ceiling = 2.0 * float(edt[yi, xi])
+        ceiling = float(room[yi, xi])
         if source == 'edt':
-            widths.append(ceiling)
+            widths.append(2.0 * float(edt[yi, xi]))
         elif source == 'fixed':
             widths.append(1.0)
         elif source == 'halfdepth':
             measured = _half_depth_width(section, offsets) if gray is not None else None
+            # **The ceiling is a guard against reaching the next line.** Letting the grey overrule the mask by a factor was
+            # tried and is not kept: at 2.5 times, `p90 / median` on `150673997` went from 2.06 to 4.83, because a section
+            # beside another stroke comes back several times too wide and the factor let it through. A reading off the
+            # grey is used only where the mask has no opinion to overrule, which is not the same as having a better one.
             widths.append(ceiling if measured is None else min(measured, ceiling))
         else:
             widths.append(min(total * step, ceiling))
@@ -358,14 +413,14 @@ def main():
     #: thickness from the distance transform ignores the way a line thins at a corner, and a fixed one ignores the
     #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
     #: measurement with no scale.
-    #: **Which reading of the ink becomes the width.** `section` is the default: the mask's extent along the cross
-    #: section, capped by the distance transform. `halfdepth` reads the grey instead -- where it reaches half the line's
-    #: own depth -- and is the more honest estimate of the two, measured against the artist's own profile: on
-    #: `150721001` the recorded width went from 1.14 times the measured one to 1.00, flat across every width band. It is
-    #: not the default yet because the same change leaves `150673997` where it was (0.73), and the reason is known: there
-    #: the width is held down by the distance transform, which on a band wider than the top hat's element measures the
-    #: *ring* rather than the band. Until that is fixed, switching the default would trade one drawing's width error for
-    #: another's, and `width share` moves the wrong way on both.
+    #: **Which reading of the ink becomes the width, and the answer the picture gave was not the one the number did.**
+    #: `section` is the mask's extent along the cross section, capped by `ring_room`; `halfdepth` reads the grey instead,
+    #: where it reaches half the line's own depth. `halfdepth` was tried as the default and taken back out: it makes the
+    #: recorded width equal to the half-depth width almost exactly, and the picture gets worse -- the ink on the page on
+    #: `150673997` fell from 5.67 to 3.91 per cent, `ink reached` from 0.989 to 0.641, and `p90 / median` went from 2.06 to
+    #: 4.83, because a section that reaches another stroke now reports a width several times its own. The half-depth
+    #: width is a grey quantity and it is what `edge` already describes; the width a mark is drawn at is a mask quantity,
+    #: which is also the quantity `accept.py` counts with `cl.INK`. See the correction note in `AESTHETIC-LIBRARY.md`.
     parser.add_argument('--width-source', choices=('section', 'halfdepth', 'edt', 'fixed'), default='section')
     #: **How many pixels a line's boundary takes from ink to paper, measured from the line itself.** One value for the
     #: whole drawing was the first version and it does not fit: across three drawings the right number ran from 2.0 to
@@ -460,7 +515,11 @@ def main():
     # extent is the width. One section per run, computed once and used twice: to draw that run, and as the pool the
     # fragments borrow from.
     edt = ndimage.distance_transform_edt(mask)
-    sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source) for run in long_runs]
+    # **How far the ink reaches, which is not twice the transform on a band the top hat has hollowed out.** One array for
+    # the whole page, computed once and handed to every section, because it is a property of the mask rather than of a run.
+    room = ring_room(mask, edt)
+    sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source, room=room)
+                for run in long_runs]
     # The pool the fragments draw on: one row per point of a long run, holding what that point measured.
     pool_points, pool_rows = [], []
     for px_points, px_widths, px_edges, px_depths in sections:
@@ -496,7 +555,7 @@ def main():
     # one and a fragment that somehow has no neighbour keeps its own numbers rather than being dropped.
     for j, run in enumerate(short_runs):
         px_points, px_widths, px_edges, px_depths = subpixel_axis(mask, run, gray=gray, edt=edt,
-                                                                  source=args.width_source)
+                                                                  source=args.width_source, room=room)
         if len(px_points) < 2:
             continue
         if tree is not None:
