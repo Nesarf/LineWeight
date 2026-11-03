@@ -58,15 +58,17 @@ def crossing_width(profile, step=0.25):
     normalised = (high - profile) / (high - low)
     centre = len(profile) // 2
     found = []
+    # **The left half is reversed so index nought is the centre on both sides**, which makes "further into the field" a
+    # larger index in both. Comparing the other way returns nothing at all -- see the same note in `edge_profile`.
     for side in (normalised[:centre + 1][::-1], normalised[centre:]):
-        inside = np.flatnonzero(side >= 0.9)
-        outside = np.flatnonzero(side <= 0.1)
-        if not inside.size or not outside.size:
+        deep = np.flatnonzero(side >= 0.9)
+        shallow = np.flatnonzero(side <= 0.1)
+        if not deep.size or not shallow.size:
             continue
-        before = outside[outside < inside[0]]
-        if not before.size:
+        beyond = shallow[shallow > deep[-1]]
+        if not beyond.size:
             continue
-        found.append((inside[0] - before[-1]) * step)
+        found.append((beyond[0] - deep[-1]) * step)
     return float(np.mean(found)) if found else None
 
 

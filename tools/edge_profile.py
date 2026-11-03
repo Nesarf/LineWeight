@@ -54,20 +54,29 @@ def crossing_width(profile):
     normalised = (high - profile) / (high - low)      # 0 in the field, 1 in the ink
     centre = len(profile) // 2
     widths = []
+    # **Both directions, and the indices run outward in both.** The left half is reversed so index nought is the centre
+    # there too, which means "further into the field" is a larger index on both sides -- the first version compared in
+    # the other direction and returned nothing at all, which is how a column of zeros was found where an edge should be.
     for side in (normalised[:centre + 1][::-1], normalised[centre:]):
-        inside = np.flatnonzero(side >= 0.9)
-        outside = np.flatnonzero(side <= 0.1)
-        if not inside.size or not outside.size:
+        deep = np.flatnonzero(side >= 0.9)
+        shallow = np.flatnonzero(side <= 0.1)
+        if not deep.size or not shallow.size:
             continue
-        before = outside[outside < inside[0]]
-        if not before.size:
+        beyond = shallow[shallow > deep[-1]]
+        if not beyond.size:
             continue
-        widths.append((inside[0] - before[-1]) * STEP)
+        widths.append((beyond[0] - deep[-1]) * STEP)
     return float(np.mean(widths)) if widths else None
 
 
 def measure(path, samples=400, reach=REACH, step=STEP):
-    """The crossing widths sampled along a picture's own skeleton."""
+    """Three numbers off every section: how wide its edge is, how deep its ink is, and what field it sits on.
+
+    **One section carries all three, and that is the point of splitting the judgement.** `edge_scale` reports a single
+    share -- how much of a dark structure's depth survives a coarser element -- and three mechanisms move that one
+    number: the softness of the boundary, the darkness of the ink, and the brightness of what the line lies on. Reading
+    them here means a figure like "39.7 per cent" can be attributed instead of guessed at.
+    """
     gray = la.load_gray(path, la.LONG_SIDE)
     mask = la.artist_line(gray)
     skeleton = thin(mask.astype(np.uint8))
@@ -76,7 +85,7 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         return []
     rng = np.random.default_rng(7)
     offsets = np.arange(-reach, reach + step, step)
-    widths = []
+    rows = []
     for _ in range(samples):
         run = runs[int(rng.integers(0, len(runs)))]
         i = int(rng.integers(6, len(run) - 6))
@@ -86,10 +95,18 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         if span < 1e-6:
             continue
         nx, ny = -tx / span, ty / span
-        width = crossing_width(bilinear(gray, x + nx * offsets, y + ny * offsets))
-        if width is not None:
-            widths.append(width)
-    return widths
+        section = bilinear(gray, x + nx * offsets, y + ny * offsets)
+        low, high = float(section.min()), float(section.max())
+        if high - low < 40.0:
+            continue
+        # **The field is read at the two ends of the section, the ink at its darkest.** Six samples at each end rather
+        # than one: a single pixel at the rim of the window is the noisiest place in the measurement.
+        field = 0.5 * (float(section[:6].mean()) + float(section[-6:].mean()))
+        width = crossing_width(section)
+        rows.append({'edge': width if width is not None else 0.0,
+                     'depth': max(0.0, (field - low) / 255.0),
+                     'field': field / 255.0})
+    return rows
 
 
 def main(argv=None):
@@ -100,17 +117,20 @@ def main(argv=None):
     ap.add_argument('--reach', type=float, default=REACH)
     args = ap.parse_args(argv)
 
-    print('  %-34s %8s %9s %9s %9s' % ('picture', 'samples', 'edge px', 'p10', 'p90'))
+    print('  %-34s %8s %9s %9s %9s %9s'
+          % ('picture', 'samples', 'edge px', 'ink depth', 'field', 'p10 edge'))
     for path in args.picture:
-        widths = measure(path, samples=args.samples, reach=args.reach)
+        rows = measure(path, samples=args.samples, reach=args.reach)
         name = path.replace('\\', '/').rsplit('/', 1)[-1]
-        if not widths:
+        if not rows:
             print('  %-34s %8s   no measurable edge' % (name, ''))
             continue
-        values = np.array(widths)
-        print('  %-34s %8d %9.2f %9.2f %9.2f'
-              % (name, len(values), float(np.median(values)),
-                 float(np.percentile(values, 10)), float(np.percentile(values, 90))))
+        edges = np.array([row['edge'] for row in rows])
+        depths = np.array([row['depth'] for row in rows])
+        fields = np.array([row['field'] for row in rows])
+        print('  %-34s %8d %9.2f %9.3f %9.3f %9.2f'
+              % (name, len(rows), float(np.median(edges)), float(np.median(depths)),
+                 float(np.median(fields)), float(np.percentile(edges, 10))))
     return 0
 
 
