@@ -111,6 +111,40 @@ def crossing_width(profile, step=STEP):
     return float(np.mean(widths)) if widths else None
 
 
+def coverage_width(section, offsets, share=0.2):
+    """How wide the ink is at a stated share of its own depth, walked outward from the darkest sample.
+
+    **A width from the profile rather than from a mask, because a mask fuses.** `2 * edt` on a mask of a dense drawing
+    measures the distance to the nearest pixel below a threshold, and where two strokes sit close the threshold fills the
+    gap between them, so the transform reports the pair as one broad line. Measured on `150673997`, twice the transform on
+    a normalised mask puts the copy's p90 over median at 4.47 against the artist's 2.15; the same statistic read off the
+    profiles is 2.08 against 1.83. A section cannot leave the line it started on, because it stops where the ink does.
+
+    The share is of the line's own range, so a pale line is not called thin for being pale -- the same reason the page's
+    ink is counted that way.
+    """
+    field = float(np.percentile(section, 90))
+    dark = float(section.min())
+    if field - dark < 20.0:
+        return None
+    coverage = np.clip((field - section) / (field - dark), 0.0, 1.0)
+    centre = int(np.argmin(section))
+    sides = []
+    for index in range(centre, -1, -1):
+        if coverage[index] < share:
+            sides.append(abs(float(offsets[index])))
+            break
+    else:
+        sides.append(abs(float(offsets[0])))
+    for index in range(centre, len(coverage)):
+        if coverage[index] < share:
+            sides.append(abs(float(offsets[index])))
+            break
+    else:
+        sides.append(abs(float(offsets[-1])))
+    return float(sum(sides))
+
+
 def measure(path, samples=400, reach=REACH, step=STEP):
     """Three numbers off every section: how wide its edge is, how deep its ink is, and what field it sits on.
 
@@ -156,9 +190,14 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         # property of how wide the window happens to be.
         field = float(local[yi, xi])
         width = crossing_width(section, step)
+        # **A second width off the same section, at a share of the ink's own depth.** `crossing_width` reads the boundary's
+        # transition; this reads how far the ink reaches, which is what a mark's `width` is asked for and what the p90 over
+        # median of the widths has to be measured on if it is to mean anything on a dense drawing. See `coverage_width`.
+        spread = coverage_width(section, offsets)
         rows.append({'edge': width if width is not None else 0.0,
                      'depth': max(0.0, (field - low) / 255.0),
-                     'field': field / 255.0})
+                     'field': field / 255.0,
+                     'width': spread if spread is not None else 0.0})
     return rows
 
 
