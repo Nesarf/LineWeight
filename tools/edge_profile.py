@@ -15,11 +15,15 @@ import argparse
 import sys
 
 import numpy as np
+from scipy import ndimage
 
 import line_agreement as la
 from copy_linework import thin, trace
 
-#: How far either side of the centre line to sample. A line wider than this is not a line this measure is for.
+#: The furthest either side of the centre line to sample. **It is a ceiling, not a setting.** A fixed window ten pixels
+#: wide read the field as 0.554 on a copy drawn on pure white paper, because on a dense drawing it reached across to the
+#: ink of the neighbouring stroke and called that the field. The window therefore follows the line's own half width,
+#: which is what the distance transform gives, so a hairline gets a small window and a heavy line gets a wide one.
 REACH = 10.0
 #: The step across the section. A quarter pixel is finer than any rasteriser's own transition and keeps the centroid
 #: from being quantised by the sampling.
@@ -80,11 +84,11 @@ def measure(path, samples=400, reach=REACH, step=STEP):
     gray = la.load_gray(path, la.LONG_SIDE)
     mask = la.artist_line(gray)
     skeleton = thin(mask.astype(np.uint8))
+    edt = ndimage.distance_transform_edt(mask)
     runs = [run for run in trace(skeleton) if len(run) >= 16]
     if not runs:
         return []
     rng = np.random.default_rng(7)
-    offsets = np.arange(-reach, reach + step, step)
     rows = []
     for _ in range(samples):
         run = runs[int(rng.integers(0, len(runs)))]
@@ -95,13 +99,20 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         if span < 1e-6:
             continue
         nx, ny = -tx / span, ty / span
+        # **The window follows this line's own half width**, so it sees both edges of the line and stops before the next
+        # one. Two pixels of margin past the measured half width is enough for the transition itself.
+        yi, xi = int(round(y)), int(round(x))
+        here = min(reach, max(3.0, 2.0 * float(edt[yi, xi]) + 2.0))
+        offsets = np.arange(-here, here + step, step)
         section = bilinear(gray, x + nx * offsets, y + ny * offsets)
         low, high = float(section.min()), float(section.max())
         if high - low < 40.0:
             continue
-        # **The field is read at the two ends of the section, the ink at its darkest.** Six samples at each end rather
-        # than one: a single pixel at the rim of the window is the noisiest place in the measurement.
-        field = 0.5 * (float(section[:6].mean()) + float(section[-6:].mean()))
+        # **The field is read at the two ends of the section, the ink at its darkest.** A tenth of the samples at each
+        # end rather than a fixed six: the window now varies with the line, and six out of a short section would be
+        # reaching into the transition it is supposed to sit outside of.
+        edge_samples = max(2, len(section) // 10)
+        field = 0.5 * (float(section[:edge_samples].mean()) + float(section[-edge_samples:].mean()))
         width = crossing_width(section)
         rows.append({'edge': width if width is not None else 0.0,
                      'depth': max(0.0, (field - low) / 255.0),
