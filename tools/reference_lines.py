@@ -281,22 +281,37 @@ def _half_depth_width(section, offsets):
 
 
 def _coverage_width(section, offsets, share=0.2):
-    """How wide the section is at a stated share of its own depth range.
+    """How wide the section is at a stated share of its own depth range, **walked outward from its darkest sample**.
 
-    **The width a mark is drawn at and the width of the ink are not the same number**, because the renderer spreads its
-    soft edge outside `half`: a stroke with `width` and `edge` reaches `width + edge` before it fades out, while the
-    artist's ink already includes its own soft edge. Reading the ink's extent at a share of its depth -- the same share
-    `accept.py` counts the page's ink with -- gives a number that can be compared with the drawn result at all.
+    **The first version took the outermost two samples above the share, which is not a width when the section crosses
+    something.** On `150673997`, where fine and heavy lines sit close together, that came back at a median of 13.50 pixels
+    and a 90th percentile of 27.0 against lines whose ink is 7.2 wide -- it was measuring across the gap from one stroke
+    to its neighbour. Walking outward from the centre and stopping at the first sample below the share is the same
+    arithmetic `crossing_width` uses for the edge, and it cannot leave the line it started on.
+
+    The centre is the darkest sample for the same reason it is there: a skeleton pixel is a grid point, not the middle of
+    the ink, so the window's midpoint would split a section whose dark part sits to one side.
     """
     field = float(np.percentile(section, 90))
     dark = float(section.min())
     if field - dark < 20.0:
         return None
     coverage = np.clip((field - section) / (field - dark), 0.0, 1.0)
-    above = np.flatnonzero(coverage >= share)
-    if above.size < 2:
-        return None
-    return float(above[-1] - above[0]) * float(offsets[1] - offsets[0])
+    centre = int(np.argmin(section))
+    sides = []
+    for index in range(centre, -1, -1):
+        if coverage[index] < share:
+            sides.append(abs(float(offsets[index])))
+            break
+    else:
+        sides.append(abs(float(offsets[0])))
+    for index in range(centre, len(coverage)):
+        if coverage[index] < share:
+            sides.append(abs(float(offsets[index])))
+            break
+    else:
+        sides.append(abs(float(offsets[-1])))
+    return float(sum(sides))
 
 
 def ink_mask(gray, mode='coverage', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0, share=0.2):
@@ -484,19 +499,23 @@ def main():
     #: the ink is in the same pixels, and on this knob the two answers are 80 000 pixels apart.
     parser.add_argument('--width-scale', type=float, default=1.0,
                         help='multiply the measured width; 1.0 reads the ink, ~0.7 matches its area')
-    #: Which reading of the ink becomes the width. **`section` is the default and the pair that works**: the plain
-    #: thickness from the distance transform ignores the way a line thins at a corner, and a fixed one ignores the
-    #: drawing entirely -- but both are here because a measurement nobody can compare against an alternative is a
-    #: measurement with no scale.
-    #: **Which reading of the ink becomes the width, and the answer the picture gave was not the one the number did.**
-    #: `section` is the mask's extent along the cross section, capped by `ring_room`; `halfdepth` reads the grey instead,
-    #: where it reaches half the line's own depth. `halfdepth` was tried as the default and taken back out: it makes the
-    #: recorded width equal to the half-depth width almost exactly, and the picture gets worse -- the ink on the page on
-    #: `150673997` fell from 5.67 to 3.91 per cent, `ink reached` from 0.989 to 0.641, and `p90 / median` went from 2.06 to
-    #: 4.83, because a section that reaches another stroke now reports a width several times its own. The half-depth
-    #: width is a grey quantity and it is what `edge` already describes; the width a mark is drawn at is a mask quantity,
-    #: which is also the quantity `accept.py` counts with `cl.INK`. See the correction note in `AESTHETIC-LIBRARY.md`.
-    parser.add_argument('--width-source', choices=('section', 'cover', 'halfdepth', 'edt', 'fixed'), default='section')
+    #: **Which reading of the ink becomes the width, and the one that works asks the two questions that were being
+    #: confused.** A mark's `width` is not the ink's width: `sweep_layer`'s coverage is `(half + edge/2 - d) / edge`, so
+    #: the stroke reaches `width + edge` before it fades, while the artist's ink already contains its own soft boundary.
+    #: `cover` reads the ink at a fifth of its own depth range -- the same share `accept.py` counts the page with -- and
+    #: subtracts that edge, and both numbers land: `width share` 1.000 on `150673997` and 1.001 on `150721001`, with the
+    #: page's ink at 1.006 and 1.025 of the artist's against 0.843 and 1.221 before it.
+    #:
+    #: **`section` was the default for four rounds and is kept beside it** because it is the plain mask extent and remains
+    #: the thing to compare against; `halfdepth` made the recorded width equal to the half-depth width almost exactly and
+    #: the picture worse (page ink 5.67 to 3.91 per cent, `ink reached` 0.989 to 0.641), which is what taught the
+    #: difference between a number that agrees and a picture that does.
+    #:
+    #: What `cover` does not fix is `p90 / median` on `150673997` (1.419) -- the widths record at 2.36 of their own median,
+    #: and the finished picture measures 3.34 because `cl.INK` fuses neighbouring strokes in a dense drawing and twice the
+    #: transform then spans the pair. That is the judging side, not the drawing side, and it is written down rather than
+    #: tuned away.
+    parser.add_argument('--width-source', choices=('cover', 'section', 'halfdepth', 'edt', 'fixed'), default='cover')
     #: **How many pixels a line's boundary takes from ink to paper, measured from the line itself.** One value for the
     #: whole drawing was the first version and it does not fit: across three drawings the right number ran from 2.0 to
     #: beyond 3.5, and one line was softer than any value could reach. So the default reads each line's own section, and
