@@ -162,6 +162,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # **The same section, read on the grey instead of on the ink, is how wide this line's edge is.** It costs one
         # more bilinear sample per offset and it is the only place the paper's own softness is visible -- a mask is
         # binary by construction and cannot carry it.
+        edge_now = None
         if gray is not None:
             section = _bilinear(gray, x + nx * offsets, y + ny * offsets)
             # **The section's own step, because the answer is a length.** This used to leave `crossing_width` on its
@@ -170,6 +171,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             width = crossing_width(section, step)
             if width is not None:
                 edges.append(width)
+                edge_now = width
             # **The ink's depth on the same section: how dark this line is here, as a share of black.** An artist's
             # line is not one value along its length -- the water in a wash pools and thins, a nib lays down more where
             # it lingers -- and a renderer that gives every point the same alpha cannot say so. This is the field that
@@ -214,6 +216,31 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             # grey is used only where the mask has no opinion to overrule, which is not the same as having a better one.
             room_ceiling = float(room[yi, xi])
             widths.append(room_ceiling if measured is None else min(measured, room_ceiling))
+        elif source == 'cover':
+            # **The width a mark is drawn at has to be the ink's width *minus* the soft edge, because the renderer puts
+            # the edge outside it.** Coverage in `sweep_layer` is `(half + edge/2 - d) / edge`, so a stroke carrying
+            # `width` and `edge` reaches as far as `width + edge` before it fades out, while the artist's own ink already
+            # contains its own soft edge. Writing the ink's own width straight into `width` therefore draws a line wider
+            # than the one measured -- by one whole edge, which on a thin line is most of it: measured on `150721001`,
+            # whose artist lines are 4.5 pixels, the copy came out at 1.789 times their width while the recorded widths
+            # were already the same 4.47.
+            #
+            # A share of the line's own depth range, rather than a fixed grey, because the same stroke is not equally
+            # dark everywhere and a pale line must not be called thin for being pale.
+            cover = _coverage_width(section, offsets) if gray is not None else None
+            if cover is None:
+                widths.append(min(total * step, ceiling))
+            else:
+                # **A whole edge, measured rather than reasoned.** Six tenths was tried first on the arithmetic -- the
+                # renderer's own fifth-coverage sits `0.6 * edge` outside the half-width -- and it is wrong in practice:
+                # with six tenths `150721001`'s width share stays at 1.342, with a whole edge it lands on 1.001. What
+                # the six-tenths reasoning leaves out is that the artist's own profile is not the renderer's, so the
+                # correction is calibrated on the result rather than derived from the formula.
+                #
+                # It is not the default, and the reason is measured too: on `150673997` a whole edge leaves the widths
+                # wildly uneven -- p90 over median 3.72 against the artist's 2.35 -- because there a fine line's cover is
+                # barely wider than its own edge, so the subtraction lands on the floor for most of them.
+                widths.append(max(1.0, cover - (edge_now or 0.0)))
         else:
             # **The ceiling is `room`, not twice the transform, and that is the whole correction.** `2 * edt` is the
             # distance to the nearest non-ink, which is half a *rim* on a band the top hat hollowed; `room` is twice that
@@ -251,6 +278,25 @@ def _half_depth_width(section, offsets):
         above = np.flatnonzero(side >= 0.5)
         sides.append(float(above[-1]) if above.size else 0.0)
     return (sides[0] + sides[1]) * float(offsets[1] - offsets[0])
+
+
+def _coverage_width(section, offsets, share=0.2):
+    """How wide the section is at a stated share of its own depth range.
+
+    **The width a mark is drawn at and the width of the ink are not the same number**, because the renderer spreads its
+    soft edge outside `half`: a stroke with `width` and `edge` reaches `width + edge` before it fades out, while the
+    artist's ink already includes its own soft edge. Reading the ink's extent at a share of its depth -- the same share
+    `accept.py` counts the page's ink with -- gives a number that can be compared with the drawn result at all.
+    """
+    field = float(np.percentile(section, 90))
+    dark = float(section.min())
+    if field - dark < 20.0:
+        return None
+    coverage = np.clip((field - section) / (field - dark), 0.0, 1.0)
+    above = np.flatnonzero(coverage >= share)
+    if above.size < 2:
+        return None
+    return float(above[-1] - above[0]) * float(offsets[1] - offsets[0])
 
 
 def ink_mask(gray, mode='coverage', element=la.ELEMENT, floor=la.FLOOR, window=41, level=200.0, share=0.2):
@@ -450,7 +496,7 @@ def main():
     #: 4.83, because a section that reaches another stroke now reports a width several times its own. The half-depth
     #: width is a grey quantity and it is what `edge` already describes; the width a mark is drawn at is a mask quantity,
     #: which is also the quantity `accept.py` counts with `cl.INK`. See the correction note in `AESTHETIC-LIBRARY.md`.
-    parser.add_argument('--width-source', choices=('section', 'halfdepth', 'edt', 'fixed'), default='section')
+    parser.add_argument('--width-source', choices=('section', 'cover', 'halfdepth', 'edt', 'fixed'), default='section')
     #: **How many pixels a line's boundary takes from ink to paper, measured from the line itself.** One value for the
     #: whole drawing was the first version and it does not fit: across three drawings the right number ran from 2.0 to
     #: beyond 3.5, and one line was softer than any value could reach. So the default reads each line's own section, and
