@@ -105,6 +105,26 @@ def trace_ceiling(reference, settings):
     return mask, dots
 
 
+def ink_share(gray, share=0.2):
+    """The page's ink as a share of it, **normalised per picture so that a pale line is not counted as a thin one**.
+
+    A fixed grey threshold is unfair to whichever picture is paler, and the unfairness is not small: on `150673997` the
+    artist's darkest ink is 43 and the copy's 39, but the two pictures' *fields* are both 255, so a threshold at 205 asks
+    for 18 per cent coverage on one and 85 per cent on the other. Measured that way the same pair of pictures holds a
+    ratio of 0.60 under the top hat and 0.845 under the threshold.
+
+    Normalising each picture by its own field and its own darkest ink, then asking for the same share of that range,
+    gives the same answer at every level tried -- 0.885 at a tenth, 0.843 at a fifth, 0.838 at three tenths, 0.850 at a
+    half -- so the quantity is a property of the drawings rather than of where the line was drawn. A fifth is reported
+    because it is the lowest share that is not paper noise.
+    """
+    field = float(np.percentile(gray, 95))
+    dark = float(np.percentile(gray, 0.5))
+    if field - dark < 8.0:
+        return 0.0
+    return 100.0 * float((np.clip((field - gray) / (field - dark), 0.0, 1.0) >= share).mean())
+
+
 def numbers(path):
     """The five measurable quantities of a picture, and the raw reach when the caller gives it.
 
@@ -154,8 +174,20 @@ def main(argv=None):
     source['reach'] = 1.0
     print('  ink reached   copy %.1f%% of the artist\'s ink within %.0f px, skeleton ceiling %.1f%%, ratio %.3f'
           % (copy_reach, REACH, ceiling, traced['reach']))
-    print('  ink on page   reference %.2f%%  copy %.2f%%   (information, not graded: see the module note)'
-          % (100.0 * artist.mean(), 100.0 * ink_of(out).mean()))
+    # **Three counts of the page's ink, because on this pair they span a factor of two and only one of them is about
+    # ink.** The top hat asks whether a pixel is darker than its own surroundings, so a copy whose strokes lie in
+    # continuous ink measures low -- its own shoulder raises the local median -- while the artist's strokes sit on clean
+    # paper. A plain grey threshold is fair to neither picture in particular: at 205 it asks for 18 per cent coverage of
+    # the artist's ink and 85 per cent of the copy's, because the copy's ink is shallower. The normalised share asks the
+    # same question of both, and it answers 0.84 at every level from a tenth to a half, so **it is the one to quote as an
+    # amount of ink**; the other two are kept beside it so a change in any of them is visible rather than inferred.
+    copy_gray = la.load_gray(out, la.LONG_SIDE)
+    ref_gray = la.load_gray(args.reference, la.LONG_SIDE)
+    print('  ink on page   reference %6.2f%%  top hat   %6.2f%%  below grey %d   %6.2f%%  at a fifth coverage'
+          % (100.0 * artist.mean(), 100.0 * float((ref_gray < la.INK).mean()), la.INK, ink_share(ref_gray)))
+    print('  %-13s copy      %6.2f%%  top hat   %6.2f%%  below grey %d   %6.2f%%  at a fifth coverage   (ratio %.3f)'
+          % ('', 100.0 * ink_of(out).mean(), 100.0 * float((copy_gray < la.INK).mean()), la.INK,
+             ink_share(copy_gray), ink_share(copy_gray) / max(1e-9, ink_share(ref_gray))))
     print()
     print('  %-14s %10s %10s %8s %s' % ('quantity', 'reference', 'copy', 'ratio', 'within %.0f%%' % (100 * args.tolerance)))
     failures = 0

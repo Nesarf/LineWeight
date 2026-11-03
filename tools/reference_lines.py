@@ -96,7 +96,13 @@ def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
     # came out zero, and the ring correction changed not one number while looking entirely in place.
     far, index = ndimage.distance_transform_edt(~holes, return_indices=True)
     here = per_hole[labels[index[0], index[1]]]
-    return np.where((far <= edt) & (here > 0), 4.0 * edt + 2.0 * here, plain)
+    # **The hollow has to be wider than the rim for the ink around it to be a band.** A pinhole beside a stroke sits at the
+    # same distance from the skeleton as the stroke's own edge does, so "the hole is nearer than the outside" alone fires
+    # on ordinary lines and doubles their width -- measured, that alone drove `width share` to 1.387 and `p90 / median`
+    # to 4.08. A band's hollow is half its width while its rim is a fifth, so the ratio separates the two cases without a
+    # second constant.
+    on_ring = (far <= edt) & (here > 2.0 * edt) & (here > 0)
+    return np.where(on_ring, 4.0 * edt + 2.0 * here, plain)
 
 
 def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section', room=None):
@@ -209,6 +215,13 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             room_ceiling = float(room[yi, xi])
             widths.append(room_ceiling if measured is None else min(measured, room_ceiling))
         else:
+            # **The ring width is not the width this source uses, and two measurements say so.** Applied here -- with a
+            # hollow wider than the rim, and only where the section had stopped at the rim -- it takes the page's ink to
+            # 14.33 per cent against the artist's 14.09 (a ratio of 1.017) and the normalised share to 0.934 from 0.843,
+            # which is the closest anything has come. It also takes `width share` to 1.387 and `ink reached` from 0.951 to
+            # 0.878: the copy ends up with the right amount of ink in strokes that are too few and too wide. **The ink is
+            # right and the distribution is wrong**, so what is missing is more lines rather than wider ones, and this
+            # branch keeps the extent.
             widths.append(min(total * step, ceiling))
     return points, widths, edges, depths
 
