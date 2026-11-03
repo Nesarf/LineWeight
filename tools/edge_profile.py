@@ -28,6 +28,14 @@ REACH = 10.0
 #: The step across the section. A quarter pixel is finer than any rasteriser's own transition and keeps the centroid
 #: from being quantised by the sampling.
 STEP = 0.1
+#: **A crossing is a tenth-to-ninetieth span, and the renderer's `edge` is the whole ramp.** Those are the same boundary
+#: described two ways, and the ratio between them is arithmetic rather than material: a linear fall from field to ink
+#: spends its first tenth and its last tenth outside the 10-to-90 span, so the span is 0.8 of the ramp. The two sides of
+#: this project met here without either naming it -- `crossing_width` measured 0.8 of what `sweep_layer` would be asked
+#: to draw, so a record built from a measurement rendered a boundary a fifth narrower than the line it came from, and the
+#: acceptance table read the difference as error. A field that means "the ramp" needs the measurement divided by this
+#: before it is stored; no renderer needs to know the number.
+CROSSING_SHARE = 0.8
 
 
 def bilinear(field, xs, ys):
@@ -65,12 +73,21 @@ def _crossing_index(values, level):
     return (i - 1) + (high - level) / (high - low)
 
 
-def crossing_width(profile):
+def crossing_width(profile, step=STEP):
     """How far along the section the ink goes from 10 to 90 per cent, averaged over the two sides.
 
     **Both sides, because a nib is not symmetric and neither is a rasteriser's anti-aliasing.** A section that never
     reaches both levels is not a line -- it is a field with a smudge in it -- so it returns nothing rather than a
     number nobody should average.
+
+    **`step` is the caller's sampling step and it has to be given, because the answer is a length.** This multiplied by
+    the module's own `STEP` regardless of how the section had been sampled, so every caller that sampled at something
+    else got its width scaled -- `reference_lines` takes its sections at a quarter pixel and was told **2.5 times less
+    than the truth**: it wrote an edge of 1.48 on a line whose crossing is 3.70, fed that to `stroke_record`, and drew a
+    copy whose edges were two and a half times harder than the drawing's. The acceptance table then read the hardness
+    back as a defect of the trace rather than of this line, and one drawing was even declared "softer than this renderer
+    can express" on the strength of it. A length that silently changes unit with its caller is the same fault as the
+    sample index this function was already fixed for once.
     """
     low, high = float(profile.min()), float(profile.max())
     if high - low < 40.0:
@@ -90,7 +107,7 @@ def crossing_width(profile):
         far = _crossing_index(side, 0.1)
         if near is None or far is None or far <= near:
             continue
-        widths.append((far - near) * STEP)
+        widths.append((far - near) * step)
     return float(np.mean(widths)) if widths else None
 
 
@@ -138,7 +155,7 @@ def measure(path, samples=400, reach=REACH, step=STEP):
         # **The field comes from the local median and the ink from the section's darkest sample**, so neither is a
         # property of how wide the window happens to be.
         field = float(local[yi, xi])
-        width = crossing_width(section)
+        width = crossing_width(section, step)
         rows.append({'edge': width if width is not None else 0.0,
                      'depth': max(0.0, (field - low) / 255.0),
                      'field': field / 255.0})

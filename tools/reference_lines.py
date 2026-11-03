@@ -19,6 +19,7 @@ import sys
 
 import numpy as np
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(TOOLS)
@@ -27,7 +28,7 @@ sys.path.insert(0, ROOT)
 
 import line_agreement as la
 from copy_linework import prune, thin, trace
-from edge_profile import crossing_width
+from edge_profile import CROSSING_SHARE, crossing_width
 from lineweight import core, project, psd
 
 
@@ -100,7 +101,10 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         # binary by construction and cannot carry it.
         if gray is not None:
             section = _bilinear(gray, x + nx * offsets, y + ny * offsets)
-            width = crossing_width(section)
+            # **The section's own step, because the answer is a length.** This used to leave `crossing_width` on its
+            # module's step of a tenth while sampling at a quarter, so every line's edge came back 2.5 times too small
+            # and the copy was drawn with a hard edge on a soft drawing. See `crossing_width`.
+            width = crossing_width(section, step)
             if width is not None:
                 edges.append(width)
             # **The ink's depth on the same section: how dark this line is here, as a share of black.** An artist's
@@ -128,6 +132,20 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
         else:
             widths.append(min(total * step, ceiling))
     return points, widths, edges, depths
+
+
+def _edge_of(measured, pinned, scale):
+    """The record's `edge` from a line's own crossings, or the caller's pin.
+
+    **A measurement is a tenth-to-ninetieth span; the record's `edge` is the whole ramp the renderer draws.** Dividing
+    by `CROSSING_SHARE` is the whole of the conversion, and leaving it out made every copied line a fifth harder than
+    its source even after the sampling step was passed through. See `edge_profile`.
+    """
+    if pinned > 0:
+        return pinned
+    if not measured:
+        return 0.0
+    return min(8.0, max(1.0, float(np.median(measured)) * scale / CROSSING_SHARE))
 
 
 def main():
@@ -162,6 +180,14 @@ def main():
     #: this flag exists to pin it when the question is "what does one constant do" rather than "what does this line need".
     parser.add_argument('--edge', type=float, default=0.0,
                         help='pin the edge in pixels; 0 measures it from each line\'s own section')
+    #: **Off by default, because drawing the fragments was measured not to buy coverage and to cost depth.** With them
+    #: on, 17,858 extra marks moved the ink on the page from 6.4677 to 6.4902 per cent -- a third of one per cent -- while
+    #: the depth spread went from 1.016 to 1.152 and the picture showed dark beads where fragments piled on top of the
+    #: line they borrowed from. Source-over composites, so re-laying ink that is already there deepens it: a fragment's
+    #: ink is redundant in area and additive in alpha. The reason they were tried stands (they are 25.8 per cent of the
+    #: skeleton path), and the reason they do not work is the whole of the finding.
+    parser.add_argument('--fragments', action='store_true',
+                        help='also draw runs shorter than --min-segment, borrowing their appearance from the nearest')
     #: **The destination the focus actually names.** A project is the editable form, and a painting application cannot
     #: open one; `psd.layers_from_project` renders each `Mark.layer` through the same renderer the picture comes from, so
     #: the file carries the soft edge instead of a staircase. One flag turns a reference picture into layers SAI opens.
@@ -191,6 +217,7 @@ def main():
         'width_source': args.width_source,
         'width_scale': args.width_scale,
         'edge': args.edge if args.edge else 'per line',
+        'fragments': bool(args.fragments),
         'page_long': la.LONG_SIDE,
     }
 
@@ -201,17 +228,35 @@ def main():
     # line whose ends are genuine. So the runs stay as the skeleton broke them, and the ink comes out at 1.04 to 1.11
     # times the reference's rather than twice it once the comparison uses the same definition.
     kept = [run for run in runs if len(run) >= args.min_segment]
+    # **A run too short to describe itself can borrow its neighbour's appearance instead of vanishing -- but it is off
+    # by default, because it was measured not to pay.** Dropping these runs was priced as the whole of the ink deficit:
+    # they are 25.8 per cent of the skeleton's path and the copy leaves 30 per cent of the artist's ink on the page. What
+    # drawing them returns is a third of one per cent of the ink, because the ink they stand on is already inked by the
+    # run they were cut from -- and what they cost is doubled alpha there, which reads as beads. The measurement is in
+    # the `--fragments` help; the geometry below is right, the compositing is why it does not help.
+    long_runs = kept
+    short_runs = [run for run in runs if 2 <= len(run) < args.min_segment] if args.fragments else []
     # **The ink's own width and centre, from a cross-section at each skeleton point.** This wrote a constant `2 * scale`
     # for every mark, which is the same fault `render_to_project` had: a traced picture came out at one thickness whatever
     # the reference said. Then it read the distance transform, which gets the width right and still leaves the centre on
     # the integer grid -- measured, 40 per cent of the ink was uncovered at the pixel level while all of it was reached
     # within six. `subpixel_axis` samples across the line instead: the centroid moves the point off the grid and the
-    # extent is the width.
+    # extent is the width. One section per run, computed once and used twice: to draw that run, and as the pool the
+    # fragments borrow from.
     edt = ndimage.distance_transform_edt(mask)
+    sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source) for run in long_runs]
+    # The pool the fragments draw on: one row per point of a long run, holding what that point measured.
+    pool_points, pool_rows = [], []
+    for px_points, px_widths, px_edges, px_depths in sections:
+        edge = _edge_of(px_edges, args.edge, scale)
+        for k, (x, y) in enumerate(px_points):
+            pool_points.append((x, y))
+            pool_rows.append((px_widths[k], edge, px_depths[k]))
+    tree = cKDTree(np.asarray(pool_points, dtype=np.float64)) if pool_points else None
+
     written = 0
-    for i, run in enumerate(kept):
-        px_points, px_widths, px_edges, px_depths = subpixel_axis(mask, run, gray=gray, edt=edt,
-                                                                  source=args.width_source)
+    borrows = 0
+    for i, (px_points, px_widths, px_edges, px_depths) in enumerate(sections):
         if len(px_points) < 2:
             continue
         # **`resolution=1` keeps every cross-section**, because `catmull` at one sample per segment returns the points it
@@ -223,22 +268,42 @@ def main():
         # three drawings the value that matched ran from 2.0 to beyond 3.5, and one could not be reached at all because
         # its line is softer than this renderer can express. The section already carries the number, so it is read
         # there -- a line drawn with a dry pen and a line drawn with a wet one stop being the same mark.
-        if args.edge > 0:
-            edge = args.edge
-        elif px_edges:
-            edge = min(8.0, max(1.0, float(np.median(px_edges)) * scale))
-        else:
-            edge = 0.0
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
-                                    width_profile=widths, absolute_width=True, edge=edge,
+                                    width_profile=widths, absolute_width=True,
+                                    edge=_edge_of(px_edges, args.edge, scale),
                                     alpha_profile=px_depths)
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
+    # **The fragments, drawn at their own places in their neighbour's hand.** No fragment exists where there is no long
+    # run within a few pixels -- it is a piece of the skeleton that was cut off at a junction -- so the lookup is a local
+    # one and a fragment that somehow has no neighbour keeps its own numbers rather than being dropped.
+    for j, run in enumerate(short_runs):
+        px_points, px_widths, px_edges, px_depths = subpixel_axis(mask, run, gray=gray, edt=edt,
+                                                                  source=args.width_source)
+        if len(px_points) < 2:
+            continue
+        if tree is not None:
+            near = tree.query(np.asarray(px_points, dtype=np.float64), k=1)[1]
+            px_widths = [pool_rows[int(n)][0] for n in near]
+            borrowed = [pool_rows[int(n)][1] for n in near if pool_rows[int(n)][1]]
+            px_edges = borrowed
+            px_depths = [pool_rows[int(n)][2] for n in near]
+            borrows += 1
+        points = [(x * scale, y * scale) for x, y in px_points]
+        widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
+        record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
+                                    width_profile=widths, absolute_width=True,
+                                    edge=_edge_of(px_edges, args.edge, scale),
+                                    alpha_profile=px_depths)
+        canvas.add_stroke(record, stage='line', layer='ink', note='fragment %d' % j)
+        written += 1
+    canvas.settings['fragment_marks'] = borrows
+
     project.save_project(canvas, args.out)
-    print('  %s %dx%d, %d line px, %d runs, %d marks -> %s'
+    print('  %s %dx%d, %d line px, %d runs, %d marks (%d borrowing) -> %s'
           % (os.path.basename(args.picture), width, height,
-             int(mask.sum()), len(runs), written, args.out))
+             int(mask.sum()), len(runs), written, borrows, args.out))
     if args.psd:
         layers = psd.layers_from_project(canvas)
         path = psd.save_psd(layers, args.psd)

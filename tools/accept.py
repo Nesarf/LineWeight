@@ -14,26 +14,41 @@ the file draws rather than a second opinion about its geometry.
 achieve against their own sources -- width share 26 per cent high across eleven drawings, coverage 19 -- so it says
 "within what this pipeline has demonstrated" rather than "good". A number that failed at thirty per cent would be a real
 finding; a number inside it is not a pass, it is the absence of a surprise.
+
+**The coverage row is a reach against the trace's own reach, not an area ratio.** The first version asked how much of the
+page is ink on each side, and it read 0.70 on a copy whose lines are the same width, the same depth and the same crossing
+within seven per cent. What the row was measuring was placement and length: at the pixel, 46 per cent of the artist's ink
+is missed and 15 per cent of the copy's is extra, while the copy's ink lies within two pixels of the artist's 96.7 per
+cent of the time. Meanwhile a one-pixel skeleton cannot reach more than 70.2 per cent of the artist's ink within two
+pixels at all, so grading a traced copy against a hundred per cent grades it against something the method cannot produce.
+The row therefore compares what the copy reaches with what the skeleton it was traced through reaches: at one, the copy
+delivers everything its own description covered, and the trace's shortfall is a separate and honestly separate question.
 """
 import argparse
 import os
 import sys
 
 import numpy as np
+from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import edge_profile  # noqa: E402
 import line_agreement as la  # noqa: E402
 import width_share  # noqa: E402
+from copy_linework import prune, thin, trace  # noqa: E402
 from lineweight import project, raster  # noqa: E402
 
 #: How far a ratio may sit from one. See the module note: this is what the copies already do.
 TOLERANCE = 0.30
+#: How far from a pixel of copy ink a pixel of artist ink may lie and still count as reached. **Two pixels, because that
+#: is the median artist edge's own shoulder** -- one pixel makes the row a measurement of sub-pixel placement, and past
+#: three an absent line and a displaced one stop being distinguishable.
+REACH = 2.0
 #: The measures compared, as (label, key, unit). Width share and coverage come from `width_share`, the edge and the ink
 #: depth from `edge_profile`; the depth spread is the p90 minus the p10, because a median cannot tell even ink from
 #: patchy ink and the difference has moved a conclusion before.
-WIDTH_KEYS = (('width share', 'share', '%'), ('p90 / median', 'ratio', ''), ('coverage', 'coverage', '%'))
+WIDTH_KEYS = (('width share', 'share', '%'), ('p90 / median', 'ratio', ''), ('ink reached', 'reach', ''))
 DEPTH_KEYS = (('edge', 'edge', 'px'), ('ink depth', 'depth', ''), ('depth spread', 'spread', ''))
 
 
@@ -43,27 +58,53 @@ def render(project_path, out_path):
     marks = [mark.to_dict() for mark in drawn.live()]
     if not marks:
         raise SystemExit('the project has no live marks: %s' % project_path)
-    layer = raster.render_marks(marks, int(round(drawn.width)), int(round(drawn.height)), 1.0)
+    layer = raster.render_marks(marks, int(round(drawn.width)), int(round(drawn.height)), 1.0, sweep=True)
     raster.save_png(layer, out_path, background=(255, 255, 255))
     return drawn
 
 
-def numbers(path):
-    """The six quantities, or what could be measured of them, for one picture.
+def ink_of(path):
+    """The ink of a picture, on the definition the trace was built from rather than on a grey threshold."""
+    return la.artist_line(la.load_gray(path, 2880))
 
-    **Coverage is taken from `artist_line`, not from `width_share`.** The two answer slightly different questions: that
-    tool counts ink under a fixed grey threshold, because it is pricing a layer against its own span, while a trace is
-    generated from the top hat's set -- and mixing them in one table produced a coverage ratio of 0.61 on a copy whose
-    ink was within three per cent of its source. The width and the p90/median come from `width_share` because those are
-    the same computation on both sides, which is what makes them comparable at all.
+
+def reach(source, drawn, radius=REACH):
+    """What share of `source`'s ink lies within `radius` pixels of some ink of `drawn`."""
+    distance = ndimage.distance_transform_edt(~drawn)
+    return 100.0 * float((distance[source] <= radius).mean())
+
+
+def trace_ceiling(reference, settings):
+    """The artist's ink, and the ink a one-pixel skeleton through it can reach.
+
+    **This is the denominator the reach row needs, and it comes from the same trace the project came from**: the same
+    floor, element and pruning length the run recorded, so a project and its own ceiling cannot describe different
+    pictures. A skeleton that is one pixel wide and sits on the pixel grid cannot cover a four-pixel line, which is why
+    the ceiling is well below a hundred and why grading a copy against a hundred would grade the method, not the copy.
+    """
+    gray = la.load_gray(reference, la.LONG_SIDE)
+    mask = la.artist_line(gray, element=int(settings.get('element', la.ELEMENT)),
+                          floor=float(settings.get('floor', la.FLOOR)))
+    skeleton = prune(thin(mask.astype(np.uint8)), int(settings.get('prune', 4)))
+    dots = np.zeros(mask.shape, dtype=bool)
+    for run in trace(skeleton):
+        for y, x in run:
+            dots[int(y), int(x)] = True
+    return mask, dots
+
+
+def numbers(path):
+    """The five measurable quantities of a picture, and the raw reach when the caller gives it.
+
+    The width and the p90/median come from `width_share`; the edge and the ink depth from `edge_profile`. Both tools are
+    run on both sides, which is the only thing that makes a ratio mean anything -- mixing two definitions of "the ink"
+    in one table produced a coverage ratio of 0.61 on a copy whose ink was within three per cent of its source.
     """
     values = {}
     width = width_share.measure(path, 2880)
     if width:
         values['share'] = float(width['share'])
         values['ratio'] = float(width['ratio'])
-    gray = la.load_gray(path, 2880)
-    values['coverage'] = 100.0 * float(la.artist_line(gray).mean())
     rows = edge_profile.measure(path, samples=200)
     if rows:
         depths = np.array([row['depth'] for row in rows])
@@ -91,6 +132,19 @@ def main(argv=None):
 
     traced = numbers(out)
     source = numbers(args.reference)
+    # **The reach row is the one that needs both pictures at once.** The copy's reach is a share of the artist's ink;
+    # the ceiling is what the trace itself could have reached, so the ratio says whether the drawing delivered what the
+    # description covered.
+    artist, dots = trace_ceiling(args.reference, settings)
+    copy_reach = reach(artist, ink_of(out))
+    ceiling = reach(artist, dots)
+    traced['reach'] = copy_reach / max(1e-9, ceiling)
+    source['reach'] = 1.0
+    print('  ink reached   copy %.1f%% of the artist\'s ink within %.0f px, skeleton ceiling %.1f%%, ratio %.3f'
+          % (copy_reach, REACH, ceiling, traced['reach']))
+    print('  ink on page   reference %.2f%%  copy %.2f%%   (information, not graded: see the module note)'
+          % (100.0 * artist.mean(), 100.0 * ink_of(out).mean()))
+    print()
     print('  %-14s %10s %10s %8s %s' % ('quantity', 'reference', 'copy', 'ratio', 'within %.0f%%' % (100 * args.tolerance)))
     failures = 0
     for label, key, _unit in WIDTH_KEYS + DEPTH_KEYS:
