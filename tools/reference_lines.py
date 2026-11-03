@@ -182,6 +182,88 @@ def _edge_of(measured, pinned, scale):
     return min(8.0, max(1.0, float(np.median(measured)) * scale / CROSSING_SHARE))
 
 
+def _join_runs(runs, gap=2.0, straight=0.6):
+    """Runs that continue into one another, concatenated into one path.
+
+    **Why a join and not a smaller threshold.** A four-pixel stroke cut into six-pixel pieces is drawn as six-pixel
+    capsules, and the union of their round ends is scalloped -- the copy of `150673997` reads as a chain of pale lozenges
+    where the artist has a stroke, and no value of alpha or edge removes it, because it is the *shape* of the union. The
+    width, edge and depth of a joined path are then measured across the joins instead of at their ends, which is also
+    where they were least reliable.
+
+    **The join is stated as geometry, which is what the earlier attempt got wrong.** `render_to_project.stitch` binned run
+    ends into a grid, so it joined a line's two genuine ends to each other by accident and nearly doubled the mark count
+    (5310 to 6138). Two conditions are used here instead, and both are about the stroke rather than about a grid:
+
+    * the ends must be within `gap` pixels, which is one line's own width;
+    * each run's inward direction at its end must point **opposite** the other's -- `dot <= -straight` -- because two
+      pieces of one stroke leave their shared end in opposite directions, while two strokes that merely pass close by do
+      not.
+
+    Each end is used at most once, so the result is a set of paths rather than a graph. A closed contour is one run
+    already (the tracer walks it from both ways) and a cycle of runs is left as separate paths rather than guessed at.
+    """
+    count = len(runs)
+    if count < 2:
+        return [list(run) for run in runs]
+
+    def inward(i, side):
+        run = runs[i]
+        if len(run) < 2:
+            return np.zeros(2)
+        if side == 0:
+            v = np.array([run[1][0] - run[0][0], run[1][1] - run[0][1]], dtype=np.float64)
+        else:
+            v = np.array([run[-2][0] - run[-1][0], run[-2][1] - run[-1][1]], dtype=np.float64)
+        length = float(np.hypot(v[0], v[1]))
+        return v / length if length > 1e-9 else np.zeros(2)
+
+    ends = [(i, side) for i in range(count) for side in (0, 1)]
+    spot = np.array([[runs[i][0 if side == 0 else -1][0], runs[i][0 if side == 0 else -1][1]]
+                     for i, side in ends], dtype=np.float64)
+    tree = cKDTree(spot)
+    candidates = []
+    for a, b in tree.query_pairs(gap, output_type='ndarray'):
+        ia, sa = ends[int(a)]
+        ib, sb = ends[int(b)]
+        if ia == ib:
+            continue
+        if float(np.dot(inward(ia, sa), inward(ib, sb))) > -straight:
+            continue
+        candidates.append((float(np.hypot(*(spot[a] - spot[b]))), (ia, sa), (ib, sb)))
+    candidates.sort()
+
+    link, taken = {}, set()
+    for _, first, second in candidates:
+        if first in taken or second in taken:
+            continue
+        link[first] = second
+        link[second] = first
+        taken.update((first, second))
+
+    used = [False] * count
+    joined = []
+    for i in range(count):
+        if used[i] or (i, 0) in taken and (i, 1) in taken:
+            continue
+        start = 0 if (i, 0) not in taken else 1
+        chain, here = [], (i, start)
+        while here is not None:
+            ci, cs = here
+            if used[ci]:
+                break
+            used[ci] = True
+            chain.extend(runs[ci] if cs == 0 else runs[ci][::-1])
+            step = link.get((ci, 1 - cs))
+            here = step if step is not None and not used[step[0]] else None
+        joined.append(chain)
+    # **A ring of runs has no end to start from**, so whatever the walk above could not reach is kept as it was.
+    for i in range(count):
+        if not used[i]:
+            joined.append(list(runs[i]))
+    return joined
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--picture', required=True)
@@ -259,8 +341,10 @@ def main():
     runs = trace(skeleton)
     # **`render_to_project.stitch` was tried here and made it worse** -- 6138 marks against 5310, because it joins runs by
     # binning their ends into a grid, which is right for a closed contour walked from both ways and wrong for an open
-    # line whose ends are genuine. So the runs stay as the skeleton broke them, and the ink comes out at 1.04 to 1.11
-    # times the reference's rather than twice it once the comparison uses the same definition.
+    # line whose ends are genuine. `_join_runs` joins by geometry instead: an end within one line's width whose inward
+    # directions are opposed, one end used once. Without it each of the artist's strokes is drawn as a chain of round
+    # ends, which is the scallop the magnified copy shows.
+    runs = _join_runs(runs)
     kept = [run for run in runs if len(run) >= args.min_segment]
     # **A run too short to describe itself can borrow its neighbour's appearance instead of vanishing -- but it is off
     # by default, because it was measured not to pay.** Dropping these runs was priced as the whole of the ink deficit:
