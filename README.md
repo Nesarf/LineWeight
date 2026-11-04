@@ -319,6 +319,13 @@ convention that assigns the meanings is explicit:
 variation — which is the thing this library exists to produce and the thing the convention says artists forget on
 hair. **No role is the default and means exactly the brush width**, so nothing written before roles existed changed.
 
+**The numbers in that table are factors, not pixels**, and keeping the two apart is the one mistake this section invites.
+A role says how much heavier one line is than the line beside it; the width itself comes from whoever drew the stroke — a
+brush table entry, or a cross-section of a reference picture, as the tracing section above describes. So `2.75` is not
+2.75 pixels, and a trace that measures 7.2 pixels for the outer contour and 2.6 for the inner ones is not disagreeing with
+it: `contour` at 1.0 anchors the median line and `silhouette` at 2.75 is the corpus's own p90 over median, which is a
+ratio between lines and stays a ratio whatever the drawing's scale.
+
 **The widths are placed against two measured numbers, and only two of the four are anchored.** From 276 line drawings
 pooled out of 929 images across three independent collections: within one drawing the 90th-percentile line width is
 **2.75x** the median and the maximum is **5.33x**. `contour` is the anchor at 1.0, because the brush width is
