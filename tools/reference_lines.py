@@ -244,7 +244,15 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
                 # one fault none of the six rows had shown, because a median and a ninetieth percentile cannot see one
                 # and a half per cent. `room` is what the mask says the ink reaches there, so the smaller of the two is
                 # what both measurements agree on.
-                widths.append(min(float(room[yi, xi]), max(1.0, cover - (edge_now or 0.0))))
+                #
+                # **The width also may not fall below the edge, or the stroke cannot reach full coverage at its own
+                # centre.** `sweep_layer` puts the centre at `0.5 + half / edge`, so a one-pixel stroke with a four-pixel
+                # edge tops out at 0.625 -- drawn, and still looking like a faint hairline. That is what the brick wall
+                # showed: its horizontal joints were in the mask and in the skeleton (dark runs across a row, 45 per cent
+                # of rows against the copy's 43), and the plate read as if they had never been drawn, because they were
+                # thin enough for `cover - edge` to land on the floor.
+                edge_here = edge_now or 0.0
+                widths.append(min(float(room[yi, xi]), max(cover - edge_here, edge_here, 1.0)))
         else:
             # **The ceiling is `room`, not twice the transform, and that is the whole correction.** `2 * edt` is the
             # distance to the nearest non-ink, which is half a *rim* on a band the top hat hollowed; `room` is twice that
@@ -655,7 +663,7 @@ def main():
         # was given. Simplifying first would put the width profile at control-point resolution and describe a different
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in px_widths]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths)]
         # **The edge is this line's own, unless the caller pins it.** One constant was measured not to fit the set: on
         # three drawings the value that matched ran from 2.0 to beyond 3.5, and one could not be reached at all because
         # its line is softer than this renderer can express. The section already carries the number, so it is read
@@ -683,7 +691,7 @@ def main():
             px_depths = [pool_rows[int(n)][2] for n in near]
             borrows += 1
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in px_widths]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths)]
         record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
