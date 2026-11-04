@@ -676,7 +676,19 @@ def main():
         # was given. Simplifying first would put the width profile at control-point resolution and describe a different
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths, 9)]
+        # **The cap follows the line it is on, not the drawing.** Twice the drawing's own ninetieth percentile is one
+        # number for marks of every weight, so it is slack on a heavy line and tight on a fine one. A stroke's thickness
+        # changes slowly along its length, so the median over twenty-one points is what this line is thick here, and a
+        # point half again beyond it is carrying another stroke's ink rather than this one's.
+        local = _smooth_depths(px_widths, 21)
+        # **A median may lower a width but never raise it.** Smoothing is there to take out the noise a section picks up,
+        # and the first version also carried a heavy neighbour's width into a narrow place: the dots that survived every
+        # cap were marks twenty-eight pixels wide at points where the artist's grey is 156 -- the width was right for the
+        # line a few pixels away and wrong here. Taking the smaller of the smoothed and the measured value keeps the
+        # noise out without inventing ink the artist did not put there.
+        smoothed = _smooth_depths(px_widths, 9)
+        widths = [max(1.0, min(w, raw, cap, 1.5 * c) * scale * args.width_scale)
+                  for w, raw, c in zip(smoothed, px_widths, local)]
         # **A mark whose width approaches its own length is a dot, not a stroke.** The four pixels a skeleton junction
         # spawns, drawn ten pixels wide, is exactly the round black dot the magnified brick wall shows at every crossing.
         # Nothing upstream can see it: the width is what the ink says there, and the alpha is what the ink says there.
@@ -711,7 +723,19 @@ def main():
             px_depths = [pool_rows[int(n)][2] for n in near]
             borrows += 1
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths, 9)]
+        # **The cap follows the line it is on, not the drawing.** Twice the drawing's own ninetieth percentile is one
+        # number for marks of every weight, so it is slack on a heavy line and tight on a fine one. A stroke's thickness
+        # changes slowly along its length, so the median over twenty-one points is what this line is thick here, and a
+        # point half again beyond it is carrying another stroke's ink rather than this one's.
+        local = _smooth_depths(px_widths, 21)
+        # **A median may lower a width but never raise it.** Smoothing is there to take out the noise a section picks up,
+        # and the first version also carried a heavy neighbour's width into a narrow place: the dots that survived every
+        # cap were marks twenty-eight pixels wide at points where the artist's grey is 156 -- the width was right for the
+        # line a few pixels away and wrong here. Taking the smaller of the smoothed and the measured value keeps the
+        # noise out without inventing ink the artist did not put there.
+        smoothed = _smooth_depths(px_widths, 9)
+        widths = [max(1.0, min(w, raw, cap, 1.5 * c) * scale * args.width_scale)
+                  for w, raw, c in zip(smoothed, px_widths, local)]
         # **A mark whose width approaches its own length is a dot, not a stroke.** The four pixels a skeleton junction
         # spawns, drawn ten pixels wide, is exactly the round black dot the magnified brick wall shows at every crossing.
         # Nothing upstream can see it: the width is what the ink says there, and the alpha is what the ink says there.
