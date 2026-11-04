@@ -1,19 +1,26 @@
 # lineweight
 
-Vector linework with weight, for the case where there is no tablet.
+Weighted linework for painting applications, drawn by something that has no hand.
 
-A stroke in SVG has one width from end to end, which is why vector drawings read as diagrams next to drawings made
-by hand. `lineweight` models the thing a tablet measures — pressure — and expands each stroke into a **filled
-outline** whose width varies along it, so plain SVG can carry line weight without any dependency on a drawing
-application.
+**The product is a layered painting project, not an image.** The destinations are SAI, Clip Studio Paint and Photoshop
+through a PSD; Illustrator and Animate through vector; and Blender, Rhino, MMD and Unity when a drawing has to leave two
+dimensions. SVG is one output of several, and it was the first because a browser can show it without anything installed.
+
+What a painting application cannot express on its own is that a stroke's width changes along it — a stroke there has one
+width from end to end, which is why vector drawings read as diagrams next to drawings made by hand. `lineweight` models
+the thing a tablet measures, **pressure**, and keeps each stroke as a **profile along its path**: per point, a width, an
+opacity and the softness of that stroke's own edge. A drawing application expands a profile into an outline when it needs
+one; nothing here has to.
 
 It exists because a language model asked to draw has no hand. Pressure cannot be felt, so it is computed from what is
-observable about a line, and the numbers can be calibrated against real artwork rather than guessed.
+observable about a line, and every number in it is calibrated against real artwork rather than guessed — the evidence is
+in `AESTHETIC-LIBRARY.md`, and `tools/accept.py` is the command that checks a copy against the drawing it came from.
 
 ## What it does
 
-* **Four brushes** (`fine`, `ink`, `pencil`, `wash`), each the same set of numbers a paint program exposes: width,
-  opacity, dab spacing, and jitter, plus two taper curves.
+* **Ten brushes** (`fine`, `maru`, `pencil`, `ink`, `brush`, `marker`, `chalk`, `white`, `wash`, `airbrush`), each the
+  same set of numbers a paint program exposes: width, opacity, dab spacing, grain, a hard or soft edge, plus two taper
+  curves. A record's width, opacity and edge can each be overridden per point.
 * **A pressure model.** Pressure follows four effects that a real stroke shows: it is lighter when the stroke is
   moving fast, lighter through a sharp turn, tapered at both ends of an open stroke, and drifting slowly underneath.
   Closed contours are walked once and never tapered, because a loop has no ends to taper.
@@ -35,8 +42,9 @@ observable about a line, and the numbers can be calibrated against real artwork 
 
 ## What it is not
 
-**It is not a renderer and not a drawing program.** It produces path data, and now also the files three drawing
-applications open; what those applications then do with a path is their business and not this library's.
+**It is not a drawing program.** It carries a rasteriser of its own — pure Python, no dependency — but that exists to
+render previews, audits and the pixels inside a PSD, not to be an application: there is no canvas, no undo, no tool. The
+product is the project file, and what a painting application then does with it is that application's business.
 
 **The outline expansion is an approximation, and its failure mode is measured.** A stroke becomes a filled polygon by
 offsetting the centreline along its normals, which is cheap and produces the correct *appearance* -- but the offset
@@ -99,6 +107,41 @@ built icons, illustration exports -- and it is not a general SVG processor. What
 Everything the patterns do not match is preserved verbatim -- the pass is a substitution, never a rebuild -- so an
 unsupported element is left as it was rather than deleted. The first version of this function did rebuild, and it took a
 figure's eyes with it.
+
+## From a reference picture to a project
+
+`tools/reference_lines.py` traces a reference drawing into one: an ink mask, a skeleton, a cross-section at every
+skeleton point, and one mark per run of that skeleton. `--psd` writes the result as layered layers a painting
+application opens, so the whole path from a picture to something editable is two commands.
+
+Four things are decided per line, and each default was arrived at by measurement rather than taste:
+
+| what | how it is read | why that way |
+|---|---|---|
+| which pixels are ink | a share of that picture's own field-to-darkest range, at a fifth | a fixed grey asks 18 per cent coverage of one drawing's ink and 85 per cent of another's, because the two are not equally dark; and a top hat comes back as a **ring** around any band wider than its element, so a twenty-pixel hem is traced as a hairline |
+| the width | the ink at a fifth of its own depth, **minus that line's edge** | `sweep_layer` spreads the soft boundary outside `half`, so a stroke carrying `width` and `edge` reaches `width + edge` before it fades — while the artist's ink already contains its own edge |
+| the edge | the tenth-to-ninetieth crossing of that line's own section | one value for a whole drawing was measured not to fit: across three drawings the value that matched ran from 2.0 to beyond 3.5 |
+| the depth | the darkest sample **inside the line's own half width** | a section does not know where its line ends, and at a junction it finds the other stroke's core and reports this one darker than it is |
+
+Three constraints then keep the widest marks from spoiling the picture, each named where it is applied: a run's ends
+may not be thicker than its middle, a median may lower a width but never raise it, and the whole drawing's widths are
+capped at twice their own ninetieth percentile — recorded in the project file as `width_cap`.
+
+`tools/accept.py` judges the copy against its source on six ratios, each allowed 30 per cent of one:
+
+```
+width share    p90 / median    ink reached    edge    ink depth    depth spread
+```
+
+**Two of those rows must be read together.** `width share` grows with `edge` almost one for one, because a softer
+boundary puts more pixels below the threshold; a copy can be right on both and still read eleven per cent wide on the
+first. `ink reached` is judged from one side only: it asks whether the copy delivered what its own skeleton described,
+and delivering more is width covering ink the skeleton never walked.
+
+**And the page's ink is printed three ways**, because on one pair of drawings the ways disagree by a factor of two: 9.32
+per cent under a top hat, 14.09 under a fixed grey, 15.34 at a fifth of each picture's own range. Only the last asks the
+same question of both pictures, and it answers the same ratio at a tenth, a fifth, three tenths and a half — which is
+what makes it the one to quote.
 
 ## Getting the drawing into a drawing application
 
@@ -638,6 +681,8 @@ them, and each states its own sample size and what it could not establish.
 | `DESIGN-PROJECT.md` | what the product is: a **drawing project file**, not an image |
 | `DRAWING-PROCEDURE.md` | the procedure derived from a drawing video -- **and refuted by the next five**, see below |
 | `PSD-REPORT.md` | how the PSD writer works and every fault found in it |
+| `ENGINEERING-MAP.md` | **how it draws** -- the modules, their dependency layers, the units and the traps. The one file to read before changing code |
+| `AESTHETIC-LIBRARY.md` | **what is drawn, and with what** -- every measurement the numbers stand on, the ones that were refuted, and the two commands that check a copy against its source |
 | `TODO.md` | what is open, and the corrections that closed the rest |
 
 **Two of the findings live outside the repository**, because they are about material that is not shared: the video
