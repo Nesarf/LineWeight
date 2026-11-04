@@ -636,6 +636,19 @@ def main():
     room = ring_room(mask, edt)
     sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source, room=room)
                 for run in long_runs]
+    # **A run's thickness is decided by its middle, because its ends are where other runs meet it.** At a junction the
+    # section crosses two or three strokes at once, `cover` comes back large and the mark is drawn as a round black dot --
+    # the small version of the seventy-five black bands, and the thing the magnified brick wall showed at every crossing.
+    # A cap on the whole drawing cannot reach it: the dot is twenty pixels wide and a heavy line here is sixteen.
+    #
+    # So the ends of a run are not allowed to be thicker than the median of its own middle. Stated that way it needs no
+    # threshold and no knowledge of which junctions exist: a run that really does thicken towards its end is a run whose
+    # middle thickens too, and a run whose middle is thin was thin at its ends as well.
+    for px_points, px_widths, _edges, _depths in sections:
+        if len(px_widths) > 12:
+            middle = float(np.median(px_widths[3:-3]))
+            px_widths[:3] = [min(w, middle) for w in px_widths[:3]]
+            px_widths[-3:] = [min(w, middle) for w in px_widths[-3:]]
     # **One cap for the whole drawing, from the drawing's own widths, because the widest few are not lines.** Seventy-five
     # of three thousand six hundred marks held a point above forty pixels and the widest reached 112.9; in the picture
     # they were black patches at the collar, the jaw and the hem. Twice the ninetieth percentile is what "a heavy line in
@@ -663,7 +676,14 @@ def main():
         # was given. Simplifying first would put the width profile at control-point resolution and describe a different
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths)]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths, 9)]
+        # **A mark whose width approaches its own length is a dot, not a stroke.** The four pixels a skeleton junction
+        # spawns, drawn ten pixels wide, is exactly the round black dot the magnified brick wall shows at every crossing.
+        # Nothing upstream can see it: the width is what the ink says there, and the alpha is what the ink says there.
+        span = sum(math.hypot(points[k + 1][0] - points[k][0], points[k + 1][1] - points[k][1])
+                   for k in range(len(points) - 1))
+        if span > 0.0:
+            widths = [min(w, 0.6 * span) for w in widths]
         # **The edge is this line's own, unless the caller pins it.** One constant was measured not to fit the set: on
         # three drawings the value that matched ran from 2.0 to beyond 3.5, and one could not be reached at all because
         # its line is softer than this renderer can express. The section already carries the number, so it is read
@@ -671,7 +691,7 @@ def main():
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
-                                    alpha_profile=_smooth_depths(px_depths))
+                                    alpha_profile=_smooth_depths(px_depths, 11))
         canvas.add_stroke(record, stage='line', layer='ink', note='reference %d' % i)
         written += 1
 
@@ -691,11 +711,18 @@ def main():
             px_depths = [pool_rows[int(n)][2] for n in near]
             borrows += 1
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths)]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in _smooth_depths(px_widths, 9)]
+        # **A mark whose width approaches its own length is a dot, not a stroke.** The four pixels a skeleton junction
+        # spawns, drawn ten pixels wide, is exactly the round black dot the magnified brick wall shows at every crossing.
+        # Nothing upstream can see it: the width is what the ink says there, and the alpha is what the ink says there.
+        span = sum(math.hypot(points[k + 1][0] - points[k][0], points[k + 1][1] - points[k][1])
+                   for k in range(len(points) - 1))
+        if span > 0.0:
+            widths = [min(w, 0.6 * span) for w in widths]
         record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
-                                    alpha_profile=_smooth_depths(px_depths))
+                                    alpha_profile=_smooth_depths(px_depths, 11))
         canvas.add_stroke(record, stage='line', layer='ink', note='fragment %d' % j)
         written += 1
     canvas.settings['fragment_marks'] = borrows
