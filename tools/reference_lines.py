@@ -237,10 +237,14 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
                 # the six-tenths reasoning leaves out is that the artist's own profile is not the renderer's, so the
                 # correction is calibrated on the result rather than derived from the formula.
                 #
-                # It is not the default, and the reason is measured too: on `150673997` a whole edge leaves the widths
-                # wildly uneven -- p90 over median 3.72 against the artist's 2.35 -- because there a fine line's cover is
-                # barely wider than its own edge, so the subtraction lands on the floor for most of them.
-                widths.append(max(1.0, cover - (edge_now or 0.0)))
+                # **And the mask's own width is a ceiling on top of it, because a section cannot tell when it has left
+                # its line.** Walking outward stops where the ink does, but two strokes that touch are one run of ink to
+                # that walk: without a ceiling, 1.47 per cent of the points came back wider than forty pixels with a
+                # maximum of 163.7, and in the picture they were black patches at the collar, the jaw and the hem -- the
+                # one fault none of the six rows had shown, because a median and a ninetieth percentile cannot see one
+                # and a half per cent. `room` is what the mask says the ink reaches there, so the smaller of the two is
+                # what both measurements agree on.
+                widths.append(min(float(room[yi, xi]), max(1.0, cover - (edge_now or 0.0))))
         else:
             # **The ceiling is `room`, not twice the transform, and that is the whole correction.** `2 * edt` is the
             # distance to the nearest non-ink, which is half a *rim* on a band the top hat hollowed; `room` is twice that
@@ -298,19 +302,29 @@ def _coverage_width(section, offsets, share=0.2):
         return None
     coverage = np.clip((field - section) / (field - dark), 0.0, 1.0)
     centre = int(np.argmin(section))
+    # **A stroke's section is one hump, so walking outward stops at the valley as well as at the edge.** Stopping only
+    # where the ink falls below the share merges two strokes that touch: the walk crosses the shallow dip between them
+    # and reports one line several times as wide. Measured, that put 1.47 per cent of the points above forty pixels with
+    # a maximum of 163.7, and the picture carried them as black patches at the collar, the jaw and the hem -- none of
+    # which a median or a ninetieth percentile could show.
+    #
+    # The rise that ends the walk is a quarter of the line's own depth, which is a change of direction rather than a
+    # level: a section that has reached its neighbour is climbing towards a second maximum, and a section on a broad
+    # stroke is still inside one.
+    climb = 0.15
     sides = []
-    for index in range(centre, -1, -1):
-        if coverage[index] < share:
-            sides.append(abs(float(offsets[index])))
-            break
-    else:
-        sides.append(abs(float(offsets[0])))
-    for index in range(centre, len(coverage)):
-        if coverage[index] < share:
-            sides.append(abs(float(offsets[index])))
-            break
-    else:
-        sides.append(abs(float(offsets[-1])))
+    for step_sign, stop in ((-1, -1), (1, len(coverage))):
+        deepest = coverage[centre]
+        index = centre
+        while index != stop:
+            value = coverage[index]
+            if value < share or value > deepest + climb:
+                break
+            deepest = max(deepest, value)
+            index += step_sign
+        # **The walk can leave the window before it meets either stop**, and then the window's own end is the answer.
+        index = min(max(index, 0), len(offsets) - 1)
+        sides.append(abs(float(offsets[index])))
     return float(sum(sides))
 
 
@@ -614,13 +628,22 @@ def main():
     room = ring_room(mask, edt)
     sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source, room=room)
                 for run in long_runs]
+    # **One cap for the whole drawing, from the drawing's own widths, because the widest few are not lines.** Seventy-five
+    # of three thousand six hundred marks held a point above forty pixels and the widest reached 112.9; in the picture
+    # they were black patches at the collar, the jaw and the hem. Twice the ninetieth percentile is what "a heavy line in
+    # this drawing" means measured on the drawing itself, so a point beyond it is not a heavy line -- it is a solid region
+    # the trace has no business drawing as a stroke. Stated as a cap rather than a threshold because the distribution is
+    # what says it, and a different drawing gets a different number for the same reason.
+    measured = np.concatenate([np.asarray(widths) for _, widths, _, _ in sections]) if sections else np.zeros(1)
+    cap = max(8.0, 2.0 * float(np.percentile(measured, 90))) if measured.size else 0.0
+    canvas.settings['width_cap'] = round(cap, 2)
     # The pool the fragments draw on: one row per point of a long run, holding what that point measured.
     pool_points, pool_rows = [], []
     for px_points, px_widths, px_edges, px_depths in sections:
         edge = _edge_of(px_edges, args.edge, scale)
         for k, (x, y) in enumerate(px_points):
             pool_points.append((x, y))
-            pool_rows.append((px_widths[k], edge, px_depths[k]))
+            pool_rows.append((min(px_widths[k], cap), edge, px_depths[k]))
     tree = cKDTree(np.asarray(pool_points, dtype=np.float64)) if pool_points else None
 
     written = 0
@@ -632,7 +655,7 @@ def main():
         # was given. Simplifying first would put the width profile at control-point resolution and describe a different
         # polyline than the one drawn -- which is what the previous version had to work around by expanding twice.
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in px_widths]
         # **The edge is this line's own, unless the caller pins it.** One constant was measured not to fit the set: on
         # three drawings the value that matched ran from 2.0 to beyond 3.5, and one could not be reached at all because
         # its line is softer than this renderer can express. The section already carries the number, so it is read
@@ -660,7 +683,7 @@ def main():
             px_depths = [pool_rows[int(n)][2] for n in near]
             borrows += 1
         points = [(x * scale, y * scale) for x, y in px_points]
-        widths = [max(1.0, w * scale * args.width_scale) for w in px_widths]
+        widths = [max(1.0, min(w, cap) * scale * args.width_scale) for w in px_widths]
         record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
