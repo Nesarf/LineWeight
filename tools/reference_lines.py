@@ -58,6 +58,12 @@ HOLE_RADIUS = 2.5
 #: the picture. Measured without this cap, the width of the widest line came out at twenty-five per cent of the page.
 #: Twelve pixels is the radius of a hollow twice the top hat's element, which is the widest band that filter can hollow.
 HOLE_CEILING = 12.0
+#: **What the ink itself reads as grey, because an alpha profile is a mix and the mix needs both ends.** The renderer
+#: lays `field*(1-a) + ink*a` on the page, so the alpha that puts a line's core on a stated grey is
+#: `(field - wanted) / (field - ink)`. Dividing by `field` alone is the same thing only when the ink is black, and this
+#: one is `#1a1620` -- a dark violet, whose PIL luma is 24.3. Read off the render: the darkest pixel any drawing
+#: reached was 25, never lower, which is what a floor of 24.3 looks like once the picture has been quantised.
+INK_GREY = 0.299 * 26 + 0.587 * 22 + 0.114 * 32
 
 
 def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
@@ -183,7 +189,14 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             # is what the beads were: the deep samples sat on the junctions and every crossing got a dark disc.
             own = np.abs(offsets) <= float(edt[yi, xi]) + 0.5
             darkest = float(section[own].min()) if own.any() else float(section.min())
-            depths.append(min(1.0, max(0.0, (255.0 - darkest) / 255.0)))
+            # **The denominator is the dye's own reach, not black.** The renderer composites `field*(1-a) + ink*a`,
+            # so the alpha that lands the core on `darkest` is `(field - darkest) / (field - ink)`. Dividing by 255
+            # assumes `ink == 0`; this renderer's ink is `#1a1620`, whose luma is 24.3, so every profile came out 0.905
+            # times too small and every line was drawn about ten per cent pale -- measured over eleven drawings, the
+            # acceptance's `ink depth` sat at a median of 0.851 and two drawings fell outside the band (§4.46). The
+            # two agree exactly when the ink is black, which is what made the 255 look right for as long as nobody
+            # checked it against a picture.
+            depths.append(min(1.0, max(0.0, (255.0 - darkest) / (255.0 - INK_GREY))))
         else:
             depths.append(1.0)
         # **And the section is capped by the distance transform, because a cross-section does not know where its line
