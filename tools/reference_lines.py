@@ -66,6 +66,34 @@ HOLE_CEILING = 12.0
 INK_GREY = 0.299 * 26 + 0.587 * 22 + 0.114 * 32
 
 
+def ink_pen(gray, ceiling=200.0):
+    """The ink this picture is drawn with, read off the picture's own dark end.
+
+    **A pencil sketch and a pen drawing are not the same liquid, and one ink for both swaps them.** On `150611517` the
+    artist's darkest tone is 145 and on `150598895` it is 25; drawing both with the default `#1a1620` puts the sketch on
+    the page as a pen drawing. The lines land in the right places and every width matches, so all six acceptance rows
+    stay inside -- and the page reads inverted. That is what the side-by-side showed on three of eleven drawings and
+    none of the rows could say.
+
+    The pen is the default ink moved towards white -- or towards black, for a picture darker than the default -- until
+    its luma is this picture's own dark end, so the hue survives and only the value moves. A picture whose dark end is
+    already near the default comes back unchanged, which is why this does not move the eleven-picture table: nine of
+    them are already at the default, and the three pencil sketches are the ones this is for.
+    """
+    dark = float(np.percentile(gray, 0.5))
+    want = min(ceiling, max(0.0, dark))
+    base = (26, 22, 32)
+    if want >= INK_GREY:
+        t = (want - INK_GREY) / (255.0 - INK_GREY)
+        rgb = [c + (255 - c) * t for c in base]
+    else:
+        t = want / INK_GREY
+        rgb = [c * t for c in base]
+    rgb = tuple(int(round(min(255.0, max(0.0, c)))) for c in rgb)
+    luma = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    return '%02x%02x%02x' % rgb, luma
+
+
 def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
     """How far the ink reaches from each pixel: twice the transform, or the whole band where the ink is a ring.
 
@@ -111,7 +139,8 @@ def ring_room(mask, edt, hole_radius=HOLE_RADIUS):
     return np.where(on_ring, 4.0 * edt + 2.0 * here, plain)
 
 
-def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section', room=None):
+def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='section', room=None,
+                  ink_grey=INK_GREY):
     """The ink's own centre and thickness across a skeleton run, at sub-pixel positions.
 
     **The skeleton is a pixel path; the ink is not.** A skeleton pixel names a corner of the grid, so its own distance to
@@ -196,7 +225,7 @@ def subpixel_axis(mask, run, gray=None, edt=None, step=0.25, extra=2.0, source='
             # acceptance's `ink depth` sat at a median of 0.851 and two drawings fell outside the band (§4.46). The
             # two agree exactly when the ink is black, which is what made the 255 look right for as long as nobody
             # checked it against a picture.
-            depths.append(min(1.0, max(0.0, (255.0 - darkest) / (255.0 - INK_GREY))))
+            depths.append(min(1.0, max(0.0, (255.0 - darkest) / (255.0 - ink_grey))))
         else:
             depths.append(1.0)
         # **And the section is capped by the distance transform, because a cross-section does not know where its line
@@ -598,6 +627,9 @@ def main():
     # trace inherits a picture that is thinner than the one it copies.
     gray = la.load_gray(args.picture, la.LONG_SIDE)
     mask = ink_mask(gray, args.ink, args.element, args.floor, window=args.ink_window, level=args.ink_level)
+    # **The pen is the picture's, not the library's.** A pencil sketch's dark end is 145 and a pen drawing's is 25, and
+    # one ink for both is the difference between a copy and a different picture. See `ink_pen`.
+    pen_hex, pen_grey = ink_pen(gray)
     height, width = mask.shape
     scale = 1.0
     canvas = project.Project(width=width, height=height,
@@ -617,6 +649,8 @@ def main():
         'edge': args.edge if args.edge else 'per line',
         'fragments': bool(args.fragments),
         'page_long': la.LONG_SIDE,
+        'ink_hex': pen_hex,
+        'ink_grey': round(pen_grey, 2),
     }
 
     skeleton = prune(thin(mask.astype(np.uint8)), args.prune)
@@ -647,7 +681,8 @@ def main():
     # **How far the ink reaches, which is not twice the transform on a band the top hat has hollowed out.** One array for
     # the whole page, computed once and handed to every section, because it is a property of the mask rather than of a run.
     room = ring_room(mask, edt)
-    sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source, room=room)
+    sections = [subpixel_axis(mask, run, gray=gray, edt=edt, source=args.width_source, room=room,
+                              ink_grey=pen_grey)
                 for run in long_runs]
     # **A run's thickness is decided by its middle, because its ends are where other runs meet it.** At a junction the
     # section crosses two or three strokes at once, `cover` comes back large and the mark is drawn as a round black dot --
@@ -714,6 +749,7 @@ def main():
         # its line is softer than this renderer can express. The section already carries the number, so it is read
         # there -- a line drawn with a dry pen and a line drawn with a wet one stop being the same mark.
         record = core.stroke_record(points, 'fine', seed=i, resolution=1,
+                                    colour='#' + pen_hex,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
                                     alpha_profile=_smooth_depths(px_depths, 11))
@@ -725,7 +761,8 @@ def main():
     # one and a fragment that somehow has no neighbour keeps its own numbers rather than being dropped.
     for j, run in enumerate(short_runs):
         px_points, px_widths, px_edges, px_depths = subpixel_axis(mask, run, gray=gray, edt=edt,
-                                                                  source=args.width_source, room=room)
+                                                                  source=args.width_source, room=room,
+                                                                  ink_grey=pen_grey)
         if len(px_points) < 2:
             continue
         if tree is not None:
@@ -757,6 +794,7 @@ def main():
         if span > 0.0:
             widths = [min(w, 0.6 * span) for w in widths]
         record = core.stroke_record(points, 'fine', seed=100000 + j, resolution=1,
+                                    colour='#' + pen_hex,
                                     width_profile=widths, absolute_width=True,
                                     edge=_edge_of(px_edges, args.edge, scale),
                                     alpha_profile=_smooth_depths(px_depths, 11))
