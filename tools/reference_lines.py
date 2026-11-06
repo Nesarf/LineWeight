@@ -548,6 +548,12 @@ def main():
     parser.add_argument('--out', required=True)
     parser.add_argument('--prune', type=int, default=4, help='skeleton spurs shorter than this are cut')
     parser.add_argument('--min-segment', type=int, default=6, help='runs shorter than this are dropped')
+    # **The join's reach, exposed because it is the one number that decides whether a broken run is one stroke.**
+    # Two pieces of one stroke are joined when their ends are within this many pixels and point away from each other;
+    # at two pixels a wood grain whose pieces sit four apart stays broken, and a broken stroke is drawn as a chain of
+    # round-ended stubs -- which at ten pixels wide reads as a row of dots, not as a line.
+    parser.add_argument('--join-gap', type=float, default=2.0,
+                        help='how far apart two run ends may be and still be one stroke')
     #: **The reference's line, defined once and shared with every tool that measures against it.** `line_agreement`
     #: reads the same function at the same floor, so a project built here is measured against the very set it was built
     #: from -- without that, part of any difference is the difference between two definitions of "the line", and there
@@ -660,7 +666,7 @@ def main():
     # line whose ends are genuine. `_join_runs` joins by geometry instead: an end within one line's width whose inward
     # directions are opposed, one end used once. Without it each of the artist's strokes is drawn as a chain of round
     # ends, which is the scallop the magnified copy shows.
-    runs = _join_runs(runs)
+    runs = _join_runs(runs, gap=args.join_gap)
     kept = [run for run in runs if len(run) >= args.min_segment]
     # **A run too short to describe itself can borrow its neighbour's appearance instead of vanishing -- but it is off
     # by default, because it was measured not to pay.** Dropping these runs was priced as the whole of the ink deficit:
