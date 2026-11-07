@@ -145,11 +145,12 @@ what makes it the one to quote.
 
 ## Painting something that was never there
 
-Tracing is one path, not the whole of it. Two examples paint with nothing to copy from: `tools/paint_apple.py` is a
-sphere — a light direction, five tones, about two and a half thousand marks — and `tools/paint_cloth.py` is a folded
-surface, drawn from two of the fold names in `learn/facts.json`. They are examples rather than tools: there is no
-reference and no measurement they could fail. The apple exists because painting needed three things that line work never
-did, and all three are now part of the record format:
+Tracing is one path, not the whole of it. Three examples paint with nothing to copy from: `tools/paint_apple.py` is a
+sphere — a light direction, five tones, about two and a half thousand marks; `tools/paint_cloth.py` is a folded surface,
+drawn from two of the fold names in `learn/facts.json`; `tools/paint_fish.py` is an irregular object, and its form is
+**data** — a closed list of control points, with the thickness read off the distance to that outline. They are examples
+rather than tools: there is no reference and no measurement they could fail. The apple exists because painting needed
+three things that line work never did, and all three are now part of the record format:
 
 * **`soft`** shapes the boundary instead of only widening it. The renderer's coverage falls linearly from a stroke's
   core to its outer edge, which makes a cross-section a trapezium; a loaded brush stays near full through the middle and
