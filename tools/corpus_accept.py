@@ -130,7 +130,11 @@ def main(argv=None):
     parser.add_argument('--ink', default='', help='pass this --ink mode through to reference_lines')
     args = parser.parse_args(argv)
 
-    pictures = sorted(glob.glob(os.path.join(args.dir, '*.jpg')) + glob.glob(os.path.join(args.dir, '*.png')))
+    # **Every format the loader can read, because the reference shelf is not curated by extension.** `lcs` holds the
+    # pictures worth drawing like in four different containers, and a regression that silently skips half of them is a
+    # table with a footnote nobody reads. `line_agreement.load_gray` goes through PIL, which opens all of these.
+    pictures = sorted(path for pattern in ('*.jpg', '*.jpeg', '*.png', '*.webp')
+                      for path in glob.glob(os.path.join(args.dir, pattern)))
     if args.only:
         wanted = {name.strip() for name in args.only.split(',') if name.strip()}
         pictures = [p for p in pictures if os.path.splitext(os.path.basename(p))[0] in wanted]
