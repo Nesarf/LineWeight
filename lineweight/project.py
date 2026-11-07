@@ -365,6 +365,7 @@ class Project:
                               'soft': float(record.get('soft') or 0.0),
                               'width_profile': list(record.get('width_profile') or []),
                               'colour_profile': [list(entry) for entry in (record.get('colour_profile') or [])],
+                              'height': float(record.get('height') or 0.0),
                               'alpha_profile': list(record.get('alpha_profile') or [])},
                     # **Only a colour the caller actually chose is written down.** An absent colour is the answer
                     # "the role decides", which is what lets a role be assigned to a stroke after it was drawn --

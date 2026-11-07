@@ -123,6 +123,9 @@ class Layer:
         # premultiplied would be faster to blend and harder to reason about; this keeps the colour meaningful when
         # alpha is low, which matters as soon as anybody looks at an intermediate buffer
         self.data = bytearray(width * height * 4)
+        # **颜料有厚度，而一个装不下厚度的缓冲区只能装颜色。** `relief` 是一层浮点高度，每个像素一个数；
+        # `None` 表示这张面是平的 —— 这个文件里此前的每一层都是平的，所以不要求厚度的画法行为完全不变。
+        self.relief = None
 
     def dab(self, x: float, y: float, radius: float, colour: tuple[int, int, int], alpha: float,
             grain: float = 0.0, accumulate: bool = True) -> None:
@@ -556,6 +559,13 @@ def blend_at(base: Layer, top: Layer, x0: int, y0: int, mode: str = 'normal') ->
         block[:, :, :3] = _np.clip(res, 0.0, 1.0)
         block[:, :, 3] = _np.maximum(ba, ta)
     b[y0c:y1, x0c:x1] = (block * 255.0).astype(_np.uint8)
+    # **厚度也要跟着搬过来，否则 `render_marks` 这条路会把每一笔的厚度都丢掉。** `blend_at` 是标记往里进的
+    # 那条路（`blend` 是图层对图层的），而它此前只搬颜色。颜料在这一条路上同样是累积的，不透明的笔整份加上去，
+    # 半透明的按它的覆盖加权。
+    if top.relief is not None:
+        if base.relief is None:
+            base.relief = _np.zeros((h, w), dtype=_np.float64)
+        base.relief[y0c:y1, x0c:x1] += top.relief[ty0:ty0 + (y1 - y0c), tx0:tx0 + (x1 - x0c)] * ta
     return base
 
 
@@ -580,6 +590,15 @@ def blend(base: Layer, top: Layer, mode: str = 'normal', opacity: float = 1.0) -
         alpha_top = whole_top[:, :, 3]
         occupied = _np.flatnonzero(alpha_top.ravel())
         out.data = bytearray(base.data)
+        # **颜料在颜料上会堆起来，而颜色不会。** 这是厚度与颜色唯一不同的地方：颜色是替换，厚度是累积。
+        # 一条不透明的笔触把它自己的厚度整份加上去，半透明的一笔只加一半，而两者都以「下面已经有多厚」为起点。
+        # 没有厚度的层按零处理，所以纯线稿的合成路径上这两行什么也没做。
+        if base.relief is not None or top.relief is not None:
+            under = base.relief if base.relief is not None else _np.zeros((h, w), dtype=_np.float64)
+            laid_relief = top.relief if top.relief is not None else _np.zeros((h, w), dtype=_np.float64)
+            out.relief = under + laid_relief * (alpha_top.astype(_np.float64) / 255.0) * opacity
+        else:
+            out.relief = base.relief
         if not occupied.size:
             return out
         rows = occupied // w
@@ -963,6 +982,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_profile': geometry.get('colour_profile') or [],
+                      'height': float(geometry.get('height') or 0.0),
                       'absolute_width': bool(geometry.get('absolute_width', False)),
                       # **Every field the renderer reads has to be named here**, and this is the third place a
                       # record is rebuilt from a document: `stroke_record` writes one, `add_stroke` copies it into a
@@ -1174,6 +1194,10 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         tint = None
 
     ink = _np.zeros((height, width), dtype=_np.float64)
+    # **颜料不止有颜色，还有多厚。** 厚度为零时这里什么都不建，所以每一张此前画出来的图的行为与像素都不变；
+    # 一旦某一笔记下了 `height`，这一笔就同时写进一层高度图，而 `light` 能把那层高度变成侧光下的起伏。
+    thickness = max(0.0, float(record.get('height') or 0.0))
+    relief = _np.zeros((height, width), dtype=_np.float64) if thickness > 0.0 else None
     red = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
     green = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
     blue = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
@@ -1225,6 +1249,9 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
             for channel, plane in ((0, red), (1, green), (2, blue)):
                 mixed = tint[i][channel] + (tint[i + 1][channel] - tint[i][channel]) * weight
                 plane[y0:y1, x0:x1] = _np.where(better, mixed, plane[y0:y1, x0:x1])
+        if relief is not None:
+            # 厚度与覆盖同步取最大：像素的突起由盖得最深的那一段决定，与它的颜色出自同一段是同一个道理。
+            relief[y0:y1, x0:x1] = _np.maximum(relief[y0:y1, x0:x1], here * thickness)
 
     # **Grain multiplies the coverage, as it did on the dabs**, so a chalk stroke still reads as chalk rather than as a
     # smooth band that happens to be pale.
@@ -1256,7 +1283,39 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 data[index + 1] = int(min(255.0, max(0.0, flat_g[cell])))
                 data[index + 2] = int(min(255.0, max(0.0, flat_b[cell])))
             data[index + 3] = int(min(255.0, round(a * 255.0)))
+    if relief is not None:
+        layer.relief = relief
     return layer
+
+
+def light(layer: 'Layer', direction=(-0.55, -0.62, 0.95), strength=0.9, tilt=2.2) -> 'Layer':
+    """把颜料的高度读成侧光下的明暗。
+
+    **厚度只有被光照过才存在。** 一层平的颜料叠多少遍都还是一层平的颜料；一堆有高低的颜料，光斜着来，
+    突起朝光的一侧亮、背光的一侧暗，笔触的边缘因此自己显出轮廓 —— 这就是厚涂能被看见的全部机制。
+
+    做法是把高度图的梯度当成分面法线（`tilt` 放大这个梯度，因为颜料的坡度比图像的比例尺陡得多），
+    算一次朗伯项，再把结果乘到颜色上。乘而不是加，所以纯黑仍然是黑的，不会因为被照亮就变灰。
+
+    没有高度图的层原样返回。线稿不需要这一层，而它在此之前也没有 —— 每一条既有渲染路径都走这个分支。
+    """
+    if getattr(layer, 'relief', None) is None:
+        return layer
+    gy, gx = _np.gradient(layer.relief)
+    nx = -gx * tilt
+    ny = -gy * tilt
+    norm = _np.sqrt(nx * nx + ny * ny + 1.0)
+    lx, ly, lz = direction
+    length = float(_np.sqrt(lx * lx + ly * ly + lz * lz))
+    lambert = (nx * lx + ny * ly + lz) / (norm * length)
+    shade = 1.0 + strength * (lambert - lz / length)
+    out = Layer(layer.width, layer.height)
+    pixels = _np.frombuffer(bytes(layer.data), dtype=_np.uint8).reshape(layer.height, layer.width, 4)
+    tinted = pixels.astype(_np.float64)
+    tinted[:, :, :3] *= shade[:, :, None]
+    out.data = bytearray(_np.clip(tinted, 0.0, 255.0).astype(_np.uint8).tobytes())
+    out.relief = layer.relief
+    return out
 
 
 def save_png(layer: Layer, path: str, background: tuple[int, int, int] = (244, 241, 233)) -> None:

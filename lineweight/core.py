@@ -1156,7 +1156,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   alpha_profile: list[float] | None = None,
                   absolute_width: bool = False,
                   size: float = 1.0, page_long: float = 0.0, edge: float = 0.0, soft: float = 0.0,
-                  colour_profile=None) -> dict:
+                  colour_profile=None, height: float = 0.0) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1242,6 +1242,9 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # themselves. One entry per control point, in the same order as `width_profile`.
         'colour_profile': [[int(min(255, max(0, round(float(c))))) for c in entry[:3]]
                            for entry in colour_profile] if colour_profile else [],
+        # **一笔颜料有多厚。** 零是平的，而平的颜料无论叠多少遍都还是一层平的颜料；有了这个数，
+        # `raster.light` 就能把笔触的边缘照出来。它同时是唯一会影响「既有图」的字段 —— 所以默认必须是零。
+        'height': float(height),
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],

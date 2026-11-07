@@ -14,10 +14,36 @@ from lineweight import raster as r
 W, H = 120, 40
 
 
-def rendered(**kwargs):
+def painted(**kwargs):
     record = core.stroke_record([(20, 20), (60, 20), (100, 20)], 'brush', seed=1,
                                 width_profile=[24.0, 24.0, 24.0], absolute_width=True, edge=8.0, **kwargs)
-    return np.frombuffer(bytes(r.sweep_layer(record, W, H).data), dtype=np.uint8).reshape(H, W, 4)
+    return r.sweep_layer(record, W, H)
+
+
+def rendered(**kwargs):
+    return np.frombuffer(bytes(painted(**kwargs).data), dtype=np.uint8).reshape(H, W, 4)
+
+
+def test_a_flat_mark_is_untouched_by_the_relief_plumbing():
+    """厚度为零是默认，而默认必须与加这一支之前的像素完全一致 -- 否则线稿会悄悄变样。"""
+    flat = painted()
+    assert flat.relief is None
+    same = r.light(flat)
+    assert bytes(same.data) == bytes(flat.data)
+
+
+def test_a_mark_with_thickness_lights_its_own_edge():
+    """一堆有高低的颜料，光斜着来，笔触的边缘因此自己显出轮廓 -- 这是厚涂能被看见的全部机制。"""
+    plain = painted()
+    raised = painted(height=0.6)
+    assert raised.relief is not None
+    # 厚度不改变覆盖：颜色与 alpha 一个像素都不动
+    assert bytes(raised.data) == bytes(plain.data)
+    lit = r.light(raised, direction=(0.0, -1.0, 0.6), strength=1.2)
+    before = np.frombuffer(bytes(raised.data), dtype=np.uint8).reshape(H, W, 4)[:, :, :3].astype(int)
+    after = np.frombuffer(bytes(lit.data), dtype=np.uint8).reshape(H, W, 4)[:, :, :3].astype(int)
+    # 笔触的上下两条边，一条被照亮、一条被压暗
+    assert after[30, 60].sum() != before[30, 60].sum()
 
 
 def test_a_soft_section_falls_faster_towards_the_rim():
