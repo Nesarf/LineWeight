@@ -983,6 +983,8 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'alpha_profile': geometry.get('alpha_profile') or [],
                       'colour_profile': geometry.get('colour_profile') or [],
                       'height': float(geometry.get('height') or 0.0),
+                      'bristle': float(geometry.get('bristle') or 0.0),
+                      'bristle_pitch': float(geometry.get('bristle_pitch') or 0.0),
                       'absolute_width': bool(geometry.get('absolute_width', False)),
                       # **Every field the renderer reads has to be named here**, and this is the third place a
                       # record is rebuilt from a document: `stroke_record` writes one, `add_stroke` copies it into a
@@ -1142,6 +1144,11 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     # ramp every existing drawing was made with; `soft = 1` makes the shoulders fall as the square of the distance,
     # which is close to what a flat oil brush leaves.
     soft = max(0.0, float(record.get('soft') or 0.0))
+    # **笔毛：沿笔画走的栅格，每一格是一根毛。** 零表示不画毛，而零是默认 —— 这个字段加进来时，此前画过的
+    # 每一笔都没有它，所以它们的像素一个也不动。
+    bristle = max(0.0, min(1.0, float(record.get('bristle') or 0.0)))
+    bristle_pitch = max(0.5, float(record.get('bristle_pitch') or 2.5))
+    seed = float(record.get('seed', 0) or 0.0)
     # **The page comes from the record, and the canvas deliberately does not overrule it.** A brush's width is a share
     # of the page it was fixed on, but the canvas is not that page: a thumbnail, a crop and a test all fill a canvas far
     # smaller than the drawing, and reading the page off one would thin every brush to a hair -- measured, six tests
@@ -1237,6 +1244,18 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         coverage = ramp if soft <= 0.0 else ramp ** (1.0 + soft)
         share = (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0
         here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * share)
+        # **一支笔是几十根毛，不是一条带。** `grain` 给的是均匀噪声，它能做「粗糙」，做不了「毛」—— 因为毛有
+        # 方向：每一根沿着笔画走，相邻两根留下的量不同，而同一根在整笔里保持一致。所以这里按**横向的栅格**取编号，
+        # 由编号与种子算一个固定的伪随机，再把那个数乘到覆盖上。`pitch` 是两根毛的间距（像素）。
+        #
+        # 横向要有符号：到中心线的距离本身是对称的，两侧会用同一根毛的花纹，看起来像一条织带。
+        if bristle > 0.0:
+            seg_len = float(_np.hypot(dx, dy)) or 1.0
+            across = ((gx - ax) * (-dy) + (gy - ay) * dx) / seg_len
+            strand = _np.floor(across / bristle_pitch)
+            hashed = _np.sin(strand * 12.9898 + seed * 78.233) * 43758.5453
+            hashed -= _np.floor(hashed)
+            here = here * (1.0 - bristle * 0.42 + bristle * 0.62 * hashed)
         if tint is None:
             ink[y0:y1, x0:x1] = _np.maximum(ink[y0:y1, x0:x1], here)
         else:
@@ -1285,6 +1304,50 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
             data[index + 3] = int(min(255.0, round(a * 255.0)))
     if relief is not None:
         layer.relief = relief
+    return layer
+
+
+def smudge(layer: 'Layer', points, radius: float = 16.0, strength: float = 0.55, reach: float = 0.9) -> 'Layer':
+    """把颜色沿着一条路径拖过去 —— 湿画法在程序里的样子。
+
+    **油画的相邻笔触不是硬边，因为底下那笔还是湿的。** 第二笔压上去时，两笔的颜料在笔毛的带动下拉到一起，
+    边界因此是脏的、软的、有方向的。`blend` 做的是 source-over，边界由不透明度决定，所以它永远给出一条干净的接触线。
+
+    这里做的不是「更软的边」，是一个动作：沿路径的每一点，把它**身后** `radius * reach` 处的颜色按一个柔和的权重
+    混进当前这一圈。方向性是这个函数与高斯模糊的全部区别 —— 模糊把两边都拖开，抹开只把颜料往笔走的方向带。
+
+    只混颜色，不动 alpha。颜料的透明度是它铺得多厚，而拖的动作不会改变已经铺下的量。
+    """
+    if _np is None:
+        raise RuntimeError('smudge needs numpy')
+    h, w = layer.height, layer.width
+    pixels = _np.frombuffer(layer.data, dtype=_np.uint8).reshape(h, w, 4).astype(_np.float32)
+    span = int(radius) + 2
+    for i in range(1, len(points)):
+        x0, y0 = float(points[i - 1][0]), float(points[i - 1][1])
+        x1, y1 = float(points[i][0]), float(points[i][1])
+        dx, dy = x1 - x0, y1 - y0
+        length = float(_np.hypot(dx, dy))
+        if length < 1e-6:
+            continue
+        ux, uy = dx / length, dy / length
+        cx, cy = int(round(x1)), int(round(y1))
+        ys = _np.arange(max(0, cy - span), min(h, cy + span + 1))
+        xs = _np.arange(max(0, cx - span), min(w, cx + span + 1))
+        if not xs.size or not ys.size:
+            continue
+        gx, gy = _np.meshgrid(xs.astype(_np.float64), ys.astype(_np.float64))
+        distance = _np.hypot(gx - x1, gy - y1)
+        weight = _np.clip(1.0 - distance / max(radius, 1e-6), 0.0, 1.0) ** 1.5 * strength
+        if not weight.any():
+            continue
+        sx = _np.clip((gx - ux * radius * reach).astype(_np.int32), 0, w - 1)
+        sy = _np.clip((gy - uy * radius * reach).astype(_np.int32), 0, h - 1)
+        source = pixels[sy, sx]
+        block = pixels[ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1]
+        block[:, :, :3] = (block[:, :, :3] * (1.0 - weight[:, :, None])
+                           + source[:, :, :3] * weight[:, :, None])
+    layer.data = bytearray(_np.clip(pixels, 0.0, 255.0).astype(_np.uint8).tobytes())
     return layer
 
 

@@ -1156,7 +1156,8 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   alpha_profile: list[float] | None = None,
                   absolute_width: bool = False,
                   size: float = 1.0, page_long: float = 0.0, edge: float = 0.0, soft: float = 0.0,
-                  colour_profile=None, height: float = 0.0) -> dict:
+                  colour_profile=None, height: float = 0.0, bristle: float = 0.0,
+                  bristle_pitch: float = 2.5) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1245,6 +1246,10 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # **一笔颜料有多厚。** 零是平的，而平的颜料无论叠多少遍都还是一层平的颜料；有了这个数，
         # `raster.light` 就能把笔触的边缘照出来。它同时是唯一会影响「既有图」的字段 —— 所以默认必须是零。
         'height': float(height),
+        # **一支笔是几十根毛，而毛有方向。** `bristle` 是这些毛留下的痕迹有多明显（零是不画，也是此前每一笔的值），
+        # `bristle_pitch` 是两根毛的间距（像素）。它给的是「粗糙」之外的那件事：纹路沿着笔画走，而不是均匀噪声。
+        'bristle': float(bristle),
+        'bristle_pitch': float(bristle_pitch),
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],

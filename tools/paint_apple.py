@@ -168,6 +168,7 @@ def body_marks(cx, cy, radius, seed=20261106):
             fig.add_stroke(core.stroke_record(
                 points, 'brush', seed=index, colour=hexed(pigment), soft=1.0,
                 height=width / 125.0 * rng.uniform(0.55, 1.05),
+                bristle=0.45, bristle_pitch=rng.uniform(2.2, 3.4),
                 colour_profile=[[v * 0.86 for v in pigment], [v * 0.95 for v in pigment],
                                 list(pigment), [v * 0.82 for v in pigment]],
                 width_profile=[width] * 4, alpha_profile=[rng.uniform(0.72, 0.90),
@@ -306,21 +307,45 @@ def trim_marks(cx, cy, radius, backdrop, seed=555):
     return fig
 
 
+def drag_marks(cx, cy, radius, seed=913):
+    """几条弧，把已经铺上的颜料往笔走的方向拉开。
+
+    **湿画法不是一种混合模式，是一个动作。** 在还没干的底色上再落笔，笔毛会把下面的颜料带出去一小段，
+    于是两笔之间的接触线是脏的、有方向的。这里在果身上挑几处，沿着果面的弧拖一次 ---- 不多，因为画家也只
+    在需要让两块颜色接上时拖那么几笔；拖满整张就成了模糊。
+    """
+    rng = random.Random(seed)
+    runs = []
+    for _ in range(8):
+        start = rng.uniform(0.0, 2.0 * math.pi)
+        reach = radius * rng.uniform(0.12, 0.70)
+        points = []
+        for k in range(6):
+            angle = start + k * rng.uniform(0.11, 0.24)
+            points.append((cx + reach * math.cos(angle) * 1.06, cy + reach * math.sin(angle) * 0.95))
+        runs.append((points, rng.uniform(24.0, 42.0), rng.uniform(0.30, 0.55)))
+    return runs
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     cx, cy, radius = W * 0.50, H * 0.53, 232.0
     backdrop = ground(cx, cy, radius)
     picture = backdrop
     picture = r.blend(picture, table_shadow(cx, cy, radius), 'normal', 1.0)
-    order = (body_marks(cx, cy, radius), dip_marks(cx, cy, radius),
-             stem_marks(cx, cy, radius), gloss_marks(cx, cy, radius))
-    for fig in order:
+    body_fig = body_marks(cx, cy, radius)
+    body_layer = r.render_marks([m.to_dict() for m in body_fig.marks], W, H, sweep=True)
+    for points, reach, strength in drag_marks(cx, cy, radius):
+        r.smudge(body_layer, points, radius=reach, strength=strength)
+    picture = r.blend(picture, body_layer, 'normal', 1.0)
+    order = (body_fig, dip_marks(cx, cy, radius), stem_marks(cx, cy, radius), gloss_marks(cx, cy, radius))
+    for fig in order[1:]:
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True),
                           'normal', 1.0)
     path = os.path.join(OUT, 'apple.png')
     r.save_png(r.light(picture, direction=(-0.50, -0.58, 1.15), strength=0.34, tilt=1.15), path,
                background=(22, 16, 13))
-    project.save_project(order[0], os.path.join(OUT, 'pass-body.json'))
+    project.save_project(body_fig, os.path.join(OUT, 'pass-body.json'))
     print('%s  %d marks in %d passes' % (path, sum(len(fig.marks) for fig in order), len(order) + 2))
     return 0
 
