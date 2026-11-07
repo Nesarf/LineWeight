@@ -69,40 +69,72 @@ def apple_colour(diffuse, rim):
     So the input is quantised onto a ladder and only a small excursion is allowed inside a step, which is what the
     scatter of pigment around each tone then does anyway.
     """
-    ladder = ((0.00, 0.20, (36, 10, 24)),
-              (0.20, 0.42, (78, 13, 28)),
-              (0.42, 0.64, (146, 22, 30)),
-              (0.64, 0.84, (206, 66, 42)),
-              (0.84, 1.01, (238, 130, 82)))
+    ladder = ((0.00, 0.22, (34, 9, 23)),
+              (0.22, 0.46, (84, 14, 30)),
+              (0.46, 0.70, (158, 26, 34)),
+              (0.70, 0.88, (214, 62, 40)),
+              (0.88, 1.01, (232, 104, 66)))
     body = ladder[-1][2]
     for low, high, colour in ladder:
         if diffuse < high:
             within = (diffuse - low) / (high - low)
-            body = mix(colour, (colour[0] * 1.10, colour[1] * 1.06, colour[2] * 1.05), within * 0.55)
+            # **档与档之间是跳，档之内是走。** 一档色本身还是一段路：最冷最暗的一头往紫里偏，最暖最亮的
+            # 一头往橙里偏。这段跨度必须大于「把颜色数成有限几格」时的步长 —— 否则一档里上千笔落进同一个
+            # 格子，画面上就是一块平色。`tools/oil_survey.py` 量出来的最大块（六万两千像素）就在果子的
+            # 亮面上，正是这一档：原来的跨度只有百分之五，比每笔之间的随机差还小。
+            body = mix((colour[0] * 0.86, colour[1] * 0.93, colour[2] * 1.10),
+                       (colour[0] * 1.16, colour[1] * 1.09, colour[2] * 0.97), within)
             break
     if rim > 0.0:
-        body = mix(body, (104, 92, 120), min(0.26, rim * 0.34))
+        body = mix(body, (104, 92, 120), min(0.16, rim * 0.22))
     return body
 
 
 def ground(cx, cy, radius):
-    """Primed canvas, then the room brushed over it.  The priming covers the whole picture, which is what a ground is."""
+    """Primed canvas, then the room brushed over it.  The priming covers the whole picture, which is what a ground is.
+
+    **But a ground is not a colour, it is a walk over the whole surface.** The first version laid thirty-four marks
+    across a flat priming and left most of the picture untouched -- which measured as the second largest block in the
+    whole painting, a flat region nobody had painted. A hand priming a panel works a grid over it in overlapping
+    diagonal passes and varies the tone by where the light is, so the room is brighter towards the upper left and
+    goes down into the corner; the coverage is dense enough that no part of the surface is bare.
+
+    The marks carry a small `height`, so the wall has a tooth that `raster.light` can find. Without it the background
+    has no relief at all and stays perfectly flat however its colour is varied.
+    """
     layer = r.Layer(W, H)
     r.fill_polygon(layer, [(-20, -20), (W + 20, -20), (W + 20, H + 20), (-20, H + 20)], (46, 30, 24), 1.0)
     rng = random.Random(7)
     fig = project.Project(width=W, height=H, title='ground')
     marks = []
-    for i in range(34):
-        y = rng.uniform(-80, H + 80)
-        x0 = rng.uniform(-240, W * 0.72)
-        length = rng.uniform(320, 760)
-        tone = jitter(mix((38, 26, 21), (108, 84, 64), rng.random() ** 1.6), 7, rng)
-        marks.append(core.stroke_record(
-            [(x0, y), (x0 + length * 0.45, y - rng.uniform(8, 44)), (x0 + length, y - rng.uniform(0, 70))],
-            'brush', seed=i, colour=hexed(tone),
-            width_profile=[rng.uniform(130, 240)] * 3,
-            alpha_profile=[rng.uniform(0.22, 0.48)] * 3,
-            absolute_width=True, edge=20.0))
+    rows, cols = 16, 13
+    index = 0
+    for row in range(rows):
+        for col in range(cols):
+            x = -90.0 + (W + 180.0) * (col + 0.5) / cols + rng.uniform(-42.0, 42.0)
+            y = -90.0 + (H + 180.0) * (row + 0.5) / rows + rng.uniform(-34.0, 34.0)
+            lit = max(0.0, min(1.0, 1.0 - 0.66 * (0.58 * x / W + 0.42 * y / H)))
+            tone = jitter(mix((24, 16, 13), (136, 108, 80), lit ** 1.30), 15.0, rng)
+            # 墙也不是一个棕色。阴影里的墙偏冷，受光的一侧偏暖，中间夹几笔灰绿 —— 与果身上那层异色笔同一个理由：
+            # 同色相的深浅会被数颜色的小格子归并掉，只有换色相才能把一块大面切开。
+            if rng.random() < 0.30:
+                accent = ((74, 80, 94), (152, 130, 104), (96, 104, 88), (118, 96, 82))[rng.randrange(4)]
+                tone = mix(tone, accent, rng.uniform(0.24, 0.56))
+            length = rng.uniform(240.0, 500.0)
+            angle = rng.uniform(-0.10, 0.10) + 0.05
+            tx, ty = math.cos(angle), math.sin(angle)
+            marks.append(core.stroke_record(
+                [(x - tx * length * 0.5, y - ty * length * 0.5),
+                 (x, y + rng.uniform(-7.0, 7.0)),
+                 (x + tx * length * 0.5, y + ty * length * 0.5)],
+                'brush', seed=index, colour=hexed(tone), soft=1.0,
+                height=rng.uniform(0.015, 0.075),
+                bristle=0.38, bristle_pitch=rng.uniform(2.6, 4.4),
+                colour_profile=[[v * 0.90 for v in tone], list(tone), [v * 0.94 for v in tone]],
+                width_profile=[rng.uniform(80.0, 150.0)] * 3,
+                alpha_profile=[rng.uniform(0.34, 0.62)] * 3,
+                absolute_width=True, edge=rng.uniform(9.0, 19.0)))
+            index += 1
     for mark in marks:
         fig.add_stroke(mark, stage='line', layer='paint', note='')
     painted = r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True)
@@ -140,43 +172,72 @@ def scatter(cx, cy, radius, count, seed):
 
 
 def body_marks(cx, cy, radius, seed=20261106):
-    """Three brushes in the order a hand uses them, laying light over dark, with the middle pass crossed against the
-    form so the paint stacks instead of reading as a smooth turn."""
-    spots, rng = scatter(cx, cy, radius, 2600, seed)
-    stages = ((380, 46, 64, 0.00, 0.42, 0.0),
-              (900, 26, 40, 0.20, 0.78, 0.9),
-              (1300, 13, 24, 0.50, 1.00, 0.4))
+    """A few hundred strokes along the latitudes of the form, laid down dark to light.
+
+    **The count was the thing that was wrong.** The first version laid two thousand six hundred short, wide marks over
+    the fruit -- each with its own round head, its own soft edge, and its own colour -- and whatever was done to those
+    colours afterwards, the surface read as fur, because that is what a pile of round-headed dabs is. A hand painting an
+    apple makes thirty or forty strokes: long, narrow, following the turn of the sphere, each one a plane rather than a
+    patch. Everything this file changed in the meantime (a wider ladder, broken colour, foreign hues, a finer edge) was
+    a correction applied to the dabs, and no correction of that kind can fix a surface made of them.
+
+    So a mark here is an **arc concentric with the fruit** -- a straight segment long enough to be a plane would leave
+    the sphere -- and the whole set is sorted by how much light falls on it: darks first, lights last, which is the order
+    a form is built in. Five tones carry it, and the boundary between two neighbouring tones is the turn.
+    """
+    rng = random.Random(seed)
+    spots = []
+    for _ in range(520):
+        reach = radius * (rng.random() ** 0.5) * 0.94
+        angle = rng.uniform(0.0, 2.0 * math.pi)
+        ux = reach * math.cos(angle) / (radius * 1.06)
+        uy = reach * math.sin(angle) / (radius * 0.95)
+        inside = 1.0 - ux * ux - uy * uy
+        if inside <= 0.0:
+            continue
+        uz = math.sqrt(inside)
+        diffuse = max(0.0, ux * LIGHT[0] + uy * LIGHT[1] + uz * LIGHT[2])
+        spots.append((diffuse, reach, angle, uz, ux, uy))
+    spots.sort(key=lambda row: row[0])
     fig = project.Project(width=W, height=H, title='apple body')
-    index = 0
-    for count, narrow, broad, low, high, cross in stages:
-        band = [row for row in spots if low <= row[0] <= high]
-        rng.shuffle(band)
-        for diffuse, x, y, tx, ty, uz, ux, uy in band[:count]:
-            if cross:
-                turn = rng.uniform(-cross, cross)
-                tx, ty = tx * math.cos(turn) - ty * math.sin(turn), tx * math.sin(turn) + ty * math.cos(turn)
-            body = apple_colour(diffuse, max(0.0, -uy * 0.8 + ux * 0.25) if uz < 0.55 else 0.0)
-            width = rng.uniform(narrow, broad)
-            length = rng.uniform(42.0, 118.0)
-            bend = rng.uniform(-0.25, 0.25) * length
+    for index, (diffuse, reach, angle, uz, ux, uy) in enumerate(spots):
+        rim = max(0.0, -uy * 0.8 + ux * 0.25) if uz < 0.55 else 0.0
+        # **笔与笔之间不该是跳的。** 一路上都在给每一笔加随机偏移，好让它和邻居不一样 —— 而 `tools/oil_survey.py`
+        # 新加的那一列说出了它的代价：大块内部的颜色标准差只有 1.1，七张油画是 3.6 到 7.9。偏移把每一笔推成
+        # 一个孤立的色点，量化成有限几格时它们全落到格子边界上，格子内部反而笔笔相同。画家不给每一笔加偏移：
+        # 一笔的颜色由它落在哪里决定，位置连续，颜色就连续。所以偏移收到很小，变化交给位置。
+        pigment = jitter(apple_colour(diffuse, rim), 5.0, rng)
+        # **弧心回到果子中心，而笔触要短。** 绕光轴的等照度线试过了：它们在投影上弯得厉害，一条二百五十像素
+        # 的弧在半径四百处两端要向内收七十像素，整只苹果长成一朵莲座。绕果心、而且短，才是手能做到的那件事 ——
+        # 一笔只占一段纬线，两端的弯曲小于笔宽，相邻两笔的界由湿颜料自己融掉。也试过给每一笔自己的曲率半径，
+        # 结果每笔两端都翘出来，成了菊花；同心是对的，长的同心弧才是错的。
+        if reach < radius * 0.36:
+            # **正中那一块不能用绕圈的笔。** 半径越小弧越短，一圈一圈收拢，中心就多出一个漩涡芯 —— 而苹果
+            # 正对着观者的地方是平的。画家在这里是一两笔斜着扫过去：方向随便，长度够，把中心盖住就算。
+            spin = rng.uniform(0.0, math.pi)
+            arm = rng.uniform(80.0, 170.0) * 0.5
+            hx = cx + reach * math.cos(angle) * 1.06
+            hy = cy + reach * math.sin(angle) * 0.95
+            points = [(hx - math.cos(spin) * arm, hy - math.sin(spin) * arm * 0.9),
+                      (hx, hy),
+                      (hx + math.cos(spin) * arm, hy + math.sin(spin) * arm * 0.9)]
+            width = rng.uniform(26.0, 46.0)
+        else:
+            half = min(0.85, rng.uniform(60.0, 120.0) / max(30.0, reach))
             points = []
-            for step in range(4):
-                t = (step / 3.0 - 0.5) * length
-                off = bend * (1.0 - (2.0 * step / 3.0 - 1.0) ** 2)
-                points.append((x + tx * t - ty * off, y + ty * t + tx * off))
-            pigment = jitter(body, 11.0, rng)
-            fig.add_stroke(core.stroke_record(
-                points, 'brush', seed=index, colour=hexed(pigment), soft=1.0,
-                height=width / 125.0 * rng.uniform(0.55, 1.05),
-                bristle=0.45, bristle_pitch=rng.uniform(2.2, 3.4),
-                colour_profile=[[v * 0.86 for v in pigment], [v * 0.95 for v in pigment],
-                                list(pigment), [v * 0.82 for v in pigment]],
-                width_profile=[width] * 4, alpha_profile=[rng.uniform(0.72, 0.90),
-                                                          rng.uniform(0.88, 0.98),
-                                                          rng.uniform(0.88, 0.98),
-                                                          rng.uniform(0.70, 0.88)],
-                absolute_width=True, edge=rng.uniform(2.2, 6.5)), stage='line', layer='paint', note='')
-            index += 1
+            for step in range(5):
+                turn = angle + (step / 4.0 - 0.5) * 2.0 * half
+                sway = reach * (1.0 + 0.03 * math.sin(step * 1.7 + index))
+                points.append((cx + sway * math.cos(turn) * 1.06, cy + sway * math.sin(turn) * 0.95))
+            width = rng.uniform(20.0, 36.0)
+        fig.add_stroke(core.stroke_record(
+            points, 'brush', seed=index, colour=hexed(pigment), soft=0.7,
+            height=width / 110.0 * rng.uniform(0.18, 0.38),
+            bristle=0.32, bristle_pitch=rng.uniform(3.0, 5.0),
+            colour_profile=[[c * s for c in pigment] for s in (0.96, 1.00, 1.03, 0.99, 0.95)],
+            width_profile=[width] * 5,
+            alpha_profile=[0.72, 0.82, 0.86, 0.82, 0.70],
+            absolute_width=True, edge=rng.uniform(1.4, 2.8)), stage='line', layer='paint', note='')
     return fig
 
 
