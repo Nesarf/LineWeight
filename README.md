@@ -143,6 +143,30 @@ per cent under a top hat, 14.09 under a fixed grey, 15.34 at a fifth of each pic
 same question of both pictures, and it answers the same ratio at a tenth, a fifth, three tenths and a half — which is
 what makes it the one to quote.
 
+## Painting something that was never there
+
+Tracing is one path, not the whole of it. `tools/paint_apple.py` paints an apple with nothing to copy from: a light
+direction, five tones, and about two and a half thousand marks. It is an example rather than a tool — there is no
+reference and no measurement it could fail — and it exists because painting needed three things that line work never
+did, and all three are now part of the record format:
+
+* **`soft`** shapes the boundary instead of only widening it. The renderer's coverage falls linearly from a stroke's
+  core to its outer edge, which makes a cross-section a trapezium; a loaded brush stays near full through the middle and
+  thins quickly towards both rims, so `soft` is the exponent on that ramp. Zero is the linear ramp every earlier drawing
+  was made with.
+* **`colour_profile`** lets one mark carry more than one colour, one entry per control point. A brush has one mix at its
+  tip and another at its heel, and a stroke dragged between them leaves the passage; a mark limited to a single value
+  can only be flat.
+* **`height`** is how thick the paint is. `sweep_layer` writes a height plane alongside coverage, `blend` and
+  `blend_at` accumulate it the way pigment accumulates — colours replace, thickness adds — and `raster.light()` turns
+  its gradient into a lit surface. **A mark with no height leaves the layer flat**, so every line drawing renders
+  exactly as it did before this existed.
+
+**The edges are the marks' own edges.** A mask was tried first and removed: it produced a vector boundary, crisp and
+even where paint is neither. Three later attempts to correct the rim by painting over it — with a background tone, with
+a reflected light, with a ring of short marks — each read as a ring around the fruit, because marks arranged *along* a
+contour read as a line describing that contour, and oil has no such line. It is left as the marks leave it.
+
 ## Getting the drawing into a drawing application
 
 SVG is the right output when the destination is a browser or a repository. It is the wrong output when the
