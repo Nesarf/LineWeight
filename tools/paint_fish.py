@@ -109,72 +109,129 @@ def canvas(title):
 
 
 def ground():
+    """背景刷满整张，与苹果那张同一个理由：二十几笔盖不住一块画布，剩下的地方就是一块没人碰过的空白。
+
+    **`tools/oil_survey.py` 的 `within` 一列量的正是这件事** —— 这张鱼画到 2.4，是四张里最低的一张，而它最大
+    的那块九万三千像素就在背景里。所以底色之上按网格铺一遍，越往右下越暗，笔触比原来短，因为一块画布是
+    一层一层叠出来的，不是几条横杠扫过去的。
+    """
     layer = r.Layer(W, H)
     r.fill_polygon(layer, [(-20, -20), (W + 20, -20), (W + 20, H + 20), (-20, H + 20)], (38, 34, 32), 1.0)
     rng = random.Random(11)
     fig = canvas('ground')
-    for i in range(22):
-        y = rng.uniform(-60, H + 60)
-        x0 = rng.uniform(-200, W * 0.7)
-        tone = jitter(mix((30, 26, 25), (78, 68, 60), rng.random() ** 1.4), 6, rng)
-        fig.add_stroke(core.stroke_record(
-            [(x0, y), (x0 + 360, y - rng.uniform(6, 34)), (x0 + 760, y - rng.uniform(0, 52))],
-            'brush', seed=700 + i, colour=hexed(tone), soft=1.0,
-            width_profile=[rng.uniform(110, 230)] * 3, alpha_profile=[rng.uniform(0.20, 0.42)] * 3,
-            absolute_width=True, edge=20.0), stage='line', layer='paint', note='')
+    rows, cols = 10, 16
+    index = 0
+    for row in range(rows):
+        for col in range(cols):
+            x = -80.0 + (W + 160.0) * (col + 0.5) / cols + rng.uniform(-40.0, 40.0)
+            y = -80.0 + (H + 160.0) * (row + 0.5) / rows + rng.uniform(-30.0, 30.0)
+            lit = max(0.0, min(1.0, 1.0 - 0.55 * (0.45 * x / W + 0.55 * y / H)))
+            tone = jitter(mix((22, 19, 18), (86, 76, 66), lit ** 1.25), 12.0, rng)
+            length = rng.uniform(240.0, 520.0)
+            angle = rng.uniform(-0.30, 0.30)
+            tx, ty = math.cos(angle), math.sin(angle)
+            fig.add_stroke(core.stroke_record(
+                [(x - tx * length * 0.5, y - ty * length * 0.5), (x, y + rng.uniform(-5, 5)),
+                 (x + tx * length * 0.5, y + ty * length * 0.5)],
+                'brush', seed=700 + index, colour=hexed(tone), soft=1.0,
+                height=rng.uniform(0.012, 0.050),
+                bristle=0.36, bristle_pitch=rng.uniform(2.8, 4.6),
+                colour_profile=[[v * 0.93 for v in tone], list(tone), [v * 0.95 for v in tone]],
+                width_profile=[rng.uniform(80.0, 160.0)] * 3,
+                alpha_profile=[rng.uniform(0.30, 0.56)] * 3,
+                absolute_width=True, edge=rng.uniform(6.0, 14.0)), stage='line', layer='paint', note='')
+            index += 1
     return r.blend(layer, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
 
 
 def fish_marks(seed=8181):
-    """在轮廓内撒点，笔触沿水平走 —— 鱼身的肌理是横的，而阴影是高度场给的。"""
+    """在轮廓内撒点，笔触沿鱼身的长轴走 —— 而体色沿这条轴也有自己的起伏。
+
+    **上一轮在苹果上学到的两条，这里各修一个毛病。** 一是笔触要顺着形体的转：鱼身的高度场是「到轮廓的距离」，
+    等高度线沿长轴平行，所以笔触该长、该水平 —— 旧版是长度二十八到八十六的水平短笔，三千四百条，方向本来
+    就对，只是碎。二是颜色：旧版只由高度场决定，而高度场沿长轴几乎不变，于是整条鱼身是一条水平的长条同色
+    （九万像素的块，`within` 2.4 的一半原因在这里）。现在另加一层沿长轴的连续起伏 —— 不是每条笔给一个随机
+    偏移（苹果那一轮证明那会把颜色推成孤立的色点，落进量化格子的边界，块内反而笔笔相同），而是随位置走的
+    斑驳，体侧本来就有。
+    """
     rng = random.Random(seed)
-    mask = mask_of(BODY) | mask_of(TAIL)
+    mask = mask_of(BODY)
     relief = height_of(mask)
     tone = shading(relief)
+    gy, gx = np.gradient(relief)
     fig = canvas('fish body')
     rows, cols = np.nonzero(mask)
     index = 0
-    for _ in range(3400):
+    for _ in range(1800):
         pick = rng.randrange(rows.size)
         y, x = int(rows[pick]), int(cols[pick])
         value = float(tone[y, x])
+        mottle = 1.0 + 0.10 * math.sin(x * 0.0105 + y * 0.0042) + 0.06 * math.sin(x * 0.031 - y * 0.016)
         pigment = fish_colour(value, rng)
-        length = rng.uniform(28.0, 86.0)
-        drift = rng.uniform(-7.0, 7.0)
-        points = [(x - length * 0.5, y - drift * 0.5), (x, y), (x + length * 0.5, y + drift * 0.5)]
-        width = rng.uniform(11.0, 26.0)
+        pigment = (pigment[0] * mottle, pigment[1] * mottle * 1.005, pigment[2] * mottle * 0.990)
+        # **方向由形体给，不由画布给。** 高度场的梯度指向脊，垂直于它的是等高度线 —— 体侧那些「顺着转」的
+        # 线。旧版全都水平，于是笔触排成一列一列的横条；而一条鱼的等高度线在头尾两端是弯的。
+        gyp, gxp = float(gy[y, x]), float(gx[y, x])
+        scale = math.hypot(gxp, gyp) or 1.0
+        tx, ty = -gyp / scale, gxp / scale
+        if tx < 0.0:
+            tx, ty = -tx, -ty
+        spin = rng.uniform(-0.20, 0.20)
+        tx, ty = tx * math.cos(spin) - ty * math.sin(spin), tx * math.sin(spin) + ty * math.cos(spin)
+        # **长宽比要和苹果的笔一致。** 一百到二百六十长、十六到三十四宽是六比一，读出来是条纹；
+        # 苹果那一版是六十到一百二十长、二十到三十六宽，三比一，读出来是一片。同一种笔，形状决定它读成什么。
+        # **笔触的尺寸由形体的局部厚度决定。** 一条一百八十像素的笔落在鱼头那样薄的地方，两端会伸出轮廓，
+        # 把头盖成一团灰絮 —— 那是上一版眼睛被埋掉的直接原因。薄处短而窄，厚处才放开。
+        thin = math.sqrt(max(0.0, relief[y, x]))
+        length = rng.uniform(80.0, 180.0) * (0.40 + 0.60 * thin)
+        width = rng.uniform(24.0, 44.0) * (0.55 + 0.45 * thin)
+        bend = rng.uniform(-0.10, 0.10) * length
+        points = [(x - tx * length * 0.5 - ty * bend, y - ty * length * 0.5 + tx * bend),
+                  (x, y),
+                  (x + tx * length * 0.5 + ty * bend, y + ty * length * 0.5 - tx * bend)]
         fig.add_stroke(core.stroke_record(
-            points, 'brush', seed=index, colour=hexed(pigment), soft=1.0,
-            colour_profile=[[v * 0.90 for v in pigment], list(pigment), [v * 0.86 for v in pigment]],
-            height=width / 140.0 * rng.uniform(0.5, 1.0),
-            bristle=0.38, bristle_pitch=rng.uniform(2.4, 3.4),
-            width_profile=[width * 0.9, width, width * 0.92],
-            alpha_profile=[rng.uniform(0.82, 0.92)] * 3,
-            absolute_width=True, edge=rng.uniform(2.5, 6.0)), stage='line', layer='paint', note='')
+            points, 'brush', seed=index, colour=hexed(pigment), soft=0.8,
+            colour_profile=[[v * 0.94 for v in pigment], list(pigment), [v * 0.92 for v in pigment]],
+            height=width / 140.0 * rng.uniform(0.4, 0.8),
+            bristle=0.34, bristle_pitch=rng.uniform(2.6, 4.0),
+            width_profile=[width * 0.88, width, width * 0.90],
+            alpha_profile=[rng.uniform(0.70, 0.84)] * 3,
+            absolute_width=True, edge=rng.uniform(1.6, 3.4)), stage='line', layer='paint', note='')
         index += 1
     return fig, mask, relief, tone
 
 
 def fin_marks(seed=505):
-    """鳍与远侧的那一片：薄，所以几乎只由高度场的边缘决定。"""
+    """鳍与远侧的那一片：**鳞条从根向外辐射**，不是一排横笔。
+
+    上一版的鳍读成一块白絮：笔触水平、颜色又取到了浅的那一头，落在形状上既没有方向也没有根。鳍的构造是
+    从根部伸出去的一排细条，所以每一笔沿「这一点背离鳍心」的方向走，颜色也压暗一档 —— 鳍比身体薄，
+    背面没有那么多光。
+    """
     rng = random.Random(seed)
     fig = canvas('fins')
-    for shape, density in ((FIN, 130), (DORSAL, 150)):
+    for shape, density in ((FIN, 150), (DORSAL, 170), (TAIL, 200)):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
         rows, cols = np.nonzero(mask)
+        cx0, cy0 = float(cols.mean()), float(rows.mean())
         for i in range(density):
             pick = rng.randrange(rows.size)
             y, x = int(rows[pick]), int(cols[pick])
-            pigment = jitter(mix((108, 96, 96), (206, 196, 182), min(1.0, float(tone[y, x]))), 8.0, rng)
-            length = rng.uniform(20.0, 56.0)
+            pigment = jitter(mix((58, 54, 56), (146, 138, 130), min(1.0, float(tone[y, x]))), 7.0, rng)
+            dx, dy = x - cx0, y - cy0
+            scale = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / scale, dy / scale
+            spin = rng.uniform(-0.28, 0.28)
+            ux, uy = ux * math.cos(spin) - uy * math.sin(spin), ux * math.sin(spin) + uy * math.cos(spin)
+            length = rng.uniform(24.0, 62.0)
             fig.add_stroke(core.stroke_record(
-                [(x - length * 0.5, y + rng.uniform(-6, 6)), (x, y),
-                 (x + length * 0.5, y + rng.uniform(-6, 6))], 'brush', seed=900 + i,
-                colour=hexed(pigment), soft=1.0, height=0.28, bristle=0.30,
-                width_profile=[rng.uniform(7, 15)] * 3, alpha_profile=[0.72, 0.88, 0.72],
-                absolute_width=True, edge=rng.uniform(2.5, 5.0)), stage='line', layer='paint', note='')
+                [(x - ux * length * 0.5, y - uy * length * 0.5), (x, y),
+                 (x + ux * length * 0.5, y + uy * length * 0.5)], 'brush', seed=900 + i,
+                colour=hexed(pigment), soft=0.8, height=0.20, bristle=0.30,
+                width_profile=[rng.uniform(6, 13)] * 3, alpha_profile=[0.62, 0.80, 0.62],
+                absolute_width=True, edge=rng.uniform(2.0, 4.2)), stage='line', layer='paint', note='')
     return fig
 
 
