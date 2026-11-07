@@ -962,6 +962,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       'seed': geometry.get('seed', 0),
                       'width_profile': geometry.get('width_profile') or [],
                       'alpha_profile': geometry.get('alpha_profile') or [],
+                      'colour_profile': geometry.get('colour_profile') or [],
                       'absolute_width': bool(geometry.get('absolute_width', False)),
                       # **Every field the renderer reads has to be named here**, and this is the third place a
                       # record is rebuilt from a document: `stroke_record` writes one, `add_stroke` copies it into a
@@ -970,6 +971,7 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                       # for `page_long` and `edge` in the same afternoon.
                       'page_long': float(geometry.get('page_long') or 0.0),
                       'edge': float(geometry.get('edge') or 0.0),
+                      'soft': float(geometry.get('soft') or 0.0),
                       'colour_int': parse_hex(mark_ink(mark))}
             # **Above `WIDE_STROKE` the deposition is integrated, below it the maximum is used.** The ripple along
             # a stroke is the same fraction of its mean at every width -- 0.37 on the ink brush at four pixels and at
@@ -1113,6 +1115,13 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     # crosses in 2.70 to 4.43 -- see `tools/edge_scale.py` for the same difference read the other way. Zero means the
     # record does not say, and one pixel is what this file has always done.
     edge = max(1e-6, float(record.get('edge') or 1.0))
+    # **The shape of the boundary, as a power of its own ramp.** Coverage falls linearly from `half` to the outer
+    # edge, which makes a stroke's cross-section a trapezium: flat across the top, straight down the sides. A loaded
+    # brush is not that -- the pigment stays near full through the middle of the mark and thins quickly towards both
+    # rims -- and the difference is visible the moment a mark is wider than a pencil line. `soft = 0` is the linear
+    # ramp every existing drawing was made with; `soft = 1` makes the shoulders fall as the square of the distance,
+    # which is close to what a flat oil brush leaves.
+    soft = max(0.0, float(record.get('soft') or 0.0))
     # **The page comes from the record, and the canvas deliberately does not overrule it.** A brush's width is a share
     # of the page it was fixed on, but the canvas is not that page: a thumbnail, a crop and a test all fill a canvas far
     # smaller than the drawing, and reading the page off one would thin every brush to a hair -- measured, six tests
@@ -1145,8 +1154,29 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
                         _np.interp(along, walked, points[:, 1])], axis=1)
     widths = _np.interp(along, walked, widths)
     alpha = _np.interp(along, walked, alpha)
+    # **The tint is resampled on the same `along` as the geometry**, so a colour that varies inside one mark varies
+    # with it rather than with some other parameterisation. `None` means the mark is one colour, which is the case the
+    # writing loop below has always handled and still short-circuits to.
+    tint = record.get('colour_profile') or []
+    if tint:
+        tint = _np.asarray(tint, dtype=_np.float64)
+        if tint.ndim != 2 or tint.shape[0] < 2:
+            tint = None
+        else:
+            if tint.shape[0] != walked.shape[0]:
+                tint = _np.stack([_np.interp(_np.linspace(0.0, 1.0, walked.shape[0]),
+                                             _np.linspace(0.0, 1.0, tint.shape[0]), tint[:, c])
+                                  for c in range(3)], axis=1)
+            tint = _np.stack([_np.interp(along, walked, tint[:, c]) for c in range(3)], axis=1)
+    else:
+        # An empty profile is not a profile; the writing loop below branches on `None`, and a bare `[]` would take
+        # the colour path and then find nothing to index.
+        tint = None
 
     ink = _np.zeros((height, width), dtype=_np.float64)
+    red = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
+    green = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
+    blue = _np.zeros((height, width), dtype=_np.float64) if tint is not None else None
     # **One segment at a time, inside that segment's own box.** The distance field is written over the pixels the segment
     # can reach and nowhere else, so the cost follows the ink rather than the page.
     for i in range(points.shape[0] - 1):
@@ -1179,10 +1209,22 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         # this renderer crosses in 1.75 to 2.00 -- which is exactly what `edge_scale` reports as "the copy is harder".
         half = 0.5 * (widths[i] + (widths[i + 1] - widths[i]) * _np.clip(
             (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0, 0.0, 1.0))
-        coverage = _np.clip((half + 0.5 * edge - distance) / max(edge, 1e-6), 0.0, 1.0)
-        here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * (
-            (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0))
-        ink[y0:y1, x0:x1] = _np.maximum(ink[y0:y1, x0:x1], here)
+        ramp = _np.clip((half + 0.5 * edge - distance) / max(edge, 1e-6), 0.0, 1.0)
+        coverage = ramp if soft <= 0.0 else ramp ** (1.0 + soft)
+        share = (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0
+        here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * share)
+        if tint is None:
+            ink[y0:y1, x0:x1] = _np.maximum(ink[y0:y1, x0:x1], here)
+        else:
+            # **The newest mark wins the pixel, colour and all.** The alpha channel keeps the maximum, as it always
+            # has, so a pixel belongs to the segment that covered it most; its colour has to come from that same
+            # segment or the two would describe different strokes.
+            better = here > ink[y0:y1, x0:x1]
+            ink[y0:y1, x0:x1] = _np.where(better, here, ink[y0:y1, x0:x1])
+            weight = _np.clip(share, 0.0, 1.0) if not isinstance(share, float) else share
+            for channel, plane in ((0, red), (1, green), (2, blue)):
+                mixed = tint[i][channel] + (tint[i + 1][channel] - tint[i][channel]) * weight
+                plane[y0:y1, x0:x1] = _np.where(better, mixed, plane[y0:y1, x0:x1])
 
     # **Grain multiplies the coverage, as it did on the dabs**, so a chalk stroke still reads as chalk rather than as a
     # smooth band that happens to be pale.
@@ -1194,16 +1236,25 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     r, g, b = colour
     data = layer.data
     flat = ink.ravel()
+    flat_r = red.ravel() if tint is not None else None
+    flat_g = green.ravel() if tint is not None else None
+    flat_b = blue.ravel() if tint is not None else None
     for y in range(height):
         row = y * width * 4
         for x in range(width):
-            a = flat[y * width + x]
+            cell = y * width + x
+            a = flat[cell]
             if a <= 0.0:
                 continue
             index = row + x * 4
-            data[index] = r
-            data[index + 1] = g
-            data[index + 2] = b
+            if flat_r is None:
+                data[index] = r
+                data[index + 1] = g
+                data[index + 2] = b
+            else:
+                data[index] = int(min(255.0, max(0.0, flat_r[cell])))
+                data[index + 1] = int(min(255.0, max(0.0, flat_g[cell])))
+                data[index + 2] = int(min(255.0, max(0.0, flat_b[cell])))
             data[index + 3] = int(min(255.0, round(a * 255.0)))
     return layer
 

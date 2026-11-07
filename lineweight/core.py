@@ -1155,7 +1155,8 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   width_profile: list[float] | None = None,
                   alpha_profile: list[float] | None = None,
                   absolute_width: bool = False,
-                  size: float = 1.0, page_long: float = 0.0, edge: float = 0.0) -> dict:
+                  size: float = 1.0, page_long: float = 0.0, edge: float = 0.0, soft: float = 0.0,
+                  colour_profile=None) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1226,7 +1227,21 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # vector paths and the exporter all read one number instead of three defaults. Zero means unset, and the
         # renderer's own one pixel applies.
         'edge': float(edge),
+        # **How the boundary is shaped, not just how wide it is.** The renderer's coverage falls linearly from the core
+        # to the outer edge, so a stroke's cross-section is a trapezium -- a flat top and two straight sides. An oil
+        # brush is not that: pigment thins towards both edges of the mark and the middle stays full for a while first,
+        # so its cross-section is a bell. `soft` is the exponent applied to that linear ramp, which turns the trapezium
+        # into a curve: 0 is the linear ramp this file has always drawn, 1 makes the shoulders fall as the square of the
+        # distance, 2 as the cube. Line work wants 0 -- a nib is hard -- and paint wants somewhere near 1.
+        'soft': float(soft),
         'width_profile': [float(w) for w in width_profile] if width_profile else [],
+        # **One mark, more than one colour.** A loaded brush is not a single value: the tip carries one mix and the
+        # heel another, and a stroke dragged through them leaves the passage between. Keeping colour at one per mark
+        # forces every stroke to be flat, which is exactly what paint is not -- measured on the apple, where the whole
+        # difference between a painted form and a shaded one turned out to be that the marks change colour inside
+        # themselves. One entry per control point, in the same order as `width_profile`.
+        'colour_profile': [[int(min(255, max(0, round(float(c))))) for c in entry[:3]]
+                           for entry in colour_profile] if colour_profile else [],
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],
