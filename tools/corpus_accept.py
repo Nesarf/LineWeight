@@ -48,19 +48,25 @@ def read_log(text):
     return rows, (float(page.group(1)) if page else float('nan'))
 
 
-def run(picture, work, reuse=False):
+def run(picture, work, reuse=False, ink=''):
     """Trace one picture, accept it, and return what the log said.
 
     A project is reused only when asked, because the point of a regression is to re-run the numbers: a stale project
     sitting beside a fresh log is exactly the mistake that produced §4.43 -- an old json read against a new render.
+
+    **`ink` is passed through rather than fixed**, because the experiment it exists for is "does another ink definition
+    move the whole table" -- and a table built on two different masks with no record of which is which answers nothing.
+    The mode is written into every project's settings by `reference_lines` itself, so the log keeps its own account.
     """
     name = os.path.splitext(os.path.basename(picture))[0]
     project = os.path.join(work, name + '.json')
     if not (reuse and os.path.exists(project)):
         if os.path.exists(project):
             os.remove(project)  # a half-written project from an interrupted run would be accepted as a real one
-        traced = subprocess.run([sys.executable, TRACE, '--picture', picture, '--out', project],
-                                capture_output=True, text=True, encoding='utf-8', errors='replace')
+        command = [sys.executable, TRACE, '--picture', picture, '--out', project]
+        if ink:
+            command += ['--ink', ink]
+        traced = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace')
         if traced.returncode != 0 or not os.path.exists(project):
             return name, None, None, (traced.stderr or traced.stdout).strip()[-400:]
     accepted = subprocess.run([sys.executable, ACCEPT, '--project', project, '--reference', picture],
@@ -121,6 +127,7 @@ def main(argv=None):
     parser.add_argument('--jobs', type=int, default=1,
                         help='how many pictures at once; each acceptance holds a whole project in memory')
     parser.add_argument('--reuse', action='store_true', help='accept the projects already in --work without tracing')
+    parser.add_argument('--ink', default='', help='pass this --ink mode through to reference_lines')
     args = parser.parse_args(argv)
 
     pictures = sorted(glob.glob(os.path.join(args.dir, '*.jpg')) + glob.glob(os.path.join(args.dir, '*.png')))
@@ -134,7 +141,7 @@ def main(argv=None):
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        future = {pool.submit(run, picture, args.work, args.reuse): picture for picture in pictures}
+        future = {pool.submit(run, picture, args.work, args.reuse, args.ink): picture for picture in pictures}
         for done in concurrent.futures.as_completed(future):
             name, rows, page, error = done.result()
             if rows:
