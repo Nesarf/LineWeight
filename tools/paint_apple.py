@@ -171,7 +171,7 @@ def scatter(cx, cy, radius, count, seed):
     return spots, rng
 
 
-def body_marks(cx, cy, radius, seed=20261106):
+def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
     """A few hundred strokes along the latitudes of the form, laid down dark to light.
 
     **The count was the thing that was wrong.** The first version laid two thousand six hundred short, wide marks over
@@ -207,6 +207,10 @@ def body_marks(cx, cy, radius, seed=20261106):
         # 一个孤立的色点，量化成有限几格时它们全落到格子边界上，格子内部反而笔笔相同。画家不给每一笔加偏移：
         # 一笔的颜色由它落在哪里决定，位置连续，颜色就连续。所以偏移收到很小，变化交给位置。
         pigment = jitter(apple_colour(diffuse, rim), 5.0, rng)
+        # **同一支笔画第二个果子时要压暗。** 一张画里离得远的那一个，颜色整体要收一点 —— 它被前面的挡住一部分
+        # 光，也被中间的空气隔了一层。默认 `1.0` 时算式不变，所以单只果子那张的像素与改动之前完全一样。
+        if dim != 1.0:
+            pigment = tuple(v * dim for v in pigment)
         # **弧心回到果子中心，而笔触要短。** 绕光轴的等照度线试过了：它们在投影上弯得厉害，一条二百五十像素
         # 的弧在半径四百处两端要向内收七十像素，整只苹果长成一朵莲座。绕果心、而且短，才是手能做到的那件事 ——
         # 一笔只占一段纬线，两端的弯曲小于笔宽，相邻两笔的界由湿颜料自己融掉。也试过给每一笔自己的曲率半径，
