@@ -32,6 +32,7 @@ OUT = os.environ.get('PAIR_OUT') or os.path.join(os.getcwd(), 'pair')
 # the other's. That overlap is the thing a single-object picture cannot have.
 BACK = (648.0, 512.0, 262.0)
 FRONT = (428.0, 690.0, 186.0)
+CUP = (186.0, 606.0, 56.0, 112.0)
 
 
 def wet_drags(layer, cx, cy, radius, seed):
@@ -92,6 +93,74 @@ def wall(picture):
                    r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
 
 
+def cup_colour(value):
+    """陶土：暗处偏冷偏紫，亮处偏暖偏黄 —— 与布那张同一个道理，两头的色相要分开。
+
+    **三段要压暗两档。** 第一版最亮取到 (236,210,176)，而圆柱正对观者的那一面占了可见面积的大半，于是整只
+    杯子是一块几乎白的糖 —— 陶土色一档都没出来。压到 (190,166,136) 之后它自己看着是一只陶杯了，而放进画面
+    里，它比两只果子都亮，成了主体的竞争者。静物里次要的东西要比主体暗，这是构图而不是颜色的问题；
+    再压到 (146,126,102)。
+    """
+    dark, mid, light = (26, 24, 30), (90, 74, 60), (146, 126, 102)
+    body = pa.mix(dark, mid, value / 0.58) if value <= 0.58 else pa.mix(mid, light, (value - 0.58) / 0.42)
+    if value < 0.34:
+        body = pa.mix(body, (44, 42, 66), (0.34 - value) * 0.55)
+    return body
+
+
+def cup(picture, cx, top, radius, height, seed=909):
+    """一只杯子：圆柱，笔触沿母线走，明暗由法线算。
+
+    **这是第一个既不是球、也不是「到轮廓的距离」能给的形体。** 圆柱的法线只随角度变、不随高度变，所以一支
+    竖笔从口到底是一个颜色 —— 真实杯子上也正是这样：釉光是一条竖的，不是一块圆的。上面那两只果子用同心弧，
+    因为球面的转是绕中心的；这里用竖笔，因为柱面的转是绕轴的。**同一个问题（「这一笔往哪个方向走」）在两个
+    形体上有两个答案，而答案都不是调出来的，是形体的。**
+    """
+    rng = random.Random(seed)
+    rim_b = 0.30 * radius
+    # **口里先铺一层暗。** 杯子是开着的，从上往下看得到一个内壁；第一版没画，口沿那一圈白笔直接贴在杯身上，
+    # 读成了一圈齿轮。内壁不需要细节，它只需要比口沿暗。
+    mouth = r.Layer(W, H)
+    r.fill_polygon(mouth, [(cx + radius * 0.97 * math.sin(a), top - rim_b * 0.97 * math.cos(a))
+                           for a in (2.0 * math.pi * k / 48.0 for k in range(48))], (46, 38, 34), 0.92)
+    picture = r.blend(picture, mouth, 'normal', 1.0)
+    fig = project.Project(width=W, height=H, title='cup')
+    light_x, light_z = -0.362, 0.832          # LIGHT 归一化之后的横、深两个分量
+    for i in range(520):
+        theta = rng.uniform(-math.pi * 0.5, math.pi * 0.5)
+        face = math.cos(theta)
+        if rng.random() > 0.22 + 0.78 * face:
+            continue
+        x = cx + radius * math.sin(theta)
+        diffuse = max(0.0, light_x * math.sin(theta) + light_z * face)
+        pigment = pa.jitter(cup_colour(diffuse), 5.0, rng)
+        length = height * rng.uniform(0.82, 1.02)
+        width = 9.0 + 30.0 * face
+        mid = top + height * 0.5
+        fig.add_stroke(core.stroke_record(
+            [(x - 1.5, mid - length * 0.5), (x, mid), (x + 1.5, mid + length * 0.5)],
+            'brush', seed=2000 + i, colour=pa.hexed(pigment), soft=0.7,
+            height=width / 110.0 * rng.uniform(0.2, 0.4),
+            bristle=0.32, bristle_pitch=rng.uniform(3.0, 5.0),
+            colour_profile=[[c * s for c in pigment] for s in (0.96, 1.00, 1.03, 0.99, 0.95)],
+            width_profile=[width] * 5,
+            alpha_profile=[0.86, 0.94, 0.94, 0.94, 0.86],
+            absolute_width=True, edge=rng.uniform(1.6, 3.0)), stage='line', layer='paint', note='')
+    # 口沿：一圈短笔。它是这只杯子上唯一一条「横」的线，也是它读成圆的依据。笔要少、要细 —— 密了就成齿轮。
+    for i in range(30):
+        angle = 2.0 * math.pi * i / 30.0
+        x = cx + radius * math.sin(angle)
+        y = top - rim_b * math.cos(angle)
+        pigment = pa.jitter(pa.mix((104, 86, 70), (172, 152, 128), 0.30 + 0.70 * max(0.0, math.cos(angle))),
+                            4.0, rng)
+        fig.add_stroke(core.stroke_record(
+            [(x - radius * 0.11, y), (x, y - 2.0), (x + radius * 0.11, y)], 'brush', seed=2200 + i,
+            colour=pa.hexed(pigment), soft=0.6, width_profile=[3.0, 4.0, 3.0],
+            alpha_profile=[0.72, 0.86, 0.72], absolute_width=True, edge=1.4),
+            stage='line', layer='paint', note='')
+    return r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     picture = pa.ground(*BACK)
@@ -101,6 +170,10 @@ def main():
     # 前面那只像在发光。阴影落在桌面上，两只果子都在桌面上方，所以阴影必须全部排在果身之前。
     picture = r.blend(picture, pa.table_shadow(*BACK), 'normal', 1.0)
     picture = r.blend(picture, pa.table_shadow(*FRONT), 'normal', 1.0)
+    # **第三样东西，才能量出桌面有多大。** 两只果子只给了「前和后」，没有给「左和右」也没有给尺度；
+    # 一只小杯子在左边，桌面的宽度就有了参照，而它的投影把桌面从「一片暗」变成「一块地」。
+    picture = r.blend(picture, pa.table_shadow(CUP[0], CUP[1] + CUP[3] - 26.0, CUP[2] * 1.05), 'normal', 1.0)
+    picture = cup(picture, *CUP)
     # **两个果子要有两个形。** 后面那只更圆、略朝右歪；前面那只更扁、朝左歪。椭圆率与剪切都由
     # `body_marks` 的三个新参数给，而它们默认就是原来写死的那两个数。
     picture = apple_body(picture, *BACK, 20261106, 0.84, 1.02, 0.99, 0.035)
