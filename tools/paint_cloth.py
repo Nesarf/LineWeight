@@ -84,11 +84,19 @@ def shade(x, y):
 
 
 def cloth_colour(value):
-    """米白的亚麻：受光处偏暖，背光处偏冷，中间调保持中性。"""
-    dark, mid, light = (58, 54, 66), (176, 168, 152), (242, 234, 214)
+    """米白的亚麻：受光的一面偏暖偏黄，背光的一面偏冷偏蓝。
+
+    **`within` 停在 2.4 的一半原因在这里。** 原来三段是 (58,54,66) / (176,168,152) / (242,234,214)，
+    明度从暗到亮是有的，而色相几乎不动 —— 把画面数成十八色的时候整块布落进两三个亮格子，格子内部当然均匀。
+    真实的亚麻布不是这样一个色相：背光那一片是蓝紫的，受光那一片带黄褐的暖，中间才是中性米白。
+    所以两头都拉开，暗部再压一层蓝、亮部再点一层黄。
+    """
+    dark, mid, light = (44, 42, 62), (180, 166, 140), (250, 244, 226)
     body = mix(dark, mid, value / 0.55) if value <= 0.55 else mix(mid, light, (value - 0.55) / 0.45)
     if value < 0.42:
-        body = mix(body, (64, 66, 88), (0.42 - value) * 0.55)
+        body = mix(body, (52, 54, 92), (0.42 - value) * 0.50)
+    if value > 0.72:
+        body = mix(body, (252, 232, 186), (value - 0.72) * 0.60)
     return body
 
 
@@ -97,21 +105,37 @@ def canvas(title):
 
 
 def ground():
+    """背景刷满整张。三十笔盖不住一块画布 —— 那一个教训苹果和鱼各付了一次。
+
+    `tools/oil_survey.py` 的 `within` 量的就是这件事：这张布 2.5，四张里第二低，而它最大的两块五万七和四万六
+    都在背景里。底色之上按网格铺一遍，越往右下越暗，笔触短而宽，一层叠一层。
+    """
     layer = r.Layer(W, H)
     r.fill_polygon(layer, [(-20, -20), (W + 20, -20), (W + 20, H + 20), (-20, H + 20)], (44, 34, 30), 1.0)
     rng = random.Random(5)
     fig = canvas('ground')
-    for i in range(30):
-        y = rng.uniform(-80, H + 80)
-        x0 = rng.uniform(-260, W * 0.7)
-        length = rng.uniform(340, 800)
-        tone = jitter(mix((36, 27, 24), (96, 78, 64), rng.random() ** 1.5), 7, rng)
-        fig.add_stroke(core.stroke_record(
-            [(x0, y), (x0 + length * 0.5, y - rng.uniform(6, 40)), (x0 + length, y - rng.uniform(0, 60))],
-            'brush', seed=800 + i, colour=hexed(tone), soft=1.0,
-            width_profile=[rng.uniform(140, 260)] * 3,
-            alpha_profile=[rng.uniform(0.20, 0.44)] * 3,
-            absolute_width=True, edge=22.0), stage='line', layer='paint', note='')
+    rows, cols = 15, 12
+    index = 0
+    for row in range(rows):
+        for col in range(cols):
+            x = -80.0 + (W + 160.0) * (col + 0.5) / cols + rng.uniform(-40.0, 40.0)
+            y = -80.0 + (H + 160.0) * (row + 0.5) / rows + rng.uniform(-36.0, 36.0)
+            lit = max(0.0, min(1.0, 1.0 - 0.50 * (0.50 * x / W + 0.50 * y / H)))
+            tone = jitter(mix((24, 18, 16), (104, 86, 70), lit ** 1.30), 12.0, rng)
+            length = rng.uniform(260.0, 540.0)
+            angle = rng.uniform(-0.30, 0.30)
+            tx, ty = math.cos(angle), math.sin(angle)
+            fig.add_stroke(core.stroke_record(
+                [(x - tx * length * 0.5, y - ty * length * 0.5), (x, y + rng.uniform(-5, 5)),
+                 (x + tx * length * 0.5, y + ty * length * 0.5)],
+                'brush', seed=800 + index, colour=hexed(tone), soft=1.0,
+                height=rng.uniform(0.012, 0.050),
+                bristle=0.36, bristle_pitch=rng.uniform(2.8, 4.6),
+                colour_profile=[[v * 0.93 for v in tone], list(tone), [v * 0.95 for v in tone]],
+                width_profile=[rng.uniform(80.0, 160.0)] * 3,
+                alpha_profile=[rng.uniform(0.30, 0.56)] * 3,
+                absolute_width=True, edge=rng.uniform(6.0, 14.0)), stage='line', layer='paint', note='')
+            index += 1
     return r.blend(layer, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
 
 
@@ -127,42 +151,48 @@ def rod():
 
 
 def cloth_marks(seed=4211):
-    """整块布面都要落笔，不是沿褶的中线画线。
+    """整块布面都要落笔，而落点要**随机**。
 
-    **第一版把「褶」当成了线**：只在每条褶的中线上撒点，于是画面成了六条并列的面条，缝隙里露着背景。
-    褶不是线，是**面的起伏** —— 它改变的是每个点落在哪一侧、离脊顶多远，而布面上每一个点都有颜色。
-    所以这里在布幅范围内均匀落点，笔触顺褶而下（褶是竖直的），明暗由 `shade` 当场算出来。
+    **规则网格是这一版剩下的毛病。** 第一版把「褶」当成了线，只在褶的中线上撒点，画面成了六条并列的面条；
+    改成整幅铺满之后仍然读成一层层的鳞 —— 因为行距与横向步长都是固定的，笔触排成整齐的行列，圆头一个叠
+    一个，像鱼鳞。苹果那一版是随机撒点的，所以它的圆头被相邻的笔盖住、看不出排列。这里改成同样的做法：
+    三千二百个随机点，每点沿竖直方向画一笔（褶是竖直的），明暗由 `shade` 当场算出来。
     """
     rng = random.Random(seed)
     fig = canvas('cloth body')
-    index = 0
-    y = ROD_Y
-    while y < H - 16:
+    spots = []
+    guard = 0
+    while len(spots) < 3200 and guard < 80000:
+        guard += 1
+        y = rng.uniform(ROD_Y - 12.0, H + 8.0)
         left, right = edges(y)
-        x = left + rng.uniform(-4.0, 4.0)
-        while x < right:
-            value = shade(x, y)
-            if value is None:
-                x += 11.0
-                continue
-            pigment = jitter(cloth_colour(value), 7.0, rng)
-            length = rng.uniform(150.0, 330.0)
-            drift = math.sin(y / 92.0) * rng.uniform(2.0, 8.0)
-            points = [(x - drift * 0.5, y - length * 0.5),
-                      (x, y),
-                      (x + drift * 0.5, y + length * 0.5)]
-            width = rng.uniform(22.0, 36.0)
-            fig.add_stroke(core.stroke_record(
-                points, 'brush', seed=index, colour=hexed(pigment), soft=1.0,
-                colour_profile=[[v * 0.90 for v in pigment], list(pigment), [v * 0.86 for v in pigment]],
-                height=width / 130.0 * rng.uniform(0.5, 1.0),
-                bristle=0.42, bristle_pitch=rng.uniform(2.4, 3.6),
-                width_profile=[width * 0.92, width, width * 0.94],
-                alpha_profile=[rng.uniform(0.90, 0.96)] * 3,
-                absolute_width=True, edge=rng.uniform(3.0, 7.0)), stage='line', layer='paint', note='')
-            index += 1
-            x += rng.uniform(9.0, 15.0)
-        y += rng.uniform(15.0, 22.0)
+        x = rng.uniform(left - 8.0, right + 8.0)
+        value = shade(x, y)
+        if value is None:
+            continue
+        spots.append((x, y, value))
+    index = 0
+    for x, y, value in spots:
+        # **长宽比三比一，与苹果那支笔一致。** 旧笔是一百五十到三百三十长、二十二到三十六宽，七到十二比一，
+        # 排下来是一列一列竖条 —— 布读成了一把面条。褶是竖直的，方向本来就对，错的是笔画太细。
+        pigment = jitter(cloth_colour(value), 5.0, rng)
+        weave = 1.0 + 0.08 * math.sin(y * 0.011 + x * 0.004)
+        pigment = tuple(v * weave for v in pigment)
+        length = rng.uniform(80.0, 190.0)
+        drift = math.sin(y / 92.0) * rng.uniform(2.0, 8.0)
+        points = [(x - drift * 0.5, y - length * 0.5),
+                  (x, y),
+                  (x + drift * 0.5, y + length * 0.5)]
+        width = rng.uniform(26.0, 48.0)
+        fig.add_stroke(core.stroke_record(
+            points, 'brush', seed=index, colour=hexed(pigment), soft=0.8,
+            colour_profile=[[v * 0.95 for v in pigment], list(pigment), [v * 0.93 for v in pigment]],
+            height=width / 130.0 * rng.uniform(0.35, 0.75),
+            bristle=0.38, bristle_pitch=rng.uniform(2.6, 4.0),
+            width_profile=[width * 0.90, width, width * 0.92],
+            alpha_profile=[rng.uniform(0.72, 0.86)] * 3,
+            absolute_width=True, edge=rng.uniform(1.8, 4.0)), stage='line', layer='paint', note='')
+        index += 1
     return fig
 
 
