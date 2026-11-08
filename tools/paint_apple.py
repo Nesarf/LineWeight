@@ -171,7 +171,7 @@ def scatter(cx, cy, radius, count, seed):
     return spots, rng
 
 
-def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
+def body_marks(cx, cy, radius, seed=20261106, dim=1.0, aspect=1.06, squash=0.95, lean=0.0):
     """A few hundred strokes along the latitudes of the form, laid down dark to light.
 
     **The count was the thing that was wrong.** The first version laid two thousand six hundred short, wide marks over
@@ -190,8 +190,8 @@ def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
     for _ in range(520):
         reach = radius * (rng.random() ** 0.5) * 0.94
         angle = rng.uniform(0.0, 2.0 * math.pi)
-        ux = reach * math.cos(angle) / (radius * 1.06)
-        uy = reach * math.sin(angle) / (radius * 0.95)
+        ux = reach * math.cos(angle) / (radius * aspect)
+        uy = reach * math.sin(angle) / (radius * squash)
         inside = 1.0 - ux * ux - uy * uy
         if inside <= 0.0:
             continue
@@ -199,6 +199,13 @@ def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
         diffuse = max(0.0, ux * LIGHT[0] + uy * LIGHT[1] + uz * LIGHT[2])
         spots.append((diffuse, reach, angle, uz, ux, uy))
     spots.sort(key=lambda row: row[0])
+    # **形体本身也要参数化。** 一版里两只果子用同一个椭圆率（横 1.06、纵 0.95），所以它们像同一只果子换了
+    # 大小 —— 而一幅静物里两个果子形状不同。`aspect` / `squash` 给椭圆率，`lean` 让果子朝一侧歪：上方相对
+    # 下方平移，是一个剪切而不是旋转，所以光照方向不用跟着动。三个默认值合起来正好是原来的 1.06 与 0.95，
+    # 单只果子那张重跑一次与改动前逐字节相同。
+    def placed(px, py):
+        return (px + lean * (py - cy), py)
+
     fig = project.Project(width=W, height=H, title='apple body')
     for index, (diffuse, reach, angle, uz, ux, uy) in enumerate(spots):
         rim = max(0.0, -uy * 0.8 + ux * 0.25) if uz < 0.55 else 0.0
@@ -220,8 +227,7 @@ def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
             # 正对着观者的地方是平的。画家在这里是一两笔斜着扫过去：方向随便，长度够，把中心盖住就算。
             spin = rng.uniform(0.0, math.pi)
             arm = rng.uniform(80.0, 170.0) * 0.5
-            hx = cx + reach * math.cos(angle) * 1.06
-            hy = cy + reach * math.sin(angle) * 0.95
+            hx, hy = placed(cx + reach * math.cos(angle) * aspect, cy + reach * math.sin(angle) * squash)
             points = [(hx - math.cos(spin) * arm, hy - math.sin(spin) * arm * 0.9),
                       (hx, hy),
                       (hx + math.cos(spin) * arm, hy + math.sin(spin) * arm * 0.9)]
@@ -232,7 +238,7 @@ def body_marks(cx, cy, radius, seed=20261106, dim=1.0):
             for step in range(5):
                 turn = angle + (step / 4.0 - 0.5) * 2.0 * half
                 sway = reach * (1.0 + 0.03 * math.sin(step * 1.7 + index))
-                points.append((cx + sway * math.cos(turn) * 1.06, cy + sway * math.sin(turn) * 0.95))
+                points.append(placed(cx + sway * math.cos(turn) * aspect, cy + sway * math.sin(turn) * squash))
             width = rng.uniform(20.0, 36.0)
         fig.add_stroke(core.stroke_record(
             points, 'brush', seed=index, colour=hexed(pigment), soft=0.7,
