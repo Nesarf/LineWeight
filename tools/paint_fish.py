@@ -97,10 +97,15 @@ def jitter(colour, amount, rng):
 
 
 def fish_colour(value, rng):
-    """银背、粉腹、背脊偏青 —— 鱼的体色是上下分带的，不是从亮到暗一路排下去。"""
-    deep, mid, back = (34, 38, 48), (172, 162, 150), (208, 204, 190)
+    """银背、粉腹、背脊偏青 —— 鱼的体色是上下分带的，不是从亮到暗一路排下去。
+
+    **三段压暗一档。** 鳍变透之后身体露了出来，而它原来靠鳍的边缘挡着，读起来没这么白；现在整条鱼是一块
+    浅灰，比背景亮得多而不比背景有意思。同一条教训在杯子与桌布上各出现过一次：主体要比周围亮，
+    但不能亮到没有颜色。
+    """
+    deep, mid, back = (34, 38, 48), (140, 132, 122), (176, 172, 160)
     body = mix(deep, mid, value / 0.55) if value <= 0.55 else mix(mid, back, (value - 0.55) / 0.55)
-    body = mix(body, (150, 132, 138), 0.18)
+    body = mix(body, (128, 116, 124), 0.18)
     return jitter(body, 9.0, rng)
 
 
@@ -202,11 +207,15 @@ def fish_marks(seed=8181):
 
 
 def fin_marks(seed=505):
-    """鳍与远侧的那一片：**鳞条从根向外辐射**，不是一排横笔。
+    """鳍与远侧的那一片：**鳞条从根向外辐射，而鳍尖要透。**
 
-    上一版的鳍读成一块白絮：笔触水平、颜色又取到了浅的那一头，落在形状上既没有方向也没有根。鳍的构造是
-    从根部伸出去的一排细条，所以每一笔沿「这一点背离鳍心」的方向走，颜色也压暗一档 —— 鳍比身体薄，
-    背面没有那么多光。
+    上一版的鳍读成一块白絮：笔触水平、颜色又取到了浅的那一头，落在形状上既没有方向也没有根。鳍的构造是从
+    根部伸出去的一排细条，所以每一笔沿「这一点背离鳍心」的方向走，颜色也压暗一档 —— 鳍比身体薄，背面没有
+    那么多光。
+
+    **半透明不需要新机制，`alpha_profile` 早就够了。** 4.57 节说这要一个「不透明度跟局部厚度走」的东西，
+    而厚度在这里本来就有数：`relief` 是到轮廓的距离归一化再开方，鳍尖上是零、根上接近一。所以 alpha 直接
+    跟着它走 —— 鳍尖 0.22（背面的水和背景透得过来），鳍根 0.88。一条鳍的根连在身体上，那里不该透。
     """
     rng = random.Random(seed)
     fig = canvas('fins')
@@ -219,18 +228,20 @@ def fin_marks(seed=505):
         for i in range(density):
             pick = rng.randrange(rows.size)
             y, x = int(rows[pick]), int(cols[pick])
+            thin = math.sqrt(max(0.0, float(relief[y, x])))
             pigment = jitter(mix((58, 54, 56), (146, 138, 130), min(1.0, float(tone[y, x]))), 7.0, rng)
             dx, dy = x - cx0, y - cy0
             scale = math.hypot(dx, dy) or 1.0
             ux, uy = dx / scale, dy / scale
             spin = rng.uniform(-0.28, 0.28)
             ux, uy = ux * math.cos(spin) - uy * math.sin(spin), ux * math.sin(spin) + uy * math.cos(spin)
-            length = rng.uniform(24.0, 62.0)
+            length = rng.uniform(24.0, 62.0) * (0.55 + 0.45 * thin)
+            alpha = 0.22 + 0.66 * thin
             fig.add_stroke(core.stroke_record(
                 [(x - ux * length * 0.5, y - uy * length * 0.5), (x, y),
                  (x + ux * length * 0.5, y + uy * length * 0.5)], 'brush', seed=900 + i,
                 colour=hexed(pigment), soft=0.8, height=0.20, bristle=0.30,
-                width_profile=[rng.uniform(6, 13)] * 3, alpha_profile=[0.62, 0.80, 0.62],
+                width_profile=[rng.uniform(6, 13)] * 3, alpha_profile=[alpha * 0.82, alpha, alpha * 0.82],
                 absolute_width=True, edge=rng.uniform(2.0, 4.2)), stage='line', layer='paint', note='')
     return fig
 
