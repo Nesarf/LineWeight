@@ -667,11 +667,23 @@ def clip(layer: Layer, mask: Layer, invert: bool = False) -> Layer:
     Cheaper and more predictable than a mask object, and it composes: clip a wash to a pencil region, clip that to a
     silhouette, and every step is a multiply of two numbers. Inverting covers the case the mask is really a hole --
     light through a window, colour outside a line -- without needing a second mask.
+
+    **The thickness has to be clipped with the colour.** A layer's `relief` is part of that layer; leaving it whole
+    after clipping the paint puts thickness outside the shape, and `light` then finds a cliff along the cut and draws
+    a bright line exactly where the edge is. It is the one visible artefact a clipped layer can produce, and it turned
+    up the first time a contour was drawn here (`AESTHETIC-LIBRARY.md` 4.64). A layer without relief clips exactly as
+    it always did.
     """
     if (layer.width, layer.height) != (mask.width, mask.height):
         raise ValueError('layer and mask must be the same size: %sx%s vs %sx%s'
                          % (layer.width, layer.height, mask.width, mask.height))
     out = Layer(layer.width, layer.height)
+    if layer.relief is not None:
+        if _np is None:
+            raise RuntimeError('clipping a layer that carries relief needs numpy')
+        gate = _np.frombuffer(mask.data, dtype=_np.uint8).reshape(layer.height, layer.width, 4)[:, :, 3]
+        gate = gate.astype(_np.float64) / 255.0
+        out.relief = layer.relief * (1.0 - gate if invert else gate)
     for index in range(0, len(layer.data), 4):
         m = mask.data[index + 3] / 255.0
         if invert:

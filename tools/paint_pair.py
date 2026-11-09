@@ -205,10 +205,15 @@ def table_cloth(picture, seed=1201):
     fold = (0.55 * np.sin(grid_x * 0.0060 + grid_y * 0.0020)
             + 0.30 * np.sin(grid_y * 0.0090 - grid_x * 0.0030)
             + 0.20 * np.sin((grid_x + grid_y) * 0.0035))
+    # **布的边会堆起来。** 一块布从桌面上翻上来的时候，靠近边的那一带积着一道隆起 —— 这不是装饰，是布的形状
+    # 本身；少了它，布读成一张贴在桌上的纸。而褶的明暗也跟着调到能看见：梯度乘数从 620 到 900，
+    # 因为压暗之后的色阶窄了，同样的起伏在暗色上显得更小。
+    top_line = 730.0 + 30.0 * np.sin(grid_x * 0.0055) + 15.0 * np.sin(grid_x * 0.0140 + 2.1)
+    fold = fold + 0.85 * np.exp(-((grid_y - top_line) / 54.0) ** 2)
     fold = (fold - fold.min()) / (fold.max() - fold.min())
     grad_y, grad_x = np.gradient(fold)
-    nx = -grad_x * 620.0
-    ny = -grad_y * 620.0
+    nx = -grad_x * 900.0
+    ny = -grad_y * 900.0
     norm = np.sqrt(nx * nx + ny * ny + 1.0)
     lambert = (nx * -0.50 + ny * -0.58 + 1.15) / (norm * math.sqrt(1.909))
     tone = np.clip(0.20 + 0.95 * lambert, 0.0, 1.0)
@@ -234,7 +239,9 @@ def table_cloth(picture, seed=1201):
              (x, y),
              (x + tx * length * 0.5 + ty * bend, y + ty * length * 0.5 - tx * bend)],
             'brush', seed=4000 + i, colour=pa.hexed(pigment), soft=0.8,
-            height=width / 130.0 * rng.uniform(0.30, 0.60),
+            # **被裁的图层不该带厚度。** `clip` 把 relief 一起裁了（否则厚度留在形状外），可是硬裁本身在边界
+            # 上留一道悬崖：里边有值、外边是零，而 `light` 读的就是梯度 —— 于是那条边被画成一道亮线，比轮廓笔
+            # 亮得多。布的凹凸已经由高度场的明暗给足了，这一层不需要再加厚度。
             bristle=0.36, bristle_pitch=rng.uniform(2.6, 4.2),
             colour_profile=[[c * s for c in pigment] for s in (0.95, 1.00, 0.97)],
             width_profile=[width * 0.90, width, width * 0.92],
@@ -247,7 +254,9 @@ def table_cloth(picture, seed=1201):
     for i in range(len(edge) - 1):
         x0, y0 = edge[i]
         x1, y1 = edge[i + 1]
-        tone_here = pa.jitter(pa.mix((54, 50, 44), (104, 96, 82), rng.random()), 6.0, rng)
+        # **折边要比布面暗，不是比布面亮。** 第一版取 (54,50,44) 到 (104,96,82)，而上限比布面最亮的 96 还高
+        # —— 于是在布的暗处那一圈读成一条白线。折边是背着光的那一褶，它在色的暗端。
+        tone_here = pa.jitter(pa.mix((36, 33, 30), (74, 68, 60), rng.random()), 5.0, rng)
         rim.add_stroke(core.stroke_record(
             [(x0, y0), ((x0 + x1) * 0.5, (y0 + y1) * 0.5 + 3.0), (x1, y1)], 'brush', seed=5000 + i,
             colour=pa.hexed(tone_here), soft=0.6, width_profile=[6.0, 8.0, 6.0],

@@ -97,3 +97,30 @@ def test_a_mark_without_a_profile_is_still_one_colour():
     right = data[20, 94, :3].astype(int)
     assert abs(int(left[0]) - int(right[0])) < 12
     assert abs(int(left[2]) - int(right[2])) < 12
+
+
+def test_clipping_takes_the_thickness_with_the_colour():
+    """A clipped layer must not keep thickness outside the shape.
+
+    The colour is cut but `relief` is what `light` reads: a whole relief under a cut layer leaves a cliff along the
+    cut, and the light draws a bright line exactly at the edge. That is the one visible artefact clipping can
+    produce, and it turned up the first time a contour was drawn in `tools/paint_pair.py`.
+    """
+    layer = painted(height=0.5, colour='#c04030')
+    mask = r.Layer(W, H)
+    r.fill_polygon(mask, [(0, 0), (W // 2, 0), (W // 2, H), (0, H)], (255, 255, 255), 1.0)
+    cut = r.clip(layer, mask)
+    assert cut.relief is not None, 'clipping dropped the relief entirely'
+    assert cut.relief[:, W // 2 + 2:].max() < 1e-9, 'thickness survived outside the mask'
+    assert cut.relief[:, : W // 2 - 2].max() > 0.0, 'thickness was removed inside the mask too'
+
+
+def test_clipping_a_layer_without_relief_only_cuts_the_alpha():
+    """The path every clipped drawing took before relief existed, and it must still clip exactly as it did."""
+    layer = painted(colour='#c04030')
+    mask = r.Layer(W, H)
+    r.fill_polygon(mask, [(0, 0), (W // 2, 0), (W // 2, H), (0, H)], (255, 255, 255), 1.0)
+    cut = r.clip(layer, mask)
+    assert cut.relief is None
+    assert cut.data[(20 * W + 104) * 4 + 3] == 0, 'alpha survived outside the mask'
+    assert cut.data[(20 * W + 30) * 4 + 3] > 0, 'alpha was removed inside the mask'
