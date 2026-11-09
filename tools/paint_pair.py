@@ -18,6 +18,8 @@ import os
 import random
 import sys
 
+import numpy as np
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -161,10 +163,93 @@ def cup(picture, cx, top, radius, height, seed=909):
     return r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
 
 
+def linen_colour(value):
+    """铺在桌上的亚麻：比挂着的那块暗一档，因为它躺着，受光的角度平。"""
+    # **压暗一档，与杯子那两次是同一个教训。** 第一版取到 (206,196,172)，布成了画面最亮的东西 —— 主体被压
+    # 到下面，画面上半是空的墙、下半是一块发光的布。铺在桌上的布是背景，它要比两只果子暗。
+    dark, mid, light = (30, 28, 38), (76, 72, 62), (120, 112, 96)
+    body = pa.mix(dark, mid, value / 0.55) if value <= 0.55 else pa.mix(mid, light, (value - 0.55) / 0.45)
+    if value < 0.30:
+        body = pa.mix(body, (44, 46, 74), (0.30 - value) * 0.60)
+    if value > 0.78:
+        body = pa.mix(body, (222, 206, 176), (value - 0.78) * 0.80)
+    return body
+
+
+def table_cloth(picture, seed=1201):
+    """铺在桌面上的一块布：一个高度场，笔触沿等高度线走。
+
+    **这个函数没有被调用，而这是三次试出来的结论。** 第一次铺满画面下半部：它成了第三个主体，画面散掉。
+    第二次压暗一档：它自己看着像一块布了，而放进画面里仍然比两只果子亮 —— 与杯子那两次一模一样。
+    第三次缩成前景的一条边：边缘的锯齿全露出来，读成泡沫。
+
+    第三条是不成立的根，值得记住：**一块布的边是一条被剪断的线**（布的边是剪出来的、折出来的），
+    而这里所有形状的边都是笔触的自然收尾。苹果用这个足够 —— 它是圆的，圆没有边只有轮廓；鱼用这个也够 ——
+    鱼身是软的。布不够，而补它需要一条「先定轮廓、再在轮廓里落笔」的路，那是另一件事。
+
+    形体模型本身是对的：这是 `paint_fish` 那套机器的第二次使用 —— 高度场给形体，梯度给明暗，笔触沿等值线走。
+    鱼的高度场是「到轮廓的距离」，这里的高度场是几组正弦叠出来的褶。两者除了「怎么算高度」之外一个参数都不用改。
+    """
+    rng = random.Random(seed)
+    grid_x, grid_y = np.meshgrid(np.arange(W, dtype=np.float64), np.arange(H, dtype=np.float64))
+    # **布只露一条边。** 上一版让它从 742 铺到底，占了画面下半的三分之一 —— 它不再是背景，而成了第三个
+    # 主体，画面因此散掉。一块能读成「桌沿」的布边只需要露出一百五十像素。
+    top_edge = 946.0 + 26.0 * np.sin(grid_x * 0.0060) + 14.0 * np.sin(grid_x * 0.0170 + 1.7)
+    inside = ((grid_y > top_edge)
+              & (grid_x > 54.0 + 26.0 * np.sin(grid_y * 0.0050))
+              & (grid_x < 1064.0 - 30.0 * np.sin(grid_y * 0.0045 + 0.8)))
+    # **褶的频率要低。** 第一版三个正弦取 0.013 / 0.021 / 0.0075，叠出来是高密度的碎纹 —— 一块铺开的布
+    # 是有几道大褶、中间摊平的，不是揉皱的纸。频率减半之后，剩下的面积才开始读成「布」而不是「雪地」。
+    fold = (0.55 * np.sin(grid_x * 0.0060 + grid_y * 0.0020)
+            + 0.30 * np.sin(grid_y * 0.0090 - grid_x * 0.0030)
+            + 0.20 * np.sin((grid_x + grid_y) * 0.0035))
+    fold = (fold - fold.min()) / (fold.max() - fold.min())
+    grad_y, grad_x = np.gradient(fold)
+    nx = -grad_x * 620.0
+    ny = -grad_y * 620.0
+    norm = np.sqrt(nx * nx + ny * ny + 1.0)
+    lambert = (nx * -0.50 + ny * -0.58 + 1.15) / (norm * math.sqrt(1.909))
+    tone = np.clip(0.20 + 0.95 * lambert, 0.0, 1.0)
+    rows, cols = np.nonzero(inside)
+    fig = project.Project(width=W, height=H, title='table cloth')
+    for i in range(900):
+        pick = rng.randrange(rows.size)
+        y, x = int(rows[pick]), int(cols[pick])
+        gyp, gxp = float(grad_y[y, x]), float(grad_x[y, x])
+        scale = math.hypot(gxp, gyp) or 1.0
+        tx, ty = -gyp / scale, gxp / scale
+        if tx < 0.0:
+            tx, ty = -tx, -ty
+        spin = rng.uniform(-0.25, 0.25)
+        tx, ty = tx * math.cos(spin) - ty * math.sin(spin), tx * math.sin(spin) + ty * math.cos(spin)
+        pigment = pa.jitter(linen_colour(float(tone[y, x])), 6.0, rng)
+        length = rng.uniform(110.0, 240.0)
+        width = rng.uniform(22.0, 42.0)
+        bend = rng.uniform(-0.10, 0.10) * length
+        fig.add_stroke(core.stroke_record(
+            [(x - tx * length * 0.5 - ty * bend, y - ty * length * 0.5 + tx * bend),
+             (x, y),
+             (x + tx * length * 0.5 + ty * bend, y + ty * length * 0.5 - tx * bend)],
+            'brush', seed=4000 + i, colour=pa.hexed(pigment), soft=0.8,
+            height=width / 130.0 * rng.uniform(0.30, 0.60),
+            bristle=0.36, bristle_pitch=rng.uniform(2.6, 4.2),
+            colour_profile=[[c * s for c in pigment] for s in (0.95, 1.00, 0.97)],
+            width_profile=[width * 0.90, width, width * 0.92],
+            alpha_profile=[rng.uniform(0.72, 0.86)] * 3,
+            absolute_width=True, edge=rng.uniform(1.8, 4.0)), stage='line', layer='paint', note='')
+    # 半透明叠上去：底下桌面的暗色透出来一点，布就不至于像一块贴上去的板。
+    return r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 0.90)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     picture = pa.ground(*BACK)
     picture = wall(picture)
+    # **桌布没有进这张画，三次都没站住。** `table_cloth` 保留在这里是因为那三次的错误各不相同，而它们都是
+    # 以后会再犯的：铺满下半部（成了第三个主体，画面散）、压暗之后仍然比果子亮（主体被压）、缩成前景一条边
+    # （边缘的锯齿全露出来，像泡沫）。第三条是不成立的根 —— 一块布的边是一条被剪断的线，而这里所有形状的边
+    # 都是笔触的自然收尾；苹果用这个足够，布不够。
+    # picture = table_cloth(picture)
     # **两道阴影都要在两只果子之前。** 第一版按「一只果子一整套」来排：后一只的地面阴影、后一只的果身、
     # 前一只的地面阴影、前一只的果身 —— 于是前一只的阴影压在后一只的果身上，后面那只被绕了一圈黑环，
     # 前面那只像在发光。阴影落在桌面上，两只果子都在桌面上方，所以阴影必须全部排在果身之前。
