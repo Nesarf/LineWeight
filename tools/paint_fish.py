@@ -225,12 +225,16 @@ def fin_marks(seed=505):
     """
     rng = random.Random(seed)
     fig = canvas('fins')
-    for shape, density in ((FIN, 150), (DORSAL, 170), (TAIL, 200)):
+    # **辐射中心是根，不是质心。** 质心落在形状中央，笔触从那里朝四面八方散开 —— 读成一朵花。鳍条是从
+    # 贴着身体的那条边长出来的，所以中心取在根上，每一条只朝一个方向去。三个鳍的根不在同一侧，所以各给一个。
+    for shape, density, root in ((FIN, 150, (188.0, 440.0)),
+                                 (DORSAL, 170, (586.0, 338.0)),
+                                 (TAIL, 200, (167.0, 474.0))):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
         rows, cols = np.nonzero(mask)
-        cx0, cy0 = float(cols.mean()), float(rows.mean())
+        cx0, cy0 = root
         for i in range(density):
             pick = rng.randrange(rows.size)
             y, x = int(rows[pick]), int(cols[pick])
@@ -241,13 +245,14 @@ def fin_marks(seed=505):
             ux, uy = dx / scale, dy / scale
             spin = rng.uniform(-0.28, 0.28)
             ux, uy = ux * math.cos(spin) - uy * math.sin(spin), ux * math.sin(spin) + uy * math.cos(spin)
-            length = rng.uniform(24.0, 62.0) * (0.55 + 0.45 * thin)
+            # 鳍条要比上一版长：短笔从根部散开只是毛，长的才读成条。
+            length = rng.uniform(34.0, 90.0) * (0.55 + 0.45 * thin)
             alpha = 0.22 + 0.66 * thin
             fig.add_stroke(core.stroke_record(
                 [(x - ux * length * 0.5, y - uy * length * 0.5), (x, y),
                  (x + ux * length * 0.5, y + uy * length * 0.5)], 'brush', seed=900 + i,
                 colour=hexed(pigment), soft=0.8, height=0.20, bristle=0.30,
-                width_profile=[rng.uniform(6, 13)] * 3, alpha_profile=[alpha * 0.82, alpha, alpha * 0.82],
+                width_profile=[rng.uniform(5, 11)] * 3, alpha_profile=[alpha * 0.82, alpha, alpha * 0.82],
                 absolute_width=True, edge=rng.uniform(2.0, 4.2)), stage='line', layer='paint', note='')
     return fig
 
