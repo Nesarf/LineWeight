@@ -401,11 +401,25 @@
     "note": "**A taxonomy of failure by whether it can be fixed, not by whether it is visible.** The named examples of the measurable fault are all proportion errors, which is the class every checker in this repository can already catch; the unmeasurable one is 'the brush moves and it is a dead thing', which none can. Written down because it says what the two halves of this project are for: `tools/` measures the first kind, and no tool measures the second."
   },
 
-  "landscape_four_qualities": {
-    "count": 4,
+  "landscape_four_qualities": {    "count": 4,
     "items": ["可行 walkable", "可望 viewable", "可遊 wanderable", "可居 liveable"],
     "order": "可行可望不如可居可遊之為得 -- walkable and viewable are worth less than wanderable and liveable",
     "source": "Guo Xi, 林泉高致, 山水訓: '世之篤論，謂山水有可行者，有可望者，有可遊者，有可居者。畫凡至此，皆入妙品。'",
     "note": "Four tests for whether a landscape painting works, and they are **tests of what a viewer can imagine doing in it**, not of what is in it. The source ranks them: a picture you can walk through is worth less than one you could live in. That is a standard no measurement in this repository touches, and it is the reason a landscape can pass every check here and still be empty."
+  },
+
+  "landscape_seven_necessities": {
+    "count": 7,
+    "items": [
+      {"lacks": "雲", "fails": "不秀 -- no elegance"},
+      {"lacks": "水", "fails": "不媚 -- no charm"},
+      {"lacks": "道路", "fails": "不活 -- no life"},
+      {"lacks": "林木", "fails": "不生 -- no growth"},
+      {"lacks": "深遠", "fails": "淺 -- it is shallow"},
+      {"lacks": "平遠", "fails": "近 -- it is only near"},
+      {"lacks": "高遠", "fails": "下 -- it is only low"}
+    ],
+    "source": "Guo Xi, 林泉高致, 山水訓: '山無雲則不秀，無水則不媚，無道路則不活，無林木則不生，無深遠則淺，無平遠則近，無高遠則下。'",
+    "note": "**Seven absences and what each one costs, and the last three are not about a picture's contents at all -- they are about whether it has a distance in it.** The first four are things to put in; the last three are the three entry conditions of a landscape, and failing any one of them leaves a picture that is 'only shallow', 'only near', 'only low'. Written down because it turns the checklist around: instead of asking what a landscape has, ask which of the seven it lacks, and the answer names a fault rather than a missing object."
   }
 }

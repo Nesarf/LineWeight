@@ -111,7 +111,7 @@ def smooth_run(values, width=17):
     return np.convolve(padded, kernel, mode='same')[width:width + values.size]
 
 
-def ridge_layer(ridge, depth, level, seed, ceiling=0.88):
+def ridge_layer(ridge, depth, level, seed, ceiling=0.88, waterfall=None):
     """一次铺开的墨：**从脊往下淡到零，而「往下多深」是这一座山的远近。**
 
     「往下多深」不是画出来的 —— alpha 走到零，墨就没了，那里就是山脚。所以这一层不需要任何轮廓：它是一次渐变，
@@ -146,6 +146,18 @@ def ridge_layer(ridge, depth, level, seed, ceiling=0.88):
     slope = np.gradient(smooth_run(top_of))
     facing = 0.55 + 0.45 * (0.5 + 0.5 * np.tanh(-slope * 1.6))
     alpha = np.where(solid, fall, 0.0) * ceiling * mottle[None, :] * facing[None, :]
+    # **瀑布是一条没有被墨碰到的竖缝。** 没骨的做法里水不画 —— 画的是它两侧的石头。所以这里不是「加一条白的
+    # 水」，是从山体里**减去**一条：alpha 在那一列上降到零，纸自己露出来。**加法做出来的水是一条贴在石头上的白
+    # 带，减法做出来的水是石头让开的地方。**
+    if waterfall:
+        centre, half = waterfall
+        columns = np.arange(W, dtype=np.float64)
+        # **上窄下宽**：水往下散，所以缝在底部更宽。用一个沿 y 的系数做不到（alpha 是二维的），所以缝的宽度按
+        # 这一列到中心的距离算，而**下半部取更松的幂** —— 那是「散开」在一条竖直缝上的写法。
+        rows_below = np.clip((rows - 380.0) / 420.0, 0.0, 1.0)
+        width = half * (0.45 + 0.85 * rows_below)
+        cut = np.clip(1.0 - np.abs(columns[None, :] - centre) / width, 0.0, 1.0) ** 0.7
+        alpha = alpha * (1.0 - cut)
     rgba[:, :, 0] = int(round(tone[0]))
     rgba[:, :, 1] = int(round(tone[1]))
     rgba[:, :, 2] = int(round(tone[2]))
@@ -155,7 +167,7 @@ def ridge_layer(ridge, depth, level, seed, ceiling=0.88):
     return layer, solid
 
 
-def mountain(ridge, depth, level, seed, passes=4):
+def mountain(ridge, depth, level, seed, passes=4, waterfall=None):
     """一座山是**几遍积墨**叠起来的，不是一次渐变。
 
     第一版每座山只有一层，画出来是三条半透明的波带 —— 而真实的山水是积墨：一层干了再上一层，后一遍的脊比前一遍
@@ -167,7 +179,7 @@ def mountain(ridge, depth, level, seed, passes=4):
     for step in range(max(1, passes)):
         shifted = [(x, y + depth * 0.16 * step) for x, y in ridge]
         layer, solid = ridge_layer(shifted, depth * (1.0 - 0.14 * step),
-                                   level * (1.0 - 0.10 * step), seed + step)
+                                   level * (1.0 - 0.10 * step), seed + step, waterfall=waterfall)
         picture = r.blend(picture, layer, 'normal', 1.0)
     return picture, solid
 
@@ -352,6 +364,32 @@ def figure_dot(x, y, seed=6100):
     return fig
 
 
+def splash(centre, y, level=0.50, seed=6200):
+    """溅起的水花：**瀑布底下的一小丛淡墨，而它比瀑布本身更说明这是水。**
+
+    一条竖直的缝可以是一道裂缝、一条石缝、一条什么都没画的空白。**水花把它认领成水** —— 因为只有水从高处落下来
+    才会在底下散成一片。所以这几笔不是装饰，是那个减法最后需要的**一句声明**：缝是水，因为它落到了地上。
+
+    位置在缝的底端，宽度比缝宽三倍，而每一笔都朝外斜 —— 落下的东西散开时是向外走的。
+    """
+    rng = random.Random(seed)
+    fig = project.Project(width=W, height=H, title='splash')
+    ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(level))
+    for i in range(14):
+        side = rng.choice((-1.0, 1.0))
+        span = rng.uniform(14.0, 52.0)
+        rise = rng.uniform(4.0, 20.0)
+        fig.add_stroke(core.stroke_record(
+            [(centre, y - rng.uniform(0.0, 10.0)),
+             (centre + side * span * 0.55, y - rise * 0.8),
+             (centre + side * span, y - rise * 0.2)], 'brush', seed=seed + i,
+            colour=ink, soft=0.7, edge=2.4, bristle=0.34, bristle_pitch=2.6,
+            width_profile=[rng.uniform(2.6, 4.6), rng.uniform(1.8, 3.4), 1.0],
+            alpha_profile=[rng.uniform(0.30, 0.50), 0.24, 0.10], absolute_width=True),
+            stage='line', layer='paint', note='')
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -390,9 +428,9 @@ SHEN_NEAR = [(-140, 840), (90, 820), (220, 770), (380, 830), (540, 780), (700, 7
 
 SCENES = {
     # 平远：脊缓、深度浅、浓度低、平滑足 —— 观者站在近山上望远山，所以一切都摊开在水平方向上。
-    'ping': (((FAR, 70.0, INK_LEVELS[4], 0),
-              (MID, 160.0, INK_LEVELS[3], 34),
-              (NEAR, 220.0, INK_LEVELS[2], 56)), 7, (38.0, 110.0)),
+    'ping': (((FAR, 70.0, INK_LEVELS[4], 0, None),
+              (MID, 160.0, INK_LEVELS[3], 34, None),
+              (NEAR, 220.0, INK_LEVELS[2], 56, None)), 7, (38.0, 110.0)),
     # 高远：脊陡、深度深、浓度高、平滑少 —— 尖峰留着，因为「其勢突兀」就是这四步里被平滑得最少的那一步。
     #
     # **而三层不能叠得太密。** 上一版三层的深度是 200/260/320，而三条脊都在 y 200 到 800 之间 —— 于是远山透不出
@@ -401,17 +439,20 @@ SCENES = {
     #
     # **皴也要跟着坡变短。** 一段四十到一百一十像素的细笔落在陡坡上，读成一道划痕；斧劈那一类皴是短而宽的块，
     # 因为陡坡上的一笔本来就短。所以高远这一场的皴收到二十二到五十八。
-    'gao': (((GAO_FAR, 120.0, INK_LEVELS[4], 0),
-             (GAO_MID, 210.0, INK_LEVELS[2], 34),
-             (GAO_NEAR, 300.0, INK_LEVELS[1], 60)), 3, (22.0, 58.0)),
-    # 深远：六层，一层比一层近、一层比一层淡 —— **浓度是往回走的**，远处最重。而每层的深度只有九十：它只够走到下一
-    # 层上方一点，于是层与层之间留着二十到四十像素的纸，那就是山腰的云。**「大块留白」不是画上去的，是六层之间
-    # 必然剩下的那条缝。**
-    'shen': (((SHEN_FAR, 150.0, 0.62, 34),
-              (SHEN_A, 160.0, 0.50, 30),
-              (SHEN_B, 140.0, 0.40, 26),
-              (SHEN_C, 140.0, 0.31, 22),
-              (SHEN_NEAR, 150.0, 0.24, 18)), 5, (14.0, 34.0)),
+    #
+    # **而「山無水則不媚」—— 高远这一场有一道瀑布，落在一道谷里（x=640，主峰左侧的山坳）。** 它只挖在近山那一层：
+    # 远层的瀑布会被近层遮住，挖了也看不见，而挖一条看不见的缝等于没画。
+    'gao': (((GAO_FAR, 120.0, INK_LEVELS[4], 0, None),
+             (GAO_MID, 210.0, INK_LEVELS[2], 34, None),
+             (GAO_NEAR, 300.0, INK_LEVELS[1], 60, (640.0, 26.0))), 3, (22.0, 58.0)),
+    # 深远：五层，一层比一层近、一层比一层淡 —— **浓度是往回走的**，远处最重。而每层的深度只比间距多二十：重叠
+    # 只发生在边界上，于是层与层之间留着纸，那就是山腰的云。**「大块留白」不是画上去的，是五层之间必然剩下的
+    # 那条缝。**
+    'shen': (((SHEN_FAR, 150.0, 0.62, 34, None),
+              (SHEN_A, 160.0, 0.50, 30, None),
+              (SHEN_B, 140.0, 0.40, 26, None),
+              (SHEN_C, 140.0, 0.31, 22, (700.0, 16.0)),
+              (SHEN_NEAR, 150.0, 0.24, 18, None)), 5, (14.0, 34.0)),
 }
 
 
@@ -427,9 +468,9 @@ def main():
     # **远山不皴。** 「遠山無皴，遠水無波，遠人無目 —— 非無也，如無耳」（郭熙《林泉高致》）。三句说的是同一件事：
     # 远处的细节不是「没画」，是画了也读不出来。所以远山那一档的组数是零，而不是小一点 —— 这不是省笔，是那条
     # 判据本身：**远处的形体要被减去它显示不出来的东西。**
-    for ridge, depth, level, groups in planes:
+    for ridge, depth, level, groups, fall in planes:
         smooth = ridge_curve(ridge, rounds=rounds)
-        layer, solid = mountain(smooth, depth, level, seed=len(ridge))
+        layer, solid = mountain(smooth, depth, level, seed=len(ridge), waterfall=fall)
         picture = r.blend(picture, layer, 'normal', 1.0)
         fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7, reach=reach)
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
@@ -442,6 +483,13 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(trees.marks)
+        # **瀑布底下要有水花**，而它比瀑布本身更说明那是水：一条竖直的缝可以是一道裂缝、一条石缝、一条什么都没画
+        # 的空白，而水花把它认领成水。**加法里那几笔是减法最后需要的一句声明。**
+        if fall:
+            spray = splash(fall[0], 706.0, level, seed=6200 + len(ridge))
+            picture = r.blend(picture, r.render_marks([m.to_dict() for m in spray.marks], W, H, sweep=True,
+                                                      paper=rough), 'normal', 1.0)
+            marks += len(spray.marks)
     if mode == 'gao':
         # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
         # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
