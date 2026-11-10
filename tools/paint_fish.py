@@ -181,14 +181,13 @@ def fish_colour(across, rng, amount=9.0):
     假设两管颜料一样强，于是暗部亮得太早、腹部白得太快（4.72 节，`lineweight/pigment.py`）。
     """
     ridge, flank, belly = (86, 100, 96), (188, 168, 134), (238, 216, 196)
-    if across <= 0.46:
-        body = pigment.mix_by_strength(ridge, flank, across / 0.46, DEEP_STRENGTH, MID_STRENGTH)
-    elif across <= 0.68:
-        # **中间这一段是纯的。** 上一版让背到侧、侧到腹两条曲线首尾相接，于是「体侧的银金」只在一处出现过 ——
-        # 而一段色带要有宽度才读得成一段，不是两个渐变刚好交于一点。
-        body = tuple(float(c) for c in flank)
+    # **两段之间不再插一段纯色。** 上一版在 0.46 与 0.68 之间放了一段不加别的金，理由是「一段色带要有宽度」——
+    # 而它画出来是一条贴在身上的横带，因为那一段的边界是两条直的等值线。真实的体侧是一整片，只是从背到腹一直
+    # 在变；所以让两条曲线在 0.52 处接上，中间不留平台。
+    if across <= 0.52:
+        body = pigment.mix_by_strength(ridge, flank, across / 0.52, DEEP_STRENGTH, MID_STRENGTH)
     else:
-        body = pigment.mix_by_strength(flank, belly, (across - 0.68) / 0.32, MID_STRENGTH, BACK_STRENGTH)
+        body = pigment.mix_by_strength(flank, belly, (across - 0.52) / 0.48, MID_STRENGTH, BACK_STRENGTH)
     # **虹彩带在侧线上，不在体侧正中。** 上一版把它放在 `across` 零点五二，而那正好是体侧面积最大的一条 —— 于是
     # 整条鱼被染成青绿，读成一块褪了色的肥皂。它该窄，而且该靠着侧线（零点三四）那一带 —— 而第一版放到那里时
     # 还没收窄，整片交界的绿把「银金」又盖掉了一次。
@@ -564,11 +563,12 @@ def eye_marks(seed=77):
         colour=hexed(jitter((188, 176, 156), 6.0, rng)), soft=0.8,
         width_profile=[3.0, 6.0, 3.0], alpha_profile=[0.35, 0.72, 0.30],
         absolute_width=True, edge=1.6), stage='line', layer='paint', note='')
-    # 高光：一点，斜的，不落在正中。
+    # 高光：一点，斜的，不落在正中。**它要比上一版小** —— 五乘四落在二十二像素的瞳上，把瞳盖掉了一半，而高光
+    # 是一点反射，不是瞳里的第二只眼。
     fig.add_stroke(core.stroke_record(
-        [(cx - 5.0, cy + 0.0), (cx - 1.5, cy - 3.0)], 'brush', seed=330,
-        colour='#fff8ec', soft=0.7, width_profile=[5.0, 4.0],
-        alpha_profile=[0.94, 0.86], absolute_width=True, edge=1.4),
+        [(cx - 5.0, cy + 0.0), (cx - 2.2, cy - 2.6)], 'brush', seed=330,
+        colour='#fff8ec', soft=0.7, width_profile=[3.4, 2.8],
+        alpha_profile=[0.88, 0.80], absolute_width=True, edge=1.4),
         stage='line', layer='paint', note='')
     return fig
 
