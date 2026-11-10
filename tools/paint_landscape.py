@@ -52,17 +52,22 @@ NEAR = [(-140, 800), (40, 700), (170, 560), (250, 620), (400, 690), (520, 540), 
         (1430, 720), (1540, 810)]
 
 # **高远的那一套。** 郭熙：「自山下而仰山顛，謂之高遠……高遠之色清明……高遠之勢突兀。」所以这三层是**尖峰加深谷**，
-# 一层比一层陡、一层比一层高，而底部只留一条窄窄的水 —— 观者站在山脚，抬头。**同一片山，视点换了，画就换了种**
-# 这件事，是这一轮唯一想演给人看的东西。
-GAO_FAR = [(-140, 760), (100, 700), (220, 260), (300, 640), (430, 180), (520, 560),
-           (660, 120), (760, 600), (900, 220), (1000, 680), (1140, 160), (1240, 620),
-           (1380, 340), (1540, 760)]
-GAO_MID = [(-140, 860), (80, 780), (200, 380), (280, 720), (400, 300), (500, 680),
-           (640, 240), (760, 700), (900, 320), (1020, 760), (1160, 280), (1280, 720),
-           (1400, 460), (1540, 860)]
-GAO_NEAR = [(-140, 880), (60, 800), (180, 460), (260, 780), (380, 380), (480, 760),
-            (620, 320), (740, 780), (880, 420), (1000, 820), (1140, 360), (1260, 780),
-            (1400, 560), (1540, 860)]
+# 一层比一层陡、一层比一层高，而底部只留一条窄窄的水 —— 观者站在山脚，抬头。
+#
+# **而峰要有主次。** 同一篇：「大山堂堂為眾山之主，所以分布以次岡阜林壑……其象若大君赫然當陽而百辟奔走朝會，
+# 無偃蹇背卻之勢也。」一座主峰、几座次峰，次峰低于它、朝向它、且**不背向**它。第一版是五个等高等距的等腰三角
+# 形 —— 那不是山，那是一排；而「主次」这件事实在是最好落实的：把高度按到主峰的距离递减，再把峰距打乱。
+#
+# 主峰在近山的 x=700。三层各有各的峰，且**不落在同一列** —— 三层的峰要对齐，观者就知道它们是三层，而不是一片。
+GAO_FAR = [(-140, 700), (90, 640), (220, 300), (300, 470), (430, 250), (520, 440),
+           (620, 400), (760, 210), (880, 430), (1010, 300), (1120, 500), (1250, 260),
+           (1360, 470), (1540, 700)]
+GAO_MID = [(-140, 820), (60, 780), (170, 420), (250, 600), (390, 320), (490, 520),
+           (620, 340), (740, 560), (860, 400), (980, 620), (1100, 360), (1220, 580),
+           (1350, 700), (1540, 820)]
+GAO_NEAR = [(-140, 880), (70, 830), (160, 620), (230, 760), (330, 500), (410, 700),
+            (500, 560), (570, 500), (660, 200), (740, 240), (810, 470), (880, 520),
+            (960, 590), (1050, 720), (1160, 520), (1240, 700), (1360, 790), (1540, 880)]
 
 
 def ridge_curve(points, per=14, rounds=7):
@@ -106,7 +111,7 @@ def smooth_run(values, width=17):
     return np.convolve(padded, kernel, mode='same')[width:width + values.size]
 
 
-def ridge_layer(ridge, depth, level, seed, ceiling=0.74):
+def ridge_layer(ridge, depth, level, seed, ceiling=0.88):
     """一次铺开的墨：**从脊往下淡到零，而「往下多深」是这一座山的远近。**
 
     「往下多深」不是画出来的 —— alpha 走到零，墨就没了，那里就是山脚。所以这一层不需要任何轮廓：它是一次渐变，
@@ -139,7 +144,7 @@ def ridge_layer(ridge, depth, level, seed, ceiling=0.74):
     # 于是每座山被切成浓的一半和淡的一半，接缝是一条竖直的边。换成 `tanh`：同一个判据，但没有边界 —— 阴阳是转过
     # 去的，不是分开的。
     slope = np.gradient(smooth_run(top_of))
-    facing = 0.42 + 0.58 * (0.5 + 0.5 * np.tanh(-slope * 1.6))
+    facing = 0.55 + 0.45 * (0.5 + 0.5 * np.tanh(-slope * 1.6))
     alpha = np.where(solid, fall, 0.0) * ceiling * mottle[None, :] * facing[None, :]
     rgba[:, :, 0] = int(round(tone[0]))
     rgba[:, :, 1] = int(round(tone[1]))
@@ -167,7 +172,7 @@ def mountain(ridge, depth, level, seed, passes=4):
     return picture, solid
 
 
-def cun_marks(ridge, solid, level, groups, seed):
+def cun_marks(ridge, solid, level, groups, seed, reach=(38.0, 110.0)):
     """皴：**成组**的短笔，方向顺着坡。
 
     第一版是沿脊均匀撒点、每一笔朝法线落下去 —— 画出来是一层草，因为「均匀」正好是岩石没有的性质。真实的皴法
@@ -184,7 +189,7 @@ def cun_marks(ridge, solid, level, groups, seed):
     for _ in range(groups):
         anchor = rng.uniform(ridge[1][0], ridge[-1][0])
         lean = rng.uniform(-0.42, 0.42)
-        reach = rng.uniform(38.0, 110.0)
+        span_reach = rng.uniform(*reach)
         count = rng.randint(5, 11)
         gap = rng.uniform(4.0, 9.0)
         for i in range(count):
@@ -203,7 +208,7 @@ def cun_marks(ridge, solid, level, groups, seed):
             ux, uy = ux / norm, uy / norm
             ux, uy = (ux * math.cos(lean) - uy * math.sin(lean),
                       ux * math.sin(lean) + uy * math.cos(lean))
-            length = reach * rng.uniform(0.55, 1.05)
+            length = span_reach * rng.uniform(0.55, 1.05)
             fig.add_stroke(core.stroke_record(
                 [(column, y), (column + ux * length * 0.5, y + uy * length * 0.5),
                  (column + ux * length, y + uy * length)], 'brush', seed=3000 + index,
@@ -288,17 +293,24 @@ SCENES = {
     # 平远：脊缓、深度浅、浓度低、平滑足 —— 观者站在近山上望远山，所以一切都摊开在水平方向上。
     'ping': (((FAR, 70.0, INK_LEVELS[4], 0),
               (MID, 160.0, INK_LEVELS[3], 34),
-              (NEAR, 220.0, INK_LEVELS[2], 56)), 7),
+              (NEAR, 220.0, INK_LEVELS[2], 56)), 7, (38.0, 110.0)),
     # 高远：脊陡、深度深、浓度高、平滑少 —— 尖峰留着，因为「其勢突兀」就是这四步里被平滑得最少的那一步。
-    'gao': (((GAO_FAR, 200.0, INK_LEVELS[4], 0),
-             (GAO_MID, 260.0, INK_LEVELS[3], 30),
-             (GAO_NEAR, 320.0, INK_LEVELS[2], 60)), 3),
+    #
+    # **而三层不能叠得太密。** 上一版三层的深度是 200/260/320，而三条脊都在 y 200 到 800 之间 —— 于是远山透不出
+    # 来，三层糊成一片尖峰，读成「一座有五个头的东西」。远山的深度收到 120：它只在脊下露一点点，露出多少就是它
+    # 有多远。**深度的绝对值不重要，三层之间的差才重要。**
+    #
+    # **皴也要跟着坡变短。** 一段四十到一百一十像素的细笔落在陡坡上，读成一道划痕；斧劈那一类皴是短而宽的块，
+    # 因为陡坡上的一笔本来就短。所以高远这一场的皴收到二十二到五十八。
+    'gao': (((GAO_FAR, 120.0, INK_LEVELS[4], 0),
+             (GAO_MID, 210.0, INK_LEVELS[2], 34),
+             (GAO_NEAR, 300.0, INK_LEVELS[1], 60)), 3, (22.0, 58.0)),
 }
 
 
 def main():
     mode = os.environ.get('LAND_MODE', 'ping')
-    planes, rounds = SCENES[mode]
+    planes, rounds, reach = SCENES[mode]
     os.makedirs(OUT, exist_ok=True)
     picture = r.Layer(W, H)
     r.fill_polygon(picture, [(-20.0, -20.0), (W + 20.0, -20.0), (W + 20.0, H + 20.0), (-20.0, H + 20.0)],
@@ -312,13 +324,13 @@ def main():
         smooth = ridge_curve(ridge, rounds=rounds)
         layer, solid = mountain(smooth, depth, level, seed=len(ridge))
         picture = r.blend(picture, layer, 'normal', 1.0)
-        fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7)
+        fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7, reach=reach)
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(fig.marks)
         # **树按远近分大小与数量**：远山的树少而小（几粒），近山的多而大 —— 而这两组数不是风格，是尺度：
         # 同一种树在两座山上要长得一样大，只有它的墨要跟着山淡。
-        trees = trees_on_ridge(smooth, solid, level, 10 if depth < 100 else (26 if depth < 200 else 70),
+        trees = trees_on_ridge(smooth, solid, level, 10 if depth < 100 else (26 if depth < 230 else 70),
                                seed=int(len(ridge) * 13))
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
