@@ -271,6 +271,40 @@ def trees_on_ridge(ridge, solid, level, count, seed):
     return fig
 
 
+def pavilion(x, y, level=0.70, seed=5000):
+    """亭子：**五笔，而它把一片山变成可以住的地方。**
+
+    郭熙「山之樓觀以標勝概」—— 楼观标出名胜。而「四可」里最高的两档是可游与可居，两者都要一样具体的东西：一个
+    能站进去的方框。
+
+    **它也是整张画里唯一一处直线。** 山、树、水全是曲线或软边，而人造物是直的 —— 于是这几笔同时说明两件事：这里
+    有人，而人的东西和自然的东西不一样。**一条直线的价值在于它旁边的东西全是曲线**，所以它只需要五笔，也不能
+    多于五笔。
+    """
+    fig = project.Project(width=W, height=H, title='pavilion')
+    ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(min(0.90, level)))
+    # 屋顶：一条略拱的横笔，**比台基宽** —— 亭子的檐是它最宽的地方，第一版把台基画宽了，读成一个倒梯形。
+    fig.add_stroke(core.stroke_record(
+        [(x - 16.0, y - 15.0), (x, y - 20.0), (x + 16.0, y - 15.0)], 'brush', seed=seed,
+        colour=ink, soft=0.6, edge=1.6,
+        width_profile=[5.5, 6.5, 5.5], alpha_profile=[0.72, 0.84, 0.72], absolute_width=True),
+        stage='line', layer='paint', note='')
+    # 两柱：直、等宽、等长。**等长是「人造」在画面上最省的一句** —— 自然里的两根柱子不会一样长。
+    for side in (-1.0, 1.0):
+        fig.add_stroke(core.stroke_record(
+            [(x + side * 9.0, y - 14.0), (x + side * 9.0, y - 1.0)], 'brush', seed=seed + 1,
+            colour=ink, soft=0.4, edge=1.0,
+            width_profile=[2.6, 2.6], alpha_profile=[0.76, 0.76], absolute_width=True),
+            stage='line', layer='paint', note='')
+    # 台基：一条横，比顶略窄 —— 它把亭子按在坡上，而没有它亭子会浮着。
+    fig.add_stroke(core.stroke_record(
+        [(x - 9.0, y), (x + 9.0, y)], 'brush', seed=seed + 2,
+        colour=ink, soft=0.4, edge=1.2,
+        width_profile=[3.2, 3.2], alpha_profile=[0.62, 0.62], absolute_width=True),
+        stage='line', layer='paint', note='')
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -361,6 +395,13 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(trees.marks)
+    if mode == 'gao':
+        # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
+        # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
+        house = pavilion(520.0, 536.0, 0.66, seed=5000)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(house.marks)
     # 深远那一场没有湖。观者是**从山前窥山后**，脚下是山口而不是水面；六层的底在 y 820，再往下就是纸。给它加一片
     # 平的水，等于把「向里看」改成「向远看」—— 那是平远。**一条水法的错用能改掉一个视点。**
     if mode != 'shen':
