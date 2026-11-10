@@ -86,14 +86,18 @@ TAIL = tall([(168, 446), (58, 412), (12, 462), (52, 520), (166, 484)])
 # lower points were at y 336 while the outline's upper edge passes through y 350 at that x -- fourteen pixels of gap
 # that no drawing change could hide, and that `tall()` preserved because it moved both by the same factor. The two
 # lower corners are pulled down into the body, so the fin grows out of it.
-DORSAL = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352), (586, 340)])
+# **And its outer edge was nearly flat.** The four points across the top sat within eight pixels of one another, so the
+# fin read as a trapezium with two diagonal sides rather than as a fin -- which is a curve rising out of the back at
+# one end and falling back into it at the other. The middle three points moved up, the two corners stayed, and the
+# middle is now ninety-two pixels above the root.
+DORSAL = tall([(470, 364), (520, 300), (580, 286), (640, 292), (700, 352), (586, 340)])
 # **The dorsal fin's root is a line, not a point.** `fin_marks` radiates from a root for the pectoral and the tail, and
 # that is right for them: a pectoral springs from one attachment and a tail fin from a short one. The dorsal springs
 # from the whole length of the back, so radiating from its centre produced a fan of bristles, and the bristles were
 # longer than the fin was tall. These two edges are the fin as a strip of membrane -- the root follows the back, the
 # tip is the outer curve -- and a ray is a mark that spans between them.
 DORSAL_ROOT = tall([(470, 364), (586, 340), (700, 352)])
-DORSAL_TIP = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352)])
+DORSAL_TIP = tall([(470, 364), (520, 300), (580, 286), (640, 292), (700, 352)])
 FIN_ROOT = tall([(922, 534)])[0]
 TAIL_ROOT = tall([(166, 466)])[0]
 # **And the eye was in the wrong half of the head.** It sat sixty-six pixels from a snout that is a hundred and
@@ -369,9 +373,12 @@ def fin_film():
     因为它是半透明的、透过来的是光，所以它该比背景亮一档，而不是比背脊暗一档。
     """
     film = r.Layer(W, H)
-    for shape, level in ((DORSAL, 0.42), (FIN, 0.26), (TAIL, 0.28)):
+    # **背鳍的膜要比别的两片亮一档。** 它立在水里，两侧都是暗的，透过来的是光；胸鳍贴着身体，尾鳍在后面。
+    # 上一版三片同一个亮度，于是背鳍的外缘和背景融成一片，鳍没有边。
+    for shape, level in ((DORSAL, 0.55), (FIN, 0.26), (TAIL, 0.28)):
         patch = r.Layer(W, H)
-        r.fill_polygon(patch, [tuple(p) for p in shape], (72, 76, 80), level)
+        tone = (82, 86, 90) if shape is DORSAL else (72, 76, 80)
+        r.fill_polygon(patch, [tuple(p) for p in shape], tone, level)
         film = r.blend(film, r.clip(patch, soft_mask_layer(mask_of(shape), blur=3.0)), 'normal', 1.0)
     return film
 
@@ -604,15 +611,19 @@ def side_structure(mask, relief, seed=4040):
         # **列距就是鳞片的大小。** 尾柄上的鳞小，头侧的鳞大，所以同一个循环在两端给出两种尺寸 —— 一条鱼身上
         # 本来就没有两片一样大的鳞，而「一样大」是上一版所有笔触共同的毛病。
         step = 14.0 + 8.0 * (x - 240.0) / 694.0
-        rows = max(2, int(round(span / (step * 0.94))))
+        # **每列的行数要抖，而这是「格子」真正的来源。** 上一版把每一列按体高等分成同一个行数，于是相邻两列的
+        # 行永远对齐 —— 加多少随机偏移都只是把它们一起挪一点，接缝还是横平竖直。真的鳞序里相邻两列可以差一片，
+        # 于是整片体侧是一道错开的斜缝。
+        rows = max(2, int(round(span / (step * 0.94))) + rng.choice((-1, 0, 1)))
         for j in range(rows):
-            y = top + span * (j + 0.5) / rows
-            # **每一片的位置都要抖，而且要有缺片。** 严格的行列加一个线性剪切，读出来是一张格子布；鳞片恰恰是
-            # 最不该归整的东西 —— 真的鳞会缺、会挤、会有大半片被前一片压住。
-            if rng.random() < 0.13:
+            # **行位置按比例抖，不按像素。** 尾柄只有几十像素高，绝对的三像素偏移在那里等于半片鳞；而头侧体高
+            # 三百像素，三像素什么也不是。同一个偏移量在两处不是一回事。
+            y = top + span * (j + 0.5 + rng.uniform(-0.16, 0.16)) / rows
+            # 而且要有缺片 —— 真的鳞会缺、会挤、会有大半片被前一片压住。
+            if rng.random() < 0.15:
                 continue
-            y_use = y + rng.uniform(-3.2, 3.2)
-            x_use = x + 0.40 * (y - (top + bot) * 0.5) + rng.uniform(-3.2, 3.2)
+            y_use = y + rng.uniform(-1.2, 1.2)
+            x_use = x + 0.55 * (y - (top + bot) * 0.5) + rng.uniform(-2.4, 2.4)
             column_use = int(round(x_use))
             row_use = int(round(y_use))
             if not (0 <= column_use < W and 0 <= row_use < H) or not mask[row_use, column_use]:
@@ -648,17 +659,20 @@ def side_structure(mask, relief, seed=4040):
                       (x_use + tx * bend, y_use + ty * bend),
                       (x_use + nx * length * 0.5 + tx * bend * 0.72,
                        y_use + ny * length * 0.5 + ty * bend * 0.72)]
-            alpha = 0.42 * visible * rng.uniform(0.62, 1.18)
+            # **鳞的对比要低。** 上一版的弧比底亮了百分之二十八，而且 alpha 到零点五，于是整条体侧是一片竖起
+            # 的毛 —— 真的鳞只在斜光下露出一点边，颜色几乎和它所在的那块皮一样。鳞是纹理，不是内容。
+            alpha = 0.28 * visible * rng.uniform(0.62, 1.18)
             fig.add_stroke(core.stroke_record(
                 points, 'brush', seed=1400 + index, colour=hexed(pigment), soft=0.7,
-                colour_profile=[[min(255.0, c * 1.18 + 6.0) for c in pigment], list(pigment),
-                                [c * 0.78 for c in pigment]],
+                colour_profile=[[min(255.0, c * 1.10 + 4.0) for c in pigment], list(pigment),
+                                [c * 0.90 for c in pigment]],
                 bristle=0.14, bristle_pitch=3.2,
                 width_profile=[rng.uniform(3.5, 4.6), rng.uniform(4.4, 5.8), rng.uniform(2.6, 3.8)],
                 alpha_profile=[alpha * 0.66, alpha, alpha * 0.80],
                 absolute_width=True, edge=1.2), stage='line', layer='paint', note='')
             index += 1
-        x += step
+        # **列距也要抖。** 均匀推进就是等距网格的第一根柱子；真实的一列与下一列从来不是同一个间距。
+        x += step * rng.uniform(0.82, 1.18)
     # 侧线：一排孔，**多数是暗的**，偶尔一个反光。
     #
     # 第一版把它做成了一条亮线：颜色 `1.26x + 12` 在银色的体侧上直接顶到白，间距又只有六到九像素、每笔七像素

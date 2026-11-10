@@ -282,5 +282,24 @@
     "method": "a tint ladder of at least three documented ratios rather than one arbitrary mixture",
     "source": "Phoenix Art Materials, 'Opacity, Undertone and Tinting Strength: Three Ways Oil Colours Behave'. The article states its own limit: its comparison of two brands is an artist's observation, not a controlled laboratory comparison, and is not to be used for product-wide ratings.",
     "note": "**This is the fact that made every `mix(a, b, t)` in the painting scripts wrong.** Those four lines interpolated by how much of each tube was scooped, which assumes two pigments move a mixture equally; the article says strength is affected by the pigment's type and by the white it is mixed into, so 'a touch' is not a quantity. `lineweight/pigment.py` carries a strength rank per pigment and `mix_by_strength` weighs by it, degenerating to the old interpolation when the strengths are equal -- so the change to a picture appears only where the pigments differ. Two axes, not one: the table keeps a pigment that is opaque and weak (cadmium yellow) beside one that is transparent and strong (ultramarine), and if a future edit ranks one column by the other, those two are what will notice."
+  },
+
+  "chinese_painting_styles": {
+    "count": 4,
+    "items": ["gongbi", "xieyi", "baimiao", "mogu"],
+    "meaning": {
+      "gongbi": "工笔, neat and detailed: the oldest of the four, fine line work with tidy colouring",
+      "xieyi": "写意, catching the spirit rather than the detail; it began in the Song dynasty and is the style most sumi-e is in",
+      "baimiao": "白描, line art: the outline and almost no colour at all",
+      "mogu": "没骨, 'no bone' -- colour laid down directly with no outline first, the edges forming by themselves where the water stops or one colour overlaps another"
+    },
+    "source": "CLIP STUDIO, '单色艺术 - 水墨画 (墨絵) 技巧', by konijnsate, https://tips.clip-studio.com/zh-cn/articles/2850",
+    "note": "**The list this repository needed and did not have.** A user said a sumi-e painting should be a category of its own rather than a default style, and this is that category's vocabulary. The fourth entry is the one that matters here: every painting path in this repository so far gets its edges either from a mark's own end (the apple, the fish body before 4.75) or from a hard clip (the cloth in 4.63), and mogu is a third possibility -- the edge is where the colour stops, which is what a water medium does by itself and what a stamping renderer has to be told to do. That distinction is recorded, not implemented; no code here paints in ink yet."
+  },
+
+  "bone_method": {
+    "summary": "line is the structure of a picture the way bone is the structure of a body, so a deformed line can ruin the whole picture",
+    "source": "CLIP STUDIO, '单色艺术 - 水墨画 (墨絵) 技巧', by konijnsate, citing the 骨法 of Xie He's 绘画六法 (Six Principles of Chinese Painting, c. 550 CE).",
+    "note": "The article reads 骨法 as the technique of the brushstroke: a line is good when it has 骨力, bone strength, which is what writing a character in ink teaches. **It is the same claim `AESTHETIC-LIBRARY` 4.71 makes about a line drawing not being a set of lines of assorted widths but a set of lines that mean something** -- arrived at independently, one from a 6th-century text on painting and one from a corpus of 276 drawings. Two sources for one principle is the reason to write it down."
   }
 }

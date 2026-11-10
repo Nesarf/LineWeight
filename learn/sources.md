@@ -117,3 +117,30 @@ wrong quantity: strength is a property of the pigment and of the white it is mix
 weak (cadmium yellow) or transparent and strong (ultramarine). That is one fact, from one page, and it is the only thing
 on this shelf that any code here implements. The other four are checks a picture can be held against.
 
+---
+
+# Ink, and the question of where an edge comes from
+
+**Why this is its own shelf and not a row in the articles table.** A user said, before this shelf existed, that a
+sumi-e painting should be **a category of its own rather than a default style** -- and this is the page that gives that
+category its vocabulary. It is also the only source here that comes from outside the European oil tradition, and the
+difference is not a matter of taste: it is a different answer to the question every renderer in this repository has to
+answer.
+
+| source | what it gave |
+|---|---|
+| **CLIP STUDIO**, `articles/2850`, '单色艺术 - 水墨画 (墨絵) 技巧', by konijnsate | **the four styles** -- 工笔 gongbi, 写意 xieyi, 白描 baimiao, 没骨 mogu · **骨法**: line is the structure of a picture the way bone is the structure of a body, so a deformed line can ruin the whole thing · the working detail, which is that a texture layer goes on **first**, not last, because it sets the mood the painting is made in |
+
+**The fourth style is the one this project has to think about.** Every edge in `lineweight`'s painting line comes from
+one of two places: the natural end of a mark (the apple's round form, the fish body before the recount in 4.75) or a
+hard clip (the cloth, 4.63). **没骨 mogu is a third: the edge is where the colour stops.** The article says it plainly --
+colour laid down directly with no outline first, and "the lines may form unintentionally from the water's edge or
+overlapping colours". A water medium does that by itself. A stamping renderer has to be told to, and telling it is a
+different piece of work from this one.
+
+**And 骨法 agrees with something reached here from the opposite direction.** `AESTHETIC-LIBRARY` 4.71 says a line
+drawing is not a set of lines of assorted widths but a set of lines that *mean* different things. Xie He said it in
+about 550 CE: the stroke is the bone, and a deformed bone deforms the body. Two sources for one principle is the whole
+reason a facts file is worth keeping.
+
+
