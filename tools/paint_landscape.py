@@ -433,6 +433,35 @@ def reflection(picture, waterline, strength=0.20, squash=0.45, blur=3.0):
     return layer
 
 
+def cloud_band(y, level=0.22, seed=6300, count=3):
+    """云：**一层极淡的墨横着走过山腰，而它的边是虚的。**
+
+    郭熙七个「無…則…」里第一条就是「山無雲則不秀」。而在这条水道上有两件事让云和山不是同一种东西：
+
+    **它横着走，山竖着站。** 所以云是画面里唯一一个纯粹的水平元素 —— 山有脊、树有干、水在底下横着，而云高高地
+    横在山腰，它说明的是这座山有多**高**（云在它的腰上），不是它有多远。
+
+    **它的墨比最远的山还淡，而它盖在山的前面。** 这一对是矛盾的，而正因为它矛盾，云才读成云：比远山淡说明它是
+    空气，盖在近山前面说明它在动。**一个在远处而压在前面的东西，只有云。**
+
+    `soft=1.0` 加 `edge=60` 让边完全化开 —— 而这不是"柔和的风格"，是云没有边这个事实：**它有浓度，没有轮廓。**
+    """
+    rng = random.Random(seed)
+    fig = project.Project(width=W, height=H, title='cloud')
+    ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(level))
+    for i in range(count):
+        x = rng.uniform(-120.0, W + 120.0)
+        yy = y + rng.uniform(-46.0, 46.0)
+        length = rng.uniform(520.0, 1180.0)
+        fig.add_stroke(core.stroke_record(
+            [(x - length * 0.5, yy), (x, yy + rng.uniform(-16.0, 16.0)), (x + length * 0.5, yy)],
+            'brush', seed=seed + i, colour=ink, soft=1.0, edge=rng.uniform(96.0, 148.0),
+            bristle=0.0, width_profile=[rng.uniform(150.0, 250.0)] * 3,
+            alpha_profile=[rng.uniform(0.20, 0.30)] * 3,
+            absolute_width=True), stage='line', layer='paint', note='')
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -535,6 +564,18 @@ def main():
             picture = r.blend(picture, r.render_marks([m.to_dict() for m in spray.marks], W, H, sweep=True,
                                                       paper=rough), 'normal', 1.0)
             marks += len(spray.marks)
+    # **云在山之后画，而它盖在山腰上。** 顺序不是排版：先画山，云才有东西可以横穿；而云如果先画，山会把它整片
+    # 盖掉 —— 云在山上，不在山后。
+    if mode == 'gao':
+        clouds = cloud_band(392.0, 0.22, seed=6300, count=3)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(clouds.marks)
+    if mode == 'shen':
+        clouds = cloud_band(452.0, 0.16, seed=6310, count=4)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(clouds.marks)
     if mode == 'gao':
         # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
         # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
