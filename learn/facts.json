@@ -301,5 +301,111 @@
     "summary": "line is the structure of a picture the way bone is the structure of a body, so a deformed line can ruin the whole picture",
     "source": "CLIP STUDIO, '单色艺术 - 水墨画 (墨絵) 技巧', by konijnsate, citing the 骨法 of Xie He's 绘画六法 (Six Principles of Chinese Painting, c. 550 CE).",
     "note": "The article reads 骨法 as the technique of the brushstroke: a line is good when it has 骨力, bone strength, which is what writing a character in ink teaches. **It is the same claim `AESTHETIC-LIBRARY` 4.71 makes about a line drawing not being a set of lines of assorted widths but a set of lines that mean something** -- arrived at independently, one from a 6th-century text on painting and one from a corpus of 276 drawings. Two sources for one principle is the reason to write it down."
+  },
+
+  "hua_six_laws": {
+    "count": 6,
+    "items": [
+      {"order": 1, "name": "氣韻生動", "sense": "spirit resonance, life movement"},
+      {"order": 2, "name": "骨法用筆", "sense": "bone method, the use of the brush"},
+      {"order": 3, "name": "應物象形", "sense": "responding to things, depicting their form"},
+      {"order": 4, "name": "隨類賦彩", "sense": "following the kind, laying on colour"},
+      {"order": 5, "name": "經營位置", "sense": "planning and placing"},
+      {"order": 6, "name": "傳移模寫", "sense": "transmitting and copying"}
+    ],
+    "source": "Xie He, 古畫品錄 (Guhua Pinlu, 'Classification of Painters', c. 550 CE), the preface.",
+    "note": "**The whole of Chinese painting theory stands on this list, and this repository only had its second entry.** The text is explicit that the six are ordered and that all six together are rare: '雖畫有六法，罕能盡該' -- though painting has six laws, few can hold all of them, and '自古及今，各善一節' -- from antiquity to now each painter is good at one of them. Two consequences for this project: the list is a **checklist of kinds of failure**, not a rank; and the sixth entry, 傳移模寫 (transmitting and copying), is the one an image-making program is naturally best at -- which is exactly why it is last."
+  },
+
+  "jing_six_essentials": {
+    "count": 6,
+    "items": [
+      {"name": "氣", "gloss": "心隨筆運，取象不惑 -- the mind runs with the brush, and the image is taken without confusion"},
+      {"name": "韻", "gloss": "隱跡立形，備儀不俗 -- traces hidden while the form stands, complete in bearing and never vulgar"},
+      {"name": "思", "gloss": "刪拔大要，凝想形物 -- cutting away to the main point, holding the thing in mind"},
+      {"name": "景", "gloss": "制度時因，搜妙創真 -- measure and season together, seeking the wonder and making it true"},
+      {"name": "筆", "gloss": "雖依法則，運轉變通，不質不形，如飛如動 -- follows a rule yet turns and changes; neither solid nor outline; as if flying, as if moving"},
+      {"name": "墨", "gloss": "高低暈淡，品物淺深，文采自然，似非因筆 -- high and low bled pale, things graded light and dark, the finish natural, as though the brush did not make it"}
+    ],
+    "source": "Jing Hao, 筆法記 (Bifa Ji, 'Notes on Brushwork', c. 900 CE).",
+    "note": "Xie He's six laws are about what a painting must *have*; Jing Hao's six essentials are about what the painter must *do*, and each one carries a gloss of less than fifteen characters. **The last two are the pair this repository keeps conflating**: 筆 is the stroke's own behaviour ('neither solid nor outline'), and 墨 is the value it leaves ('as though the brush did not make it'). A renderer that controls both from one parameter cannot satisfy the sixth."
+  },
+
+  "mountain_names": {
+    "count": 11,
+    "items": [
+      {"term": "峰", "definition": "尖 -- pointed"},
+      {"term": "頂", "definition": "平 -- flat-topped"},
+      {"term": "巒", "definition": "圓 -- rounded"},
+      {"term": "嶺", "definition": "相連 -- a continuous run"},
+      {"term": "岫", "definition": "有穴 -- with a cavity"},
+      {"term": "崖", "definition": "峻壁 -- a steep wall"},
+      {"term": "岩", "definition": "崖間崖下 -- at or beneath a cliff"},
+      {"term": "谷", "definition": "路通山中 -- a way through the mountains"},
+      {"term": "峪", "definition": "不通 -- a way that does not go through"},
+      {"term": "溪", "definition": "峪中有水 -- water in a dead-end valley"},
+      {"term": "澗", "definition": "山夾水 -- water between mountains"}
+    ],
+    "source": "Jing Hao, 筆法記: '尖曰峰，平曰頂，圓曰巒，相連曰嶺，有穴曰岫，峻壁曰崖，崖間崖下曰岩，路通山中曰谷，不通曰峪，峪中有水曰溪，山夾水曰澗。'",
+    "note": "**The count is eleven and a first draft of this entry said seven**, because it stopped reading at a punctuation mark it recognised -- which is the same fault as measuring a picture with a criterion that happens to fit. The terms are what a landscape actually needs: a pointed top and a flat top are different names, and so are a valley you can walk through and one you cannot. `tools/paint_landscape.py` draws ridges with one function; it has a name for 峰 and nothing else yet."
+  },
+
+  "san_yuan": {
+    "count": 3,
+    "items": [
+      {"name": "高遠", "from": "自山下而仰山顛 -- from the foot looking up at the summit",
+       "colour": "清明", "manner": "突兀", "figure": "明了"},
+      {"name": "深遠", "from": "自山前而窺山後 -- from in front looking past to behind",
+       "colour": "重晦", "manner": "重疊", "figure": "細碎"},
+      {"name": "平遠", "from": "自近山而望遠山 -- from a near mountain looking at far ones",
+       "colour": "有明有晦", "manner": "沖融而縹縹緲緲", "figure": "沖淡"}
+    ],
+    "source": "Guo Xi, 林泉高致 (Linquan Gaozhi), 山水訓: '山有三遠…高遠之色清明，深遠之色重晦；平遠之色有明有晦…'",
+    "note": "**The most executable thing in the whole Chinese canon, because each of the three is given four ways at once**: where the eye is, what the colour does, what the mass does, and how big a person appears. A landscape that does not pick one of the three is not a landscape seen from anywhere -- it is a diagram. And the source adds the size rule explicitly: '明了者不短，細碎者不長，沖淡者不大' -- the clear one is not short, the fragmented one is not long, the washed-out one is not large."
+  },
+
+  "distant_three_none": {
+    "count": 3,
+    "items": ["遠山無皴 -- no texture strokes on a distant mountain",
+              "遠水無波 -- no waves on distant water",
+              "遠人無目 -- no eyes on a distant person"],
+    "why": "非無也，如無耳 -- not that they are absent, but that they read as absent",
+    "source": "Guo Xi, 林泉高致, 山水訓: '遠山無皴，遠水無波，遠人無目。非無也，如無耳。'",
+    "note": "**Three rules stated as absences, and all three are about detail that would be true but would not be seen.** This is the check a distance effect has to pass: not 'is the far thing correctly drawn' but 'has the far thing been relieved of detail it could not show'. `tools/paint_landscape.py` had 16 groups of texture strokes on its far mountain before this entry was written down; after it, none."
+  },
+
+  "brush_four_potentials": {
+    "count": 4,
+    "items": [
+      {"name": "筋", "test": "筆絕而不斷 -- the stroke ends and is not broken"},
+      {"name": "肉", "test": "起伏成實 -- rises and falls and comes out solid"},
+      {"name": "骨", "test": "生死剛正 -- alive or dead, upright and correct"},
+      {"name": "氣", "test": "跡畫不敗 -- the trace survives being looked at"}
+    ],
+    "failure": {"墨大質": "失其體 -- too much ink loses the body",
+                "色微": "敗正氣 -- too little colour ruins the spirit",
+                "筋死": "無肉 -- a dead tendon has no flesh",
+                "跡斷": "無筋 -- a broken trace has no tendon",
+                "苟媚": "無骨 -- mere prettiness has no bone"},
+    "source": "Jing Hao, 筆法記: '凡筆有四勢，謂筋、肉、骨、氣…故知墨大質者，失其體…'",
+    "note": "Four names for what a stroke can have, each with a test of one clause, and five ways a stroke fails. **The tests are the useful half**: 'the stroke ends and is not broken' is a check on a taper, and 'the trace survives being looked at' is a check no measurement here can make. The failure list is a pair of opposed errors -- too much ink loses the body, too little loses the spirit -- which is the same shape as the two-sided table error in 4.82."
+  },
+
+  "painting_two_faults": {
+    "count": 2,
+    "items": ["有形 -- with form", "無形 -- without form"],
+    "examples": {"有形": "花木不時，屋小人大，或樹高于山，橋不登于岸 -- the season is wrong, the house is small and the people large, the tree is taller than the mountain, the bridge does not reach the bank"},
+    "definition": {"有形": "可度形之類也…尚可改圖 -- of the kind that can be measured; still repaintable",
+                    "無形": "氣韻俱泯，物象全乖，筆墨雖行，類同死物…不可刪修 -- spirit gone, the subject all wrong; the brush moves and it is a dead thing; nothing can be repaired"},
+    "source": "Jing Hao, 筆法記: '夫病有二：一曰無形，二曰有形…'",
+    "note": "**A taxonomy of failure by whether it can be fixed, not by whether it is visible.** The named examples of the measurable fault are all proportion errors, which is the class every checker in this repository can already catch; the unmeasurable one is 'the brush moves and it is a dead thing', which none can. Written down because it says what the two halves of this project are for: `tools/` measures the first kind, and no tool measures the second."
+  },
+
+  "landscape_four_qualities": {
+    "count": 4,
+    "items": ["可行 walkable", "可望 viewable", "可遊 wanderable", "可居 liveable"],
+    "order": "可行可望不如可居可遊之為得 -- walkable and viewable are worth less than wanderable and liveable",
+    "source": "Guo Xi, 林泉高致, 山水訓: '世之篤論，謂山水有可行者，有可望者，有可遊者，有可居者。畫凡至此，皆入妙品。'",
+    "note": "Four tests for whether a landscape painting works, and they are **tests of what a viewer can imagine doing in it**, not of what is in it. The source ranks them: a picture you can walk through is worth less than one you could live in. That is a standard no measurement in this repository touches, and it is the reason a landscape can pass every check here and still be empty."
   }
 }

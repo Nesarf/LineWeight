@@ -143,4 +143,26 @@ drawing is not a set of lines of assorted widths but a set of lines that *mean* 
 about 550 CE: the stroke is the bone, and a deformed bone deforms the body. Two sources for one principle is the whole
 reason a facts file is worth keeping.
 
+## The primary texts, in Chinese, public domain
+
+**Why the originals and not a tutorial about them.** A modern article about Chinese painting paraphrases the canon; the
+canon is short, public domain, and **already written as countable lists**. Every one of those lists names between two and
+eleven things and gives each a clause of definition, and a paraphrase loses the clauses. Three texts carry almost all of
+it:
+
+| text | date | what it gave |
+|---|---|---|
+| **Xie He, 古畫品錄** | c. 550 | **六法**, in order, with the statement that holding all six is rare and that each painter is good at one of them |
+| **Jing Hao, 筆法記** | c. 900 | **六要** with a gloss of under fifteen characters each · **筆四勢** with a one-clause test each and five ways to fail · **二病** split by whether the fault can be repaired · **the mountain vocabulary**: eleven terms, each defined by one word |
+| **Guo Xi, 林泉高致** | c. 1080 | **三遠**, each with an eye position, a colour, a mass and a figure size · **遠山無皴，遠水無波，遠人無目** · **四可** ranked · four seasons of cloud and of mountain, each with one image |
+
+**The thing these three do that no European oil manual on this shelf does: they define by subtraction.** 「遠山無皴」 is a
+rule about what to leave out. 「似者，得其形，遺其氣」 separates a drawing that is correct from one that is true. A shelf
+built only from the Western manuals would have taught this project how to put marks down and never how to leave them off.
+
+**And the first of the 六法 is 氣韻生動 -- spirit resonance.** It is stated first and it is the only one of the six that no
+checker here can measure. That is worth writing down beside the other five, because the purpose of this file is to know
+what it cannot check.
+
+
 

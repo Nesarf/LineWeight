@@ -278,7 +278,10 @@ def main():
                    PAPER, 1.0)
     marks = 0
     rough = r.PAPERS['rough']
-    for ridge, depth, level, groups in ((FAR, 70.0, INK_LEVELS[4], 16),
+    # **远山不皴。** 「遠山無皴，遠水無波，遠人無目 —— 非無也，如無耳」（郭熙《林泉高致》）。三句说的是同一件事：
+    # 远处的细节不是「没画」，是画了也读不出来。所以远山那一档的组数是零，而不是小一点 —— 这不是省笔，是那条
+    # 判据本身：**远处的形体要被减去它显示不出来的东西。**
+    for ridge, depth, level, groups in ((FAR, 70.0, INK_LEVELS[4], 0),
                                         (MID, 160.0, INK_LEVELS[3], 34),
                                         (NEAR, 220.0, INK_LEVELS[2], 56)):
         smooth = ridge_curve(ridge)
