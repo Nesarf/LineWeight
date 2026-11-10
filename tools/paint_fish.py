@@ -52,20 +52,45 @@ LIGHT = (-0.42, -0.50, 0.76)
 # fish actually does is the thing this file cannot cite a number for; what it can say is that the narrowing was the
 # one thing the outline was not doing at all. The four lower points at the left moved up and the upper ones down, and
 # the tail fin's root moved with them, because it is attached to this outline and not to the old one.
-BODY = [(168, 444), (238, 428), (326, 386), (430, 356), (556, 338), (700, 332), (826, 344),
-        (930, 372), (1012, 414), (1064, 462), (1068, 508), (1030, 556), (944, 596),
-        (846, 620), (726, 634), (594, 638), (468, 630), (356, 600), (272, 556), (200, 510), (162, 486)]
-FIN = [(910, 546), (848, 596), (786, 646), (812, 664), (872, 620), (906, 578)]
-TAIL = [(168, 446), (58, 430), (22, 462), (52, 496), (166, 484)]
-DORSAL = [(470, 336), (520, 306), (588, 296), (660, 304), (700, 336), (586, 340)]
+#: The height of the form's centre line, and how much the whole outline is stretched about it.
+BODY_MID = 485.0
+STRETCH = 1.17
+
+
+def tall(points):
+    """Stretch a set of coordinates about the body's centre line.
+
+    **The form was too flat, and that is a data change, not a drawing one.** At three hundred and six pixels of height to
+    nine hundred of length the outline read as a flounder -- and a flounder is a real fish, but this subject is a carp or
+    a bream, and those sit near two fifths. Stretching about the centre line moves the dorsal edge up and the ventral
+    edge down in one operation, so every coordinate that was right relative to the centre line stays right.
+
+    **Kept outside the data on purpose.** These numbers were adjusted by hand twice in earlier rounds; a third edit
+    applied straight to the literal pairs would leave nothing recognisable and no way back. A transform says what
+    happened to them.
+    """
+    return [(float(x), BODY_MID + (float(y) - BODY_MID) * STRETCH) for x, y in points]
+
+
+BODY = tall([(168, 444), (238, 428), (326, 386), (430, 356), (556, 338), (700, 332), (826, 344),
+             (930, 372), (1012, 414), (1064, 462), (1068, 508), (1030, 556), (944, 596),
+             (846, 620), (726, 634), (594, 638), (468, 630), (356, 600), (272, 556), (200, 510), (162, 486)])
+FIN = tall([(910, 546), (848, 596), (786, 646), (812, 664), (872, 620), (906, 578)])
+TAIL = tall([(168, 446), (58, 412), (12, 462), (52, 520), (166, 484)])
+DORSAL = tall([(470, 336), (520, 306), (588, 296), (660, 304), (700, 336), (586, 340)])
 # **The dorsal fin's root is a line, not a point.** `fin_marks` radiates from a root for the pectoral and the tail, and
 # that is right for them: a pectoral springs from one attachment and a tail fin from a short one. The dorsal springs
 # from the whole length of the back, so radiating from its centre produced a fan of bristles, and the bristles were
 # longer than the fin was tall. These two edges are the fin as a strip of membrane -- the root follows the back, the
 # tip is the outer curve -- and a ray is a mark that spans between them.
-DORSAL_ROOT = [(470, 336), (586, 340), (700, 336)]
-DORSAL_TIP = [(470, 336), (520, 306), (588, 296), (660, 304), (700, 336)]
-EYE = (1002, 452)
+DORSAL_ROOT = tall([(470, 336), (586, 340), (700, 336)])
+DORSAL_TIP = tall([(470, 336), (520, 306), (588, 296), (660, 304), (700, 336)])
+FIN_ROOT = tall([(908, 548)])[0]
+TAIL_ROOT = tall([(166, 466)])[0]
+# **And the eye was in the wrong half of the head.** It sat sixty-six pixels from a snout that is a hundred and
+# thirty-three from the gill cover -- the middle of the head. A fish's eye sits at a third to two fifths of the way
+# back, so it moved forward eighteen pixels and the gill cover stayed where the anatomy puts it.
+EYE = (1018.0, 446.0)
 
 # **三段体色的着色力，不是三段明度。** 背脊那管深色是透明的，一点就压住整片；腹部的白是弱色，要加很多才推得
 # 动同样的距离。等权的四行 `mix` 让暗部亮得太早、腹部白得太快，改成按这三个数加权之后，过渡带才落在形体真正
@@ -165,7 +190,7 @@ def body_light(relief_value, across):
     两处调用（体身的笔、鳞、侧线）必须共用一个式子 —— 上一次它们各自带一份系数，改一处另外两处就留在旧值上，
     而那个漂走是看不出来的：鳞片只差十分之一，没有人会在画上认出来。
     """
-    return 0.46 + 0.38 * max(0.0, float(relief_value)) ** 1.5 + 0.16 * (0.5 - across)
+    return 0.36 + 0.62 * max(0.0, float(relief_value)) ** 1.15 + 0.20 * (0.5 - across)
 
 
 def soft_mask_layer(mask, blur=2.2):
@@ -259,7 +284,11 @@ def fish_marks(seed=8181):
         y, x = int(rows[pick]), int(cols[pick])
         span = max(1.0, float(bot_of[x] - top_of[x]))
         across = max(0.0, min(1.0, (y - float(top_of[x])) / span))
-        mottle = 1.0 + 0.10 * math.sin(x * 0.0105 + y * 0.0042) + 0.06 * math.sin(x * 0.031 - y * 0.016)
+        # **斑驳要够大，因为光是平的。** 中段那一片 `relief` 几乎不变（扁平形体的距离场本来如此），任何单调函数
+        # 都会在那片地方给出一条等值的带 —— 而画出来就是一条贴在身上的黄布。真实鱼体侧本来有明暗斑块，所以
+        # 这里不是再加一层装饰，是用位置把它打断。
+        mottle = (1.0 + 0.14 * math.sin(x * 0.0105 + y * 0.0042) + 0.09 * math.sin(x * 0.031 - y * 0.016)
+                  + 0.06 * math.sin(x * 0.0061 - y * 0.023))
         pigment = fish_colour(across, rng)
         # **光只做调制，不再决定色带。** 侧视的扁平体，中央正对观察者也正对光源，四周转向背面 —— 所以亮度跟着
         # `relief` 走，而「背深腹浅」跟着 `across` 走。两件事分开之后，一条鱼才可能上半深、中间银、下半浅。
@@ -331,8 +360,8 @@ def fin_marks(seed=505):
     """
     rng = random.Random(seed)
     fig = canvas('fins')
-    for shape, root, span, density in ((FIN, (908.0, 548.0), (2.15, 3.15), 18),
-                                       (TAIL, (166.0, 466.0), (2.70, 3.64), 19)):
+    for shape, root, span, density in ((FIN, FIN_ROOT, (2.15, 3.15), 18),
+                                       (TAIL, TAIL_ROOT, (2.70, 3.64), 19)):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
@@ -391,7 +420,7 @@ def fin_marks(seed=505):
             stations.append((x0, y_tip + (y_root - y_tip) * across))
         fig.add_stroke(core.stroke_record(
             stations, 'brush', seed=1080 + i, colour='#332f30', soft=1.0, height=0.10,
-            width_profile=[22.0, 26.0, 21.0], alpha_profile=[0.12, 0.17, 0.12],
+            width_profile=[26.0, 32.0, 26.0], alpha_profile=[0.16, 0.24, 0.16],
             absolute_width=True, edge=9.0), stage='line', layer='paint', note='')
     for i in range(95):
         x0 = rng.uniform(478.0, 692.0)
@@ -448,24 +477,24 @@ def head_marks(seed=610):
     # 「一只眼贴着一道弧」。真实的鱼吻端到眼睛约占头长的三分之一，眼睛到鳃盖再占三分之一 —— 所以鳃盖要退到
     # 眼睛后方六十像素左右，两者才各占一段，头才是一个头而不是一个点。
     fig.add_stroke(core.stroke_record(
-        [(940, 404), (920, 452), (926, 508), (950, 554)], 'brush', seed=610,
+        tall([(940, 404), (920, 452), (926, 508), (950, 554)]), 'brush', seed=610,
         colour='#161c1e', soft=0.25,
         width_profile=[6.0, 13.0, 13.0, 5.0], alpha_profile=[0.10, 0.50, 0.48, 0.12],
         absolute_width=True, edge=2.0), stage='line', layer='paint', note='')
     fig.add_stroke(core.stroke_record(
-        [(954, 410), (934, 456), (940, 504), (962, 546)], 'brush', seed=611,
+        tall([(954, 410), (934, 456), (940, 504), (962, 546)]), 'brush', seed=611,
         colour='#ded4bc', soft=0.25,
         width_profile=[4.0, 9.0, 9.0, 4.0], alpha_profile=[0.08, 0.34, 0.32, 0.09],
         absolute_width=True, edge=2.4), stage='line', layer='paint', note='')
     # 嘴：暗缝在上唇下面，亮边在上唇上面。**第一版太小了** —— 三笔加起来不到二十像素长、最宽五像素，落在
     # 一条一千四百像素宽的画上就是吻端的一个污点，而嘴是让人读出「这一头是头」的第二个东西。
     fig.add_stroke(core.stroke_record(
-        [(1038, 494), (1052, 499), (1064, 507)], 'brush', seed=620,
+        tall([(1038, 494), (1052, 499), (1064, 507)]), 'brush', seed=620,
         colour='#111114', soft=0.2,
         width_profile=[6.0, 9.0, 6.0], alpha_profile=[0.55, 0.82, 0.60],
         absolute_width=True, edge=1.2), stage='line', layer='paint', note='')
     fig.add_stroke(core.stroke_record(
-        [(1036, 488), (1051, 493), (1062, 501)], 'brush', seed=621,
+        tall([(1036, 488), (1051, 493), (1062, 501)]), 'brush', seed=621,
         colour='#e0d8c4', soft=0.25,
         width_profile=[3.2, 5.0, 3.6], alpha_profile=[0.22, 0.40, 0.26],
         absolute_width=True, edge=2.0), stage='line', layer='paint', note='')
