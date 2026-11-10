@@ -58,8 +58,8 @@ def test_the_texture_keeps_the_layer_alpha(tmp_path):
     upper = tmp_path / document['images'][1]['uri']
     from PIL import Image
     decoded = Image.open(str(upper)).convert('RGBA')
-    alphas = np.asarray(decoded)[:, :, 3].tolist()
-    assert 0 < max(alphas) < 255, 'the upper sheet came out fully opaque'
+    alphas = np.asarray(decoded)[:, :, 3]
+    assert 0 < int(alphas.max()) < 255, 'the upper sheet came out fully opaque'
 
 
 def test_the_buffer_holds_every_vertex_it_claims(tmp_path):
