@@ -444,7 +444,12 @@ def cloud_band(y, level=0.22, seed=6300, count=3):
     **它的墨比最远的山还淡，而它盖在山的前面。** 这一对是矛盾的，而正因为它矛盾，云才读成云：比远山淡说明它是
     空气，盖在近山前面说明它在动。**一个在远处而压在前面的东西，只有云。**
 
-    `soft=1.0` 加 `edge=60` 让边完全化开 —— 而这不是"柔和的风格"，是云没有边这个事实：**它有浓度，没有轮廓。**
+    **它有浓度，没有轮廓。** `soft=1.0` 加一百以上的 `edge` 让边完全化开 —— 而这不是"柔和的风格"，是云没有边这个
+    事实；一条画得出边的云是一条画得出边的雾。
+
+    **而 `edge` 一过笔宽的一半，浓度就被摊平了。** `ramp` 在笔心被 `clip` 到一，取 `soft=1.0` 之后平方仍是一；
+    再往外一点就掉得很快 —— 宽 150–250、`edge` 96–148 的时候，中心的有效 alpha 只有 `alpha_profile` 的七成左右。
+    所以 alpha 放在零点三到零点四四，落到纸上是一层薄雾而不是一块灰。
     """
     rng = random.Random(seed)
     fig = project.Project(width=W, height=H, title='cloud')
@@ -457,7 +462,7 @@ def cloud_band(y, level=0.22, seed=6300, count=3):
             [(x - length * 0.5, yy), (x, yy + rng.uniform(-16.0, 16.0)), (x + length * 0.5, yy)],
             'brush', seed=seed + i, colour=ink, soft=1.0, edge=rng.uniform(96.0, 148.0),
             bristle=0.0, width_profile=[rng.uniform(150.0, 250.0)] * 3,
-            alpha_profile=[rng.uniform(0.20, 0.30)] * 3,
+            alpha_profile=[rng.uniform(0.30, 0.44)] * 3,
             absolute_width=True), stage='line', layer='paint', note='')
     return fig
 
@@ -571,11 +576,9 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(clouds.marks)
-    if mode == 'shen':
-        clouds = cloud_band(452.0, 0.16, seed=6310, count=4)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
-        marks += len(clouds.marks)
+    # **深远不画云带。** 它的云是层与层之间剩下的那条缝 —— 4.89 记过「云是两层之间没有被墨碰到的一条」。在那张
+    # 画上再横一条淡墨，等于把两种云叠在一起，而两种都不明显。**一个画面只需要一种方法做同一件事**，而深远已经
+    # 有了一种更好的：它的云是减法出来的，那条横带是加法，谁也不服谁。
     if mode == 'gao':
         # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
         # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
