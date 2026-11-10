@@ -263,22 +263,47 @@ def fin_marks(seed=505):
     return fig
 
 
-def eye_marks():
-    """一只眼：一个暗的圆、一圈亮环、一个白点。形体给不出的那一点，靠这三笔。"""
+def eye_marks(seed=77):
+    """一只眼：**四笔，不是四十笔。**
+
+    第一版是两个同心圆加一个白点 —— 二十四段折线、宽度处处相同、颜色处处相同，放大看就是三个几何图元叠在
+    一起，那是路径不是笔。第二版走到另一个极端：眼窝十六笔、虹膜十四笔、瞳八笔，每一笔都是一小段 ——
+    放大看是一团乱笔，眼睛读不出来了。
+
+    **眼睛是一个小尺度的东西，它只有四笔**：上眼睑一条弧（它压在眼球上缘，让眼睛被盖住而不是贴上去）、
+    瞳一个不圆的黑、虹膜一条半月形的亮、高光一点。笔的形状由它自己的宽度剖面与那条弧决定 ——
+    把一笔拆成三十笔不会让它更像手画的，只会让它更小、更碎。
+
+    这一条与 4.63 的轮廓路是同一件事的两面：那条路给了硬的边（布需要），这里要的正好相反 ——
+    圆不能有边，只能有笔；而「笔」是一笔，不是一堆笔画出来的边。
+    """
+    rng = random.Random(seed)
     fig = canvas('eye')
-    rng = random.Random(77)
     cx, cy = EYE
-    for i, (radius, colour, alpha) in enumerate(((16.0, '#2a2422', 0.96), (22.0, '#6e6258', 0.55))):
-        ring = [(cx + radius * math.cos(a) - 3, cy + radius * math.sin(a)) for a in
-                (2 * math.pi * k / 24 for k in range(25))]
-        fig.add_stroke(core.stroke_record(ring, 'brush', seed=300 + i, colour=colour, soft=1.0,
-                                          width_profile=[6.0] * len(ring), alpha_profile=[alpha] * len(ring),
-                                          absolute_width=True, edge=3.0),
-                       stage='line', layer='paint', note='')
-    fig.add_stroke(core.stroke_record([(cx - 5, cy - 5), (cx - 1, cy - 7)], 'brush', seed=310,
-                                      colour='#fff6e8', soft=1.0, width_profile=[6.0, 6.0],
-                                      alpha_profile=[0.95, 0.95], absolute_width=True, edge=2.0),
-                   stage='line', layer='paint', note='')
+    # 上眼睑：一条压下来的弧。它要比瞳高，压上去就成了两个洞。
+    fig.add_stroke(core.stroke_record(
+        [(cx - 22.0, cy - 5.0), (cx - 5.0, cy - 17.0), (cx + 14.0, cy - 14.0), (cx + 21.0, cy - 5.0)],
+        'brush', seed=300, colour='#2a2426', soft=0.9,
+        width_profile=[7.0, 13.0, 12.0, 6.0], alpha_profile=[0.55, 0.90, 0.86, 0.50],
+        absolute_width=True, edge=2.4), stage='line', layer='paint', note='')
+    # 瞳：一个不圆的黑，一笔。它要比上眼睑低几像素，否则两条暗笔连成一个钩。
+    fig.add_stroke(core.stroke_record(
+        [(cx - 9.5, cy + 2.5), (cx - 4.0, cy - 5.0), (cx + 4.5, cy - 4.0), (cx + 9.0, cy + 5.0)],
+        'brush', seed=310, colour='#17131a', soft=0.8,
+        width_profile=[7.0, 14.0, 14.0, 7.0], alpha_profile=[0.80, 0.96, 0.96, 0.78],
+        absolute_width=True, edge=1.8), stage='line', layer='paint', note='')
+    # 虹膜：瞳的右下一条半月形的亮。
+    fig.add_stroke(core.stroke_record(
+        [(cx + 2.0, cy + 11.0), (cx + 8.0, cy + 7.0), (cx + 11.0, cy + 1.0)], 'brush', seed=320,
+        colour=hexed(jitter((188, 176, 156), 6.0, rng)), soft=0.8,
+        width_profile=[3.0, 6.0, 3.0], alpha_profile=[0.35, 0.72, 0.30],
+        absolute_width=True, edge=1.6), stage='line', layer='paint', note='')
+    # 高光：一点，斜的，不落在正中。
+    fig.add_stroke(core.stroke_record(
+        [(cx - 5.0, cy + 0.0), (cx - 1.5, cy - 3.0)], 'brush', seed=330,
+        colour='#fff8ec', soft=0.7, width_profile=[5.0, 4.0],
+        alpha_profile=[0.94, 0.86], absolute_width=True, edge=1.4),
+        stage='line', layer='paint', note='')
     return fig
 
 
