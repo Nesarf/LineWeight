@@ -470,6 +470,37 @@ def cloud_band(y, level=0.22, seed=6300, count=3):
     return fig
 
 
+def birds(count=5, y=210.0, seed=6400, level=0.66):
+    """飞鸟：**一笔一个，而它们是画面里唯一在动的东西。**
+
+    山水画的天空很少是空的，而填它的东西极省 —— 一只鸟是一笔：从左翼到右翼，中间向下折一个尖，而那个尖是身体。
+    把两只翅膀分开画会更像鸟，也更花；**一笔的折角已经够了，因为认鸟靠的是那个角，不是任何一根羽毛。**
+
+    而鸟的用处和人物一样：**它们说明天空有多大。** 一只鸟在这张画上是四到十像素，而天空占整张画的上三分之一 ——
+    有了鸟，那片纸就从「没画完」变成「很高」。**留白需要一个参照物，否则它只是空白。**
+
+    它们不落在山里，落在天里，所以在最前面 —— 鸟在云之上，而云在山之上。
+    """
+    rng = random.Random(seed)
+    fig = project.Project(width=W, height=H, title='birds')
+    ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(level))
+    # **一群鸟是一个整体，不是一个一个散开的点。** 第一版把六只撒在整条天空上，画出来是六处孤立的折角，读成纸上
+    # 的瑕疵。真实的鸟群共享一个中心：它们在飞同一个方向，所以彼此靠得很近，而整群只占天空的一小块。
+    centre_x = rng.uniform(260.0, W - 260.0)
+    centre_y = y + rng.uniform(-34.0, 34.0)
+    for i in range(count):
+        x = centre_x + rng.uniform(-126.0, 126.0)
+        yy = centre_y + rng.uniform(-62.0, 62.0)
+        size = rng.uniform(4.5, 10.0)
+        fold = rng.uniform(0.45, 0.95)
+        fig.add_stroke(core.stroke_record(
+            [(x - size, yy - size * 0.35), (x, yy + size * fold), (x + size, yy - size * 0.35)],
+            'brush', seed=seed + i, colour=ink, soft=0.5, edge=1.2,
+            width_profile=[1.0, 1.8, 1.0], alpha_profile=[0.42, 0.62, 0.42],
+            absolute_width=True), stage='line', layer='paint', note='')
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -617,6 +648,13 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(water.marks)
+    # **鸟在最前。** 它们不落在山里、落在天里，而天比云高、云比山高 —— 所以顺序是山、云、鸟。
+    if mode in ('gao', 'ping'):
+        flock = birds(6 if mode == 'gao' else 4, 196.0 if mode == 'gao' else 232.0,
+                      seed=6400 if mode == 'gao' else 6410, level=0.66)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in flock.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(flock.marks)
     path = os.path.join(OUT, 'landscape-%s.png' % mode)
     r.save_png(picture, path, background=PAPER)
     print('%s  %d marks' % (path, marks))
