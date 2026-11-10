@@ -68,6 +68,7 @@ def save_gltf(layers, path, gap=0.002, embed=False):
     images = []
     textures = []
     nodes = []
+    used = set()
 
     for index, layer in enumerate(layers):
         z = index * gap
@@ -118,7 +119,11 @@ def save_gltf(layers, path, gap=0.002, embed=False):
         accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': UNSIGNED_SHORT,
                           'count': 36, 'type': 'SCALAR'})
 
-        tex_name = '%02d_%s.png' % (index, _safe(layer.name))
+        # **一个层名在文件里只出现一次。** 三层的脊点数相同的时候，`mountain-%d % len(ridge)` 会给三块平面同一个
+        # 名字 —— 而在 Blender 的大纲里它们变成 `mountain-14` 与 `mountain-14.001`，于是「这一层是什么」丢了一半。
+        sheet = _unique(_safe(layer.name), used)
+        used.add(sheet)
+        tex_name = '%02d_%s.png' % (index, sheet)
         tex_path = os.path.join(tex_dir, tex_name)
         _texture_png(layer, tex_path)
         if embed:
@@ -132,7 +137,7 @@ def save_gltf(layers, path, gap=0.002, embed=False):
             uri = None
         textures.append({'source': len(images) - 1, 'sampler': 0})
         materials.append({
-            'name': _safe(layer.name),
+            'name': sheet,
             # **不透明度的来源是这一层自己的 alpha 通道。** 关掉 alpha 之后每一层都会变成整块方片，而它们叠在一起
             # 就是最后那张图 —— 那看起来像「成功了」，实际上是什么都没分层。
             'alphaMode': 'BLEND',
@@ -143,13 +148,13 @@ def save_gltf(layers, path, gap=0.002, embed=False):
                 'roughnessFactor': 1.0,
             },
         })
-        meshes.append({'name': _safe(layer.name), 'primitives': [{
+        meshes.append({'name': sheet, 'primitives': [{
             'attributes': {'POSITION': len(accessors) - 3, 'TEXCOORD_0': len(accessors) - 2},
             'indices': len(accessors) - 1,
             'material': len(materials) - 1,
             'mode': 4,
         }]})
-        nodes.append({'name': _safe(layer.name), 'mesh': len(meshes) - 1})
+        nodes.append({'name': sheet, 'mesh': len(meshes) - 1})
 
     document = {
         'asset': {'version': '2.0', 'generator': 'lineweight'},
@@ -183,6 +188,20 @@ def save_gltf(layers, path, gap=0.002, embed=False):
     with open(path, 'w', encoding='utf-8') as handle:
         json.dump(document, handle, ensure_ascii=False, indent=1)
     return path, len(nodes)
+
+
+def _unique(name, used):
+    """一个在 `used` 里没出现过的名字。
+
+    **层名在大纲里是唯一的那个东西，而重名的两层会变成 `mountain-14` 与 `mountain-14.001`** —— 于是名字丢了一个，
+    而丢掉的正好是「这一层是什么」。所以重名在这里就地加序号，不留给观者去猜哪一层是哪一层。
+    """
+    if name not in used:
+        return name
+    index = 2
+    while '%s-%d' % (name, index) in used:
+        index += 1
+    return '%s-%d' % (name, index)
 
 
 def _safe(name):

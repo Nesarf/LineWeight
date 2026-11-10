@@ -599,20 +599,20 @@ def main():
     # **远山不皴。** 「遠山無皴，遠水無波，遠人無目 —— 非無也，如無耳」（郭熙《林泉高致》）。三句说的是同一件事：
     # 远处的细节不是「没画」，是画了也读不出来。所以远山那一档的组数是零，而不是小一点 —— 这不是省笔，是那条
     # 判据本身：**远处的形体要被减去它显示不出来的东西。**
-    for ridge, depth, level, groups, fall in planes:
+    for plane_index, (ridge, depth, level, groups, fall) in enumerate(planes):
         smooth = ridge_curve(ridge, rounds=rounds)
         layer, solid = mountain(smooth, depth, level, seed=len(ridge), waterfall=fall)
-        place('mountain-%d' % len(ridge), layer)
+        place('mountain-%d' % (plane_index + 1), layer)
         fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7, reach=reach)
-        place('cun-%d' % len(ridge), r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
+        place('cun-%d' % (plane_index + 1), r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
                                                     paper=rough))
         marks += len(fig.marks)
         # **树按远近分大小与数量**：远山的树少而小（几粒），近山的多而大 —— 而这两组数不是风格，是尺度：
         # 同一种树在两座山上要长得一样大，只有它的墨要跟着山淡。
         trees = trees_on_ridge(smooth, solid, level, 10 if depth < 100 else (26 if depth < 230 else 70),
                                seed=int(len(ridge) * 13))
-        place('trees-%d' % len(ridge), r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
-                                                      paper=rough))
+        place('trees-%d' % (plane_index + 1), r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
+                                                             paper=rough))
         marks += len(trees.marks)
         # **瀑布底下要有水花**，而它比瀑布本身更说明那是水：一条竖直的缝可以是一道裂缝、一条石缝、一条什么都没画
         # 的空白，而水花把它认领成水。**加法里那几笔是减法最后需要的一句声明。**

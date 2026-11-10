@@ -62,6 +62,21 @@ def test_the_texture_keeps_the_layer_alpha(tmp_path):
     assert 0 < int(alphas.max()) < 255, 'the upper sheet came out fully opaque'
 
 
+def test_two_sheets_with_the_same_name_do_not_both_come_out_called_sheet(tmp_path):
+    """**重名的层在 Blender 的大纲里会变成 `sheet` 与 `sheet.001`** —— 而层名回答的是「这一层是什么」，重名等于
+    丢了一个。
+
+    三远就撞上过这件事：三层的脊点数一样，于是三块平面都叫 `mountain-14`，在导出的文件里三个节点同名。**层名是
+    4.106 那条判据的全部，所以重名不是排版问题，是那一层没法被指着叫出来。**
+    """
+    layers = [psd.Layer('sheet', 8, 8) for _ in range(3)]
+    path, _ = gltf.save_gltf(layers, str(tmp_path / 'dup.gltf'))
+    document = json.load(open(path, encoding='utf-8'))
+    names = [node['name'] for node in document['nodes']]
+    assert names == ['sheet', 'sheet-2', 'sheet-3']
+    assert len(set(names)) == 3, 'two sheets share a node name'
+
+
 def test_the_buffer_holds_every_vertex_it_claims(tmp_path):
     path, _ = gltf.save_gltf(_layers(2), str(tmp_path / 'picture.gltf'))
     document = json.load(open(path, encoding='utf-8'))
