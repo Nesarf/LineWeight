@@ -42,10 +42,14 @@ LIGHT = (-0.42, -0.50, 0.76)
 
 # **The whole of the subject, and all of it arbitrary.** A snout at the right, a tail at the left, a dorsal ridge, a
 # belly; the numbers came from looking at a fish, not from solving for one.
+#
+# **And the pectoral was in the wrong place, which is a data error rather than a drawing one.** It sat at the far left
+# end beside the tail, so the fish read as having two tail fins. A pectoral grows behind the gill cover, low on the
+# flank, and sweeps back and down from there -- so its root moved to (902, 552) and its points run back and down from it.
 BODY = [(168, 452), (238, 402), (326, 376), (430, 356), (556, 338), (700, 332), (826, 344),
         (930, 372), (1012, 414), (1064, 462), (1068, 508), (1030, 556), (944, 596),
         (846, 620), (726, 634), (594, 638), (468, 630), (356, 610), (272, 580), (200, 540), (162, 494)]
-FIN = [(188, 446), (120, 348), (96, 300), (150, 386), (176, 430)]
+FIN = [(910, 546), (848, 596), (786, 646), (812, 664), (872, 620), (906, 578)]
 TAIL = [(168, 452), (58, 430), (22, 462), (52, 496), (166, 498)]
 DORSAL = [(470, 336), (520, 306), (588, 296), (660, 304), (700, 336), (586, 340)]
 EYE = (1002, 452)
@@ -229,7 +233,7 @@ def fin_marks(seed=505):
     # 贴着身体的那条边长出来的，所以中心取在根上，每一条只朝一个方向去。三个鳍的根不在同一侧，所以各给一个。
     # **而笔触要按形状的尺寸缩放。** 尾鳍只有一百五十乘七十，给它的鳍条却和背鳍一样长，于是每一条都伸出轮廓
     # 之外，散成一把刺。它自己的尺寸是它自己的事。
-    for shape, density, root, reach in ((FIN, 150, (188.0, 440.0), 1.00),
+    for shape, density, root, reach in ((FIN, 150, (910.0, 546.0), 0.72),
                                         (DORSAL, 170, (586.0, 338.0), 1.00),
                                         (TAIL, 200, (167.0, 474.0), 0.58)):
         mask = mask_of(shape)
