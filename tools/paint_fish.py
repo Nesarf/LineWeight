@@ -68,7 +68,7 @@ def height_of(mask, exponent=0.52):
     return (inside / peak) ** exponent
 
 
-def shading(relief, tilt=0.9):
+def shading(relief, tilt=1.5):
     """高度场的梯度当法线 —— 与 `raster.light` 同一个式子，只是这里的高度是形体本身。
 
     **`30.0` 那个旧尺度是错的。** `relief` 归一化在 0 到 1，跨过整条鱼才走完这一段，所以每像素的梯度在千分之三量级；
