@@ -466,6 +466,7 @@ def cloud_band(y, level=0.22, seed=6300, count=3):
             'brush', seed=seed + i, colour=ink, soft=1.0, edge=rng.uniform(96.0, 148.0),
             bristle=0.0, width_profile=[rng.uniform(150.0, 250.0)] * 3,
             alpha_profile=[rng.uniform(0.30, 0.44)] * 3,
+            bleed=r.bleed_radius(level, r.PAPERS['rough']),
             absolute_width=True), stage='line', layer='paint', note='')
     return fig
 

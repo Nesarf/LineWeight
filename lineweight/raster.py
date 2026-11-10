@@ -103,6 +103,21 @@ PAPERS: dict[str, Paper] = {
 }
 
 
+def bleed_radius(level: float, paper: 'Paper | None' = None, reach: float = 26.0) -> float:
+    """湿边的半径：**由纸的粗糙度与墨的浓度决定，不是手调常数。**
+
+    纸越粗，毛细作用越强，墨走得越远（`tooth` 是纸的粗糙度：`rough` 一点七、`smooth` 零点三五）；而墨越浓走得
+    越**近** —— 浓墨里水少，颜料自己就留住了。两条力方向相反，而画面上看到的是**淡墨渗得最远**：那是水多颜料少的
+    那一笔，水往纸里走，把淡墨带到笔没到过的地方。
+
+    所以同一个浓度换一张更粗的纸会渗得更开，同一张纸上浓墨几乎不渗 —— 而这两句都不是调出来的，它们分别是
+    `tooth` 与 `level` 的函数。**一个人想改这个半径，该改纸或改浓度，而不是改这里。**
+    """
+    tooth = 1.0 if paper is None else float(paper.tooth)
+    level = min(1.0, max(0.0, float(level)))
+    return reach * tooth * (1.0 - level) ** 1.5
+
+
 class Layer:
     """One RGBA buffer. Straight alpha: the colour of a pixel is the colour it actually is."""
 

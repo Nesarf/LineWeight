@@ -98,6 +98,7 @@ def body_strokes(fig, seed=2027):
             colour_profile=[[v * 0.90 for v in body], list(body), [min(255.0, v * 1.16) for v in body]],
             width_profile=thick,
             alpha_profile=[0.66, 0.84, 0.78, 0.72, 0.76, 0.68, 0.56, 0.30],
+            bleed=r.bleed_radius(level, r.PAPERS['rough']),
             absolute_width=True), stage='line', layer='body', note='')
     return fig
 
