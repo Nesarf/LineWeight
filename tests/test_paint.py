@@ -172,3 +172,24 @@ def test_a_varying_profile_does_not_leave_beads_along_the_stroke():
     assert jumps(probe_stroke([13.0, 13.0, 13.0])) == 0
     assert jumps(probe_stroke([7.0, 13.0, 13.0, 6.0])) <= 2
 
+
+def test_bleed_leaves_the_boundary_alone_when_it_is_zero():
+    """`bleed` 是第五个上色字段，而它的默认值必须是零，否则此前每一张画都会变。
+
+    判据和 `soft`、`colour_profile` 一样：**一个默认什么都不做的字段，才能加进一条已经有很多张画依赖的渲染路径。**
+    """
+    assert np.array_equal(rendered(bleed=0.0)[:, :, 3], rendered()[:, :, 3])
+
+
+def test_bleed_puts_ink_outside_the_mark_and_leaves_the_core_alone():
+    """湿笔的墨在笔的有效半径之外，而笔心不动。
+
+    干笔在端点之外是空白；湿笔在同一处有墨（那个指数尾巴），而笔心的 alpha 与干笔相同。**把这两件事混在一起 ——
+    比如用 `soft` 做湿 —— 得到的是整笔发灰，那不是墨渗出去，那是墨变淡了。**
+    """
+    dry = rendered()
+    wet = rendered(bleed=14.0)
+    assert dry[20, 118, 3] == 0, 'the dry stroke reached outside its own end'
+    assert wet[20, 118, 3] > 0, 'the wet stroke did not bleed past its end'
+    assert abs(int(wet[20, 60, 3]) - int(dry[20, 60, 3])) <= 2, 'the wet stroke dimmed its own core'
+

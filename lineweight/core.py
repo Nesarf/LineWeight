@@ -1157,7 +1157,7 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
                   absolute_width: bool = False,
                   size: float = 1.0, page_long: float = 0.0, edge: float = 0.0, soft: float = 0.0,
                   colour_profile=None, height: float = 0.0, bristle: float = 0.0,
-                  bristle_pitch: float = 2.5) -> dict:
+                  bristle_pitch: float = 2.5, bleed: float = 0.0) -> dict:
     """The stroke as **data** rather than as an expanded outline: centre line, pressure samples, brush, seed.
 
     **This is the difference between an exporter and a drawing tool.** Everything before this returned a filled
@@ -1250,6 +1250,12 @@ def stroke_record(points: list[tuple[float, float]], brush_name: str, seed: int 
         # `bristle_pitch` 是两根毛的间距（像素）。它给的是「粗糙」之外的那件事：纹路沿着笔画走，而不是均匀噪声。
         'bristle': float(bristle),
         'bristle_pitch': float(bristle_pitch),
+        # **一笔墨在纸里往外走多远。** 干笔的边界是 `edge` 那条从墨到纸的过渡，它是一条边界；湿笔在边界之外还留着
+        # 一圈极淡的墨 —— 那不是边，是渗出去的那一层。`bleed` 就是这一圈的特征长度（像素）：覆盖在笔的有效半径
+        # 之外按 `exp(-d / bleed)` 衰减，而**笔心不动** —— 湿的是外圈，不是整条笔变软。
+        #
+        # 零是干笔，也是此前每一笔的值，所以既有图的输出逐像素不变。
+        'bleed': float(bleed),
         'alpha_profile': [float(a) for a in alpha_profile] if alpha_profile else [],
         'control': [[round(x, 3), round(y, 3)] for x, y in points],
         'centre': [[round(x, 3), round(y, 3)] for x, y in path],

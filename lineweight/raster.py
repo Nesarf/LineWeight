@@ -1193,6 +1193,12 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     # **笔毛：沿笔画走的栅格，每一格是一根毛。** 零表示不画毛，而零是默认 —— 这个字段加进来时，此前画过的
     # 每一笔都没有它，所以它们的像素一个也不动。
     bristle = max(0.0, min(1.0, float(record.get('bristle') or 0.0)))
+    # **湿笔：墨在纸里往外走多远。** 干笔的边是 `ramp` 从 `half` 到零，那是一条边界；湿笔在边界之外还留着一圈极淡
+    # 的墨 —— 那不是边，是渗出去的那一层。`bleed` 是这个外圈的特征长度（像素），覆盖按 `exp(-d / bleed)` 衰减。
+    #
+    # **笔心不动。** 湿的是外圈，不是整条笔变软 —— 把 `soft` 调大做出来的「湿」是整笔发灰，而真实的湿笔中心仍然
+    # 浓、只是边上有墨爬出去。零是干笔，也是此前每一笔的值。
+    bleed = max(0.0, float(record.get('bleed') or 0.0))
     bristle_pitch = max(0.5, float(record.get('bristle_pitch') or 2.5))
     seed = float(record.get('seed', 0) or 0.0)
     # **The page comes from the record, and the canvas deliberately does not overrule it.** A brush's width is a share
@@ -1268,7 +1274,10 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     for i in range(points.shape[0] - 1):
         ax, ay = points[i]
         bx, by = points[i + 1]
-        radius = 0.5 * max(widths[i], widths[i + 1]) + 1.0
+        # **湿笔的外圈要算进这个框里。** 第一版只按 `half` 加一像素取框，于是那一圈晕在框外被切掉 —— 画面上
+        # 湿笔和干笔一模一样，而测试量到的正是这个。**一个按笔画取框的渲染器，每加一种「超出笔画」的效果，都要
+        # 同时把框放大**；否则效果被裁掉，而代码看起来是对的。
+        radius = 0.5 * max(widths[i], widths[i + 1]) + 1.0 + (bleed * 3.2 if bleed > 0.0 else 0.0)
         x0 = max(0, int(_np.floor(min(ax, bx) - radius)))
         x1 = min(width, int(_np.ceil(max(ax, bx) + radius)) + 1)
         y0 = max(0, int(_np.floor(min(ay, by) - radius)))
@@ -1297,6 +1306,13 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
             (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0, 0.0, 1.0))
         ramp = _np.clip((half + 0.5 * edge - distance) / max(edge, 1e-6), 0.0, 1.0)
         coverage = ramp if soft <= 0.0 else ramp ** (1.0 + soft)
+        # **湿的那一圈。** 在笔的有效半径之外，覆盖按指数衰减，峰值是笔心的一半以下 —— 它比任何一笔都淡，而它
+        # 铺开的宽度可以比笔本身大好几倍。那正是墨在纸里走的样子：**浓的部分留在笔走过的地方，淡的部分走到笔没
+        # 到过的地方。**
+        if bleed > 0.0:
+            outside = _np.clip(distance - half, 0.0, None)
+            halo = _np.exp(-outside / bleed) * 0.28
+            coverage = _np.maximum(coverage, halo)
         share = (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0
         here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * share)
         # **一支笔是几十根毛，不是一条带。** `grain` 给的是均匀噪声，它能做「粗糙」，做不了「毛」—— 因为毛有
