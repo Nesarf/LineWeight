@@ -99,20 +99,19 @@ def height_of(mask, exponent=0.52):
 
 
 def shading(relief, tilt=1.5):
-    """高度场的梯度当法线 —— 与 `raster.light` 同一个式子，只是这里的高度是形体本身。
+    """侧视的扁平形体：**中央亮、四周边缘暗**。
 
-    **`30.0` 那个旧尺度是错的。** `relief` 归一化在 0 到 1，跨过整条鱼才走完这一段，所以每像素的梯度在千分之三量级；
-    乘三十仍然只有零点一，法线几乎垂直，朗伯项于是到处一样 —— 画面平不是因为颜色浅，是因为法线根本没转。
-    形体尺度的一张图要乘到几百才让法线真的偏过去。
+    **上一版把梯度当法线，用的是 `raster.light` 那个式子，而它在这里是错的。** 那条式子量的是「表面往哪个方向
+    转」，在苹果那样一个球上对得干净；鱼不是球，是一条侧扁的形状从侧面看过去 —— 我们看见的是一整块面，它的
+    法线几乎全都朝着观察者。梯度指向中线的两侧，于是上半个面的法线朝左上、下半个面朝右下，朗伯项一正一负，
+    结果就是上半米白、下半深青，中间一条波浪状的硬边。**那不是一条鱼的两面，那是两块拼起来的东西。**
+
+    侧视的扁平体该按「到轮廓的距离」受光：离边缘越远，越靠近观察者，也越正对光源；靠近背缘、腹缘、头尾的
+    地方转向背面。所以这里直接用 `relief`（到轮廓的距离归一化再开方，本来就存在），不再对它求梯度。
+
+    `tilt` 留下来了，意思换了：它现在是「边缘压到多暗」。鳍用 0.6，因为一片鳍比鱼身薄，边缘没有那么快转过去。
     """
-    gy, gx = np.gradient(relief)
-    nx = -gx * tilt * 380.0
-    ny = -gy * tilt * 380.0
-    norm = np.sqrt(nx * nx + ny * ny + 1.0)
-    lx, ly, lz = LIGHT
-    length = math.sqrt(lx * lx + ly * ly + lz * lz)
-    lambert = (nx * lx + ny * ly + lz) / (norm * length)
-    return np.clip(0.16 + 1.05 * lambert, 0.0, 1.35)
+    return np.clip(1.0 - 0.41 * tilt * (1.0 - relief), 0.0, 1.35)
 
 
 def mix(a, b, t):
@@ -130,30 +129,62 @@ def jitter(colour, amount, rng):
             colour[2] + rng.uniform(-amount * 0.8, amount * 0.8))
 
 
-def fish_colour(value, rng, amount=9.0):
-    """银背、金侧、粉腹 —— 三段要有三种色相，不只是三档明度。
+def fish_colour(across, rng, amount=9.0):
+    """背、侧、腹三段 —— 三段按**从背到腹的位置**分，不按明度分。
 
-    **原来三段是同一个色相。** (34,38,48) / (172,162,150) / (208,204,190) 三个都是灰，只有深浅之分 —— 于是
-    整条鱼是一块银灰，形体画得再准也只是一条灰色的鱼。真实的鱼体色是分带的：背脊偏青或偏褐，体侧银里透金，
-    腹部泛粉。色相分开之后，同一条明度曲线读出来才是「一条鱼」，而不只是「一个亮的形体」。
+    **这个函数的参数原来是明度，那是错的，而错法很具体。** 明度由梯度算出来，于是它和「上半亮、下半暗」是同一件
+    事；拿它去取色，等于说「背就是亮的那半边、腹就是暗的那半边」。真实的鱼反过来：背脊最深（青或褐），体侧
+    银里透金（三段的中间），腹部最浅（白里透粉）。**「上暗下亮」既是一个色带，也是一个方向 —— 而它和光照不是
+    一回事。** 上一版把两件事压进同一个变量，于是无论怎么调那条曲线，读出来都是两块拼起来的东西。
 
-    体侧那条虹彩带单独加：它在明度上不出众（正好在中调），所以按明度取色永远是灰的 —— 那是一处**只有色相
-    能表达**的东西，而这一层以前根本不存在。
+    所以参数换成 `across`：零是背脊，一是腹缘。色带由它决定，光由调用它的地方另外乘上去。
 
-    **三段之间原来按「舀了多少」插值，那是错的。** 背是透明的深色，一点就能压住整片；腹是白的，弱，要加很
-    多才推得动。等权插值等于假设两管颜料一样强，于是暗部亮得太早、腹部白得太快。现在按着色力走（4.72 那一
-    节，`lineweight/pigment.py`）：深这一端强、腹这一端弱，过渡带于是落在它们各自真实的位置上。
+    **三段之间不是等权插值。** 背是透明的深色，一点就能压住整片；腹是白的，弱，要加很多才推得动。等权插值等于
+    假设两管颜料一样强，于是暗部亮得太早、腹部白得太快（4.72 节，`lineweight/pigment.py`）。
     """
-    deep, mid, back = (44, 56, 60), (176, 158, 126), (238, 212, 188)
-    if value <= 0.55:
-        body = pigment.mix_by_strength(deep, mid, value / 0.55, DEEP_STRENGTH, MID_STRENGTH)
+    ridge, flank, belly = (86, 100, 96), (188, 168, 134), (238, 216, 196)
+    if across <= 0.46:
+        body = pigment.mix_by_strength(ridge, flank, across / 0.46, DEEP_STRENGTH, MID_STRENGTH)
+    elif across <= 0.68:
+        # **中间这一段是纯的。** 上一版让背到侧、侧到腹两条曲线首尾相接，于是「体侧的银金」只在一处出现过 ——
+        # 而一段色带要有宽度才读得成一段，不是两个渐变刚好交于一点。
+        body = tuple(float(c) for c in flank)
     else:
-        body = pigment.mix_by_strength(mid, back, (value - 0.55) / 0.55, MID_STRENGTH, BACK_STRENGTH)
-    # **过渡带要够宽才叫过渡。** 上一版虹彩只有 0.20 的强度和 0.10 的宽度，于是背与腹之间是一条直边 ——
-    # 三段色相一分开，那条边界就露出来了。真实的鱼在明暗交界处有一条宽的、偏青的带，它既是色相也是过渡。
-    iris = 0.38 * math.exp(-((value - 0.52) / 0.16) ** 2)
+        body = pigment.mix_by_strength(flank, belly, (across - 0.68) / 0.32, MID_STRENGTH, BACK_STRENGTH)
+    # **虹彩带在侧线上，不在体侧正中。** 上一版把它放在 `across` 零点五二，而那正好是体侧面积最大的一条 —— 于是
+    # 整条鱼被染成青绿，读成一块褪了色的肥皂。它该窄，而且该靠着侧线（零点三四）那一带 —— 而第一版放到那里时
+    # 还没收窄，整片交界的绿把「银金」又盖掉了一次。
+    iris = 0.14 * math.exp(-((across - 0.32) / 0.075) ** 2)
     body = mix(body, (116, 154, 148), iris)
     return jitter(body, amount, rng)
+
+
+def body_light(relief_value, across):
+    """体侧一处的亮度：**中央亮，再加一个顺着高度的弱渐变。**
+
+    两处调用（体身的笔、鳞、侧线）必须共用一个式子 —— 上一次它们各自带一份系数，改一处另外两处就留在旧值上，
+    而那个漂走是看不出来的：鳞片只差十分之一，没有人会在画上认出来。
+    """
+    return 0.46 + 0.38 * max(0.0, float(relief_value)) ** 1.5 + 0.16 * (0.5 - across)
+
+
+def soft_mask_layer(mask, blur=2.2):
+    """布尔掩膜 → 一张软边的遮罩图层，给 `r.clip` 用。
+
+    **为什么要软。** `clip` 是一句话：乘 alpha。而硬裁会在边界上把厚度从「有」砍到「零」，`light` 找到那道悬崖，
+    沿边画一条亮线 —— 4.64 那一节就是这么发现的。两像素的高斯把那条崖变成一道缓坡，裁出来的边于是是一条线，
+    不是一道台阶。
+
+    **而体身本来就需要裁。** 每一个笔触都是圆头的，笔伸出轮廓的地方就露出一个圆弧 —— 扁平形体的边缘攒上一圈
+    圆包，读成毛边。相邻的苹果没有这个问题：球形的轮廓靠笔自己停下来就能长出来，一条扁鱼不行。
+    """
+    soft = np.clip(ndimage.gaussian_filter(mask.astype(np.float64), blur), 0.0, 1.0)
+    layer = r.Layer(W, H)
+    rgba = np.zeros((H, W, 4), dtype=np.uint8)
+    rgba[:, :, 0:3] = 255
+    rgba[:, :, 3] = (soft * 255.0).astype(np.uint8)
+    layer.data[:] = rgba.tobytes()
+    return layer
 
 
 def canvas(title):
@@ -205,22 +236,42 @@ def fish_marks(seed=8181):
     （九万像素的块，`within` 2.4 的一半原因在这里）。现在另加一层沿长轴的连续起伏 —— 不是每条笔给一个随机
     偏移（苹果那一轮证明那会把颜色推成孤立的色点，落进量化格子的边界，块内反而笔笔相同），而是随位置走的
     斑驳，体侧本来就有。
+
+    **而体色第一次不再由明度决定。** 上一版 `fish_colour` 收的参数是明度，而明度是梯度算出来的，于是「背深
+    腹浅」被压进了「上亮下暗」里 —— 两个相反的读法共用一个变量，怎么调那条曲线都不对。现在色带由 `across`
+    （从背到腹的位置）给，光只乘一个跟着 `relief` 走的因子。两者的分工写在 `fish_colour` 的 docstring 里。
     """
     rng = random.Random(seed)
     mask = mask_of(BODY)
-    relief = height_of(mask)
-    tone = shading(relief)
+    # **`exponent 0.85` 而不是 0.52。** 开方的效果是让「到轮廓的距离」在中部迅速顶到接近一 —— 一张图画下来，
+    # 体侧有一大片 `relief` 几乎不变的区域，于是 `body_light` 在那里给出一块平的高原，读成一块发光的肥皂。
+    # 0.85 接近线性，体侧才有坡度；代价是 `thin`（笔长的缩放）整体略变，而那是小事。
+    relief = height_of(mask, exponent=0.85)
     gy, gx = np.gradient(relief)
+    # 每一列从哪里到哪里 —— 体色要按「从背到腹的位置」取，而那个比例必须由当地的体高来算，不能用整条鱼的中线。
+    top_of = np.argmax(mask, axis=0)
+    bot_of = H - 1 - np.argmax(mask[::-1, :], axis=0)
     fig = canvas('fish body')
     rows, cols = np.nonzero(mask)
     index = 0
     for _ in range(1800):
         pick = rng.randrange(rows.size)
         y, x = int(rows[pick]), int(cols[pick])
-        value = float(tone[y, x])
+        span = max(1.0, float(bot_of[x] - top_of[x]))
+        across = max(0.0, min(1.0, (y - float(top_of[x])) / span))
         mottle = 1.0 + 0.10 * math.sin(x * 0.0105 + y * 0.0042) + 0.06 * math.sin(x * 0.031 - y * 0.016)
-        pigment = fish_colour(value, rng)
-        pigment = (pigment[0] * mottle, pigment[1] * mottle * 1.005, pigment[2] * mottle * 0.990)
+        pigment = fish_colour(across, rng)
+        # **光只做调制，不再决定色带。** 侧视的扁平体，中央正对观察者也正对光源，四周转向背面 —— 所以亮度跟着
+        # `relief` 走，而「背深腹浅」跟着 `across` 走。两件事分开之后，一条鱼才可能上半深、中间银、下半浅。
+        #
+        # **而光要两项，不只一项。** 只给一项的时候体侧是一整块平的高原 —— `relief` 是「到轮廓的距离」，扁平
+        # 形体的中部本来就是一整片接近一的平台，于是中央亮在整片体侧上处处相同，读成一块发光的肥皂。侧面的
+        # 曲面还随高度转：靠近背的那一侧朝上（受光），靠近腹的那一侧朝下（背光）。所以再叠一个很弱的上下项 —
+        # — 而它要和色带顶着来，因为背是深色的保护色却在受光，腹是浅色的却在背光，真实的鱼正是这个拉锯。
+        # `relief ** 1.5` 把平台压出坡度，否则加什么都是平的。
+        lit = body_light(relief[y, x], across)
+        pigment = (pigment[0] * mottle * lit, pigment[1] * mottle * lit * 1.004,
+                   pigment[2] * mottle * lit * 0.996)
         # **方向由形体给，不由画布给。** 高度场的梯度指向脊，垂直于它的是等高度线 —— 体侧那些「顺着转」的
         # 线。旧版全都水平，于是笔触排成一列一列的横条；而一条鱼的等高度线在头尾两端是弯的。
         gyp, gxp = float(gy[y, x]), float(gx[y, x])
@@ -250,52 +301,78 @@ def fish_marks(seed=8181):
             alpha_profile=[rng.uniform(0.70, 0.84)] * 3,
             absolute_width=True, edge=rng.uniform(1.6, 3.4)), stage='line', layer='paint', note='')
         index += 1
-    return fig, mask, relief, tone
+    return fig, mask, relief
+
+
+def ray_reach(mask, x0, y0, dx, dy, limit=420.0, step=2.0):
+    """从一点沿一个方向走，返回还在掩膜内的最远距离 —— 鳍条要走到它自己的边缘，所以得先知道边缘在哪里。"""
+    travelled = 0.0
+    while travelled < limit:
+        x = int(round(x0 + dx * travelled))
+        y = int(round(y0 + dy * travelled))
+        if not (0 <= x < W and 0 <= y < H) or not mask[y, x]:
+            return travelled
+        travelled += step
+    return limit
 
 
 def fin_marks(seed=505):
-    """鳍与远侧的那一片：**鳞条从根向外辐射，而鳍尖要透。**
+    """鳍：**一片膜，上面是一排从根一直走到边缘的鳍条。**
 
-    上一版的鳍读成一块白絮：笔触水平、颜色又取到了浅的那一头，落在形状上既没有方向也没有根。鳍的构造是从
-    根部伸出去的一排细条，所以每一笔沿「这一点背离鳍心」的方向走，颜色也压暗一档 —— 鳍比身体薄，背面没有
-    那么多光。
+    **上一版错在「撒点」这件事本身。** 它在形状内随机取点，每一笔朝背向根的方向画三十到九十像素的一段 —— 于是
+    三个鳍都成了「放射的短笔」：尾鳍一簇白毛、胸鳍一片羽毛。而一片鱼鳍不是那样长的：它是十几根**贯穿**的鳍条，
+    从根出发、一路走到边缘，中间不断；鳍条的末端往往还伸出膜外一点点。
 
-    **半透明不需要新机制，`alpha_profile` 早就够了。** 4.57 节说这要一个「不透明度跟局部厚度走」的东西，
-    而厚度在这里本来就有数：`relief` 是到轮廓的距离归一化再开方，鳍尖上是零、根上接近一。所以 alpha 直接
-    跟着它走 —— 鳍尖 0.22（背面的水和背景透得过来），鳍根 0.88。一条鳍的根连在身体上，那里不该透。
+    撒点给不出「贯穿」，因为每一笔都不知道边缘在哪里。所以这里改成**按角度排**：从根出发扫一圈角度，每个角度
+    一条，先用 `ray_reach` 问出这一条能走多远，笔就画那么长。**数量由角度间隔决定，长度由形状决定** —— 和鳞那
+    一条是同一个道理，排出来的结构与撒出来的笔触不是一回事。
+
+    **膜还要先铺。** 只有条的时候，一片鳍读成一排悬着的线；鳍本来是有底的，条是压在底上的。
     """
     rng = random.Random(seed)
     fig = canvas('fins')
-    # **辐射中心是根，不是质心。** 质心落在形状中央，笔触从那里朝四面八方散开 —— 读成一朵花。鳍条是从
-    # 贴着身体的那条边长出来的，所以中心取在根上，每一条只朝一个方向去。胸鳍与尾鳍的根不在同一侧，各给一个。
-    # **而笔触要按形状的尺寸缩放。** 尾鳍只有一百五十乘七十，给它的鳍条却和背鳍一样长，于是每一条都伸出轮廓
-    # 之外，散成一把刺。它自己的尺寸是它自己的事 —— 背鳍按同一个道理拆出去了，见下面的注释。
-    for shape, density, root, reach in ((FIN, 150, (910.0, 546.0), 0.72),
-                                        (TAIL, 200, (167.0, 474.0), 0.58)):
+    for shape, root, span, density in ((FIN, (908.0, 548.0), (2.15, 3.15), 18),
+                                       (TAIL, (166.0, 466.0), (2.70, 3.64), 19)):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
-        rows, cols = np.nonzero(mask)
-        cx0, cy0 = root
-        for i in range(density):
-            pick = rng.randrange(rows.size)
-            y, x = int(rows[pick]), int(cols[pick])
-            thin = math.sqrt(max(0.0, float(relief[y, x])))
-            pigment = jitter(mix((58, 54, 56), (146, 138, 130), min(1.0, float(tone[y, x]))), 7.0, rng)
-            dx, dy = x - cx0, y - cy0
-            scale = math.hypot(dx, dy) or 1.0
-            ux, uy = dx / scale, dy / scale
-            spin = rng.uniform(-0.28, 0.28)
-            ux, uy = ux * math.cos(spin) - uy * math.sin(spin), ux * math.sin(spin) + uy * math.cos(spin)
-            # 鳍条要比上一版长：短笔从根部散开只是毛，长的才读成条。
-            length = rng.uniform(34.0, 90.0) * (0.55 + 0.45 * thin) * reach
-            alpha = 0.22 + 0.66 * thin
+        # 膜：沿径向的几条宽笔，低 alpha，叠起来把这一片压下去。
+        for i in range(6):
+            fraction = (i + 0.5) / 6.0
+            theta = span[0] + (span[1] - span[0]) * fraction
+            dx, dy = math.cos(theta), math.sin(theta)
+            reach = ray_reach(mask, root[0], root[1], dx, dy)
+            if reach < 10.0:
+                continue
+            hx, hy = root[0] + dx * reach * 0.5, root[1] + dy * reach * 0.5
             fig.add_stroke(core.stroke_record(
-                [(x - ux * length * 0.5, y - uy * length * 0.5), (x, y),
-                 (x + ux * length * 0.5, y + uy * length * 0.5)], 'brush', seed=900 + i,
-                colour=hexed(pigment), soft=0.8, height=0.20, bristle=0.30,
-                width_profile=[rng.uniform(5, 11)] * 3, alpha_profile=[alpha * 0.82, alpha, alpha * 0.82],
-                absolute_width=True, edge=rng.uniform(2.0, 4.2)), stage='line', layer='paint', note='')
+                [(root[0] + dx * reach * 0.06, root[1] + dy * reach * 0.06), (hx, hy),
+                 (root[0] + dx * reach * 0.94, root[1] + dy * reach * 0.94)], 'brush', seed=800 + i,
+                colour='#2e2a2c', soft=0.9, height=0.12,
+                width_profile=[reach * 0.30, reach * 0.36, reach * 0.30],
+                alpha_profile=[0.10, 0.15, 0.10],
+                absolute_width=True, edge=7.0), stage='line', layer='paint', note='')
+        # 鳍条：每个角度一条，从根走到边缘，长度由 `ray_reach` 给。
+        for i in range(density):
+            theta = span[0] + (span[1] - span[0]) * (i + 0.4 * rng.random()) / density
+            dx, dy = math.cos(theta), math.sin(theta)
+            reach = ray_reach(mask, root[0], root[1], dx, dy)
+            if reach < 14.0:
+                continue
+            start = reach * rng.uniform(0.02, 0.10)
+            end = reach * rng.uniform(0.92, 1.01)
+            mid_x, mid_y = root[0] + dx * (start + end) * 0.5, root[1] + dy * (start + end) * 0.5
+            mx, my = int(round(mid_x)), int(round(mid_y))
+            thin = math.sqrt(max(0.0, float(relief[my, mx]))) if 0 <= mx < W and 0 <= my < H else 0.4
+            pigment = jitter(mix((46, 42, 44), (108, 100, 96), min(1.0, float(tone[my, mx]))), 6.0, rng)
+            alpha = 0.22 + 0.50 * thin
+            fig.add_stroke(core.stroke_record(
+                [(root[0] + dx * start, root[1] + dy * start), (mid_x, mid_y),
+                 (root[0] + dx * end, root[1] + dy * end)], 'brush', seed=900 + i,
+                colour=hexed(pigment), soft=0.5, height=0.14, bristle=0.20,
+                width_profile=[rng.uniform(4.2, 6.4), rng.uniform(5.6, 8.6), rng.uniform(2.8, 4.6)],
+                alpha_profile=[alpha * 0.72, alpha, alpha * 0.60],
+                absolute_width=True, edge=rng.uniform(1.2, 2.2)), stage='line', layer='paint', note='')
     # **背鳍：根是一条线，鳍条跨在这条线与外缘之间。** 上一版给它一个「根点」、让笔从那里向四面八方辐射，于是
     # 它读成一把毛刷；而 34–90 长的笔落在一片只有四十几像素高的膜上，两端都伸出轮廓。鳍条的长度不是常数，它
     # 就是这一处的鳍高，所以每一笔自己算。
@@ -316,7 +393,7 @@ def fin_marks(seed=505):
             stations, 'brush', seed=1080 + i, colour='#332f30', soft=1.0, height=0.10,
             width_profile=[22.0, 26.0, 21.0], alpha_profile=[0.12, 0.17, 0.12],
             absolute_width=True, edge=9.0), stage='line', layer='paint', note='')
-    for i in range(150):
+    for i in range(95):
         x0 = rng.uniform(478.0, 692.0)
         y_root = along(DORSAL_ROOT, x0)
         y_tip = along(DORSAL_TIP, x0)
@@ -332,12 +409,12 @@ def fin_marks(seed=505):
         if not (0 <= row < H and 0 <= column < W) or not mask[row, column]:
             continue
         thin = math.sqrt(max(0.0, float(relief[row, column])))
-        pigment = jitter(mix((58, 54, 56), (146, 138, 130), min(1.0, float(tone[row, column]))), 7.0, rng)
+        pigment = jitter(mix((52, 48, 50), (118, 110, 104), min(1.0, float(tone[row, column]))), 6.0, rng)
         length = fin_height * rng.uniform(0.72, 1.06)
         ux, uy = x0 - tip_x, y_root - y_tip
         norm = math.hypot(ux, uy) or 1.0
         ux, uy = ux / norm, uy / norm
-        alpha = 0.13 + 0.48 * thin
+        alpha = 0.10 + 0.38 * thin
         fig.add_stroke(core.stroke_record(
             [(cx - ux * length * 0.5, cy - uy * length * 0.5), (cx, cy),
              (cx + ux * length * 0.5, cy + uy * length * 0.5)], 'brush', seed=1100 + i,
@@ -367,15 +444,18 @@ def head_marks(seed=610):
     # **而 `soft` 在细笔上会把笔变成一串珠子，这一条是放大五倍才看清的。** 笔是按 dab 铺的，相邻两个 dab 的
     # 间距是直径的七成，梯形横截面重叠三成刚好填满；`soft` 把横截面换成钟形，边缘的权重掉到近乎零，那三成的
     # 重叠就不够了 —— 于是一条六到十一像素宽的笔在画面上是一排分开的圆。`soft` 是给宽笔用的，细笔不该有。
+    # **鳃盖的位置一开始放错了，而那是解剖而不是画法。** 它落在眼睛后面不到三十像素处，于是一个头读成
+    # 「一只眼贴着一道弧」。真实的鱼吻端到眼睛约占头长的三分之一，眼睛到鳃盖再占三分之一 —— 所以鳃盖要退到
+    # 眼睛后方六十像素左右，两者才各占一段，头才是一个头而不是一个点。
     fig.add_stroke(core.stroke_record(
-        [(978, 404), (958, 452), (964, 508), (988, 554)], 'brush', seed=610,
+        [(940, 404), (920, 452), (926, 508), (950, 554)], 'brush', seed=610,
         colour='#161c1e', soft=0.25,
-        width_profile=[7.0, 13.0, 13.0, 6.0], alpha_profile=[0.34, 0.58, 0.56, 0.30],
+        width_profile=[6.0, 13.0, 13.0, 5.0], alpha_profile=[0.10, 0.50, 0.48, 0.12],
         absolute_width=True, edge=2.0), stage='line', layer='paint', note='')
     fig.add_stroke(core.stroke_record(
-        [(992, 410), (972, 456), (978, 504), (1000, 546)], 'brush', seed=611,
+        [(954, 410), (934, 456), (940, 504), (962, 546)], 'brush', seed=611,
         colour='#ded4bc', soft=0.25,
-        width_profile=[5.0, 9.0, 9.0, 5.0], alpha_profile=[0.24, 0.44, 0.42, 0.22],
+        width_profile=[4.0, 9.0, 9.0, 4.0], alpha_profile=[0.08, 0.34, 0.32, 0.09],
         absolute_width=True, edge=2.4), stage='line', layer='paint', note='')
     # 嘴：暗缝在上唇下面，亮边在上唇上面。**第一版太小了** —— 三笔加起来不到二十像素长、最宽五像素，落在
     # 一条一千四百像素宽的画上就是吻端的一个污点，而嘴是让人读出「这一头是头」的第二个东西。
@@ -436,7 +516,7 @@ def eye_marks(seed=77):
     return fig
 
 
-def side_structure(mask, relief, tone, seed=4040):
+def side_structure(mask, relief, seed=4040):
     """体侧的第二层：**一排鳞，一条侧线 —— 第一层说这一片有多亮，第二层说这一片是什么做的。**
 
     第一层的一千八百笔是按密度撒的，`smudge` 再把它们拖成一片；那片东西的明度是对的，但它没有构造 —— 一条
@@ -492,13 +572,15 @@ def side_structure(mask, relief, tone, seed=4040):
             line_y = (top + bot) * 0.5 - 0.16 * span
             if abs(y_use - line_y) < span * 0.055:
                 continue
-            value = float(tone[row_use, column_use])
-            # **可见度不能只以一个明度为中心。** 第一版是 `exp(-((v-0.52)/0.30)^2)`，于是鳞只长在 0.52 那条等值
-            # 线附近 —— 而这条鱼的中线明度是零点九五、腹缘是零点二，那条线只在上缘一小块出现过，整片体侧于是
-            # 一片空白。真实的情况是：鳞在体侧到处都有，受光面与暗面只是「弱」，交界带才是「强」。所以给一个
-            # 底、在交界带加一个峰，而不是拿钟形当唯一的判据。
-            visible = 0.18 + 0.82 * math.exp(-((value - 0.52) / 0.24) ** 2)
-            pigment = fish_colour(value, rng, amount=4.0)
+            value = float(relief[row_use, column_use])
+            # **可见度跟着形体走，不再跟着明度走。** 上一版以一个明度为中心的钟形当判据，而那个明度来自「上半亮
+            # 下半暗」的读法；那个读法一倒，这条件也就没有依据了。体侧的鳞在中段最清楚 —— 那里正对观察者，一片
+            # 瓦的上缘能被看见；靠近背缘、腹缘、头尾的地方透视压缩，鳞挤成一条线，看不见。
+            visible = 0.20 + 0.80 * min(1.0, value * 1.45)
+            across = max(0.0, min(1.0, (y_use - top) / max(1.0, span)))
+            pigment = fish_colour(across, rng, amount=4.0)
+            lit = body_light(value, across)
+            pigment = tuple(c * lit for c in pigment)
             gyp, gxp = float(gy[row_use, column_use]), float(gx[row_use, column_use])
             scale_g = math.hypot(gxp, gyp) or 1.0
             # 沿体轴的是切线，横跨体轴的是法线 —— 一片鳞横着铺，它的上缘是一条横跨的弧。
@@ -516,10 +598,10 @@ def side_structure(mask, relief, tone, seed=4040):
                       (x_use + tx * bend, y_use + ty * bend),
                       (x_use + nx * length * 0.5 + tx * bend * 0.72,
                        y_use + ny * length * 0.5 + ty * bend * 0.72)]
-            alpha = 0.40 * visible * rng.uniform(0.72, 1.12)
+            alpha = 0.52 * visible * rng.uniform(0.72, 1.12)
             fig.add_stroke(core.stroke_record(
                 points, 'brush', seed=1400 + index, colour=hexed(pigment), soft=0.7,
-                colour_profile=[[min(255.0, c * 1.18 + 8.0) for c in pigment], list(pigment),
+                colour_profile=[[min(255.0, c * 1.28 + 10.0) for c in pigment], list(pigment),
                                 [c * 0.78 for c in pigment]],
                 bristle=0.14, bristle_pitch=3.2,
                 width_profile=[rng.uniform(2.0, 2.8), rng.uniform(3.0, 4.0), rng.uniform(1.7, 2.6)],
@@ -541,8 +623,8 @@ def side_structure(mask, relief, tone, seed=4040):
             bot = float(bot_of[column])
             line_y = (top + bot) * 0.5 - 0.16 * (bot - top)
             if mask[int(line_y), column]:
-                value = float(tone[int(line_y), column])
-                base = fish_colour(value, rng, amount=3.0)
+                base = fish_colour(0.34, rng, amount=3.0)
+                base = tuple(c * body_light(relief[int(line_y), column], 0.34) for c in base)
                 if dash % 4 == 3:
                     pore = [min(255.0, c * 1.14 + 6.0) for c in base]
                     alpha = 0.26
@@ -564,7 +646,7 @@ def side_structure(mask, relief, tone, seed=4040):
 def main():
     os.makedirs(OUT, exist_ok=True)
     picture = ground()
-    body, mask, relief, tone = fish_marks()
+    body, mask, relief = fish_marks()
     layer = r.render_marks([m.to_dict() for m in body.marks], W, H, sweep=True)
     rng = random.Random(404)
     for _ in range(16):
@@ -572,10 +654,10 @@ def main():
         x0 = rng.uniform(220.0, 760.0)
         points = [(x0 + k * 34.0, y + math.sin(k * 0.6) * 6.0) for k in range(6)]
         r.smudge(layer, points, radius=rng.uniform(22, 40), strength=rng.uniform(0.28, 0.48))
-    picture = r.blend(picture, layer, 'normal', 1.0)
+    picture = r.blend(picture, r.clip(layer, soft_mask_layer(mask)), 'normal', 1.0)
     # **第二层落在湿拖之后。** 鳞与侧线是这个形体上的构造，被 `smudge` 拖过一遍就又是一片没有方向的糊；而第一
     # 层要的正是那点糊 —— 两层先后不是排版问题，是它们各自该受什么处理。
-    scales = side_structure(mask, relief, tone)
+    scales = side_structure(mask, relief)
     picture = r.blend(picture, r.render_marks([m.to_dict() for m in scales.marks], W, H, sweep=True),
                       'normal', 1.0)
     for fig in (fin_marks(), head_marks(), eye_marks()):

@@ -124,3 +124,51 @@ def test_clipping_a_layer_without_relief_only_cuts_the_alpha():
     assert cut.relief is None
     assert cut.data[(20 * W + 104) * 4 + 3] == 0, 'alpha survived outside the mask'
     assert cut.data[(20 * W + 30) * 4 + 3] > 0, 'alpha was removed inside the mask'
+
+
+PROBE_W, PROBE_H = 200, 60
+
+
+def probe_stroke(widths):
+    """One straight stroke through the path a picture takes, and its alpha grid."""
+    from lineweight import project
+    fig = project.Project(width=PROBE_W, height=PROBE_H, title='probe')
+    fig.add_stroke(core.stroke_record([(20, 30), (90, 30), (160, 30)], 'brush', seed=1,
+                                      width_profile=widths, alpha_profile=[0.8, 0.8, 0.8],
+                                      absolute_width=True, edge=1.0),
+                   stage='line', layer='paint', note='')
+    layer = r.render_marks([m.to_dict() for m in fig.marks], PROBE_W, PROBE_H, sweep=True)
+    return np.frombuffer(bytes(layer.data), dtype=np.uint8).reshape(PROBE_H, PROBE_W, 4)
+
+
+def test_a_width_profile_reaches_the_middle_of_the_stroke():
+    """宽度剖面要铺满整条路径 —— 只覆盖起笔的剖面等于没有剖面。
+
+    **这一条是补上的，而它漏了很久。** 中心的点被重采样成几十个，而 `width_profile` 还是调用者写的那几个值；
+    渲染按重采样段的下标取值，于是曲线只作用在路径最前面几段，之后全是最后一个值。修之前，一条「起笔六、中间
+    二十四、收笔六」的笔在中间量出来是六 —— 而 381 项测试没有一项发现它。这是它值得一条测试的全部理由。
+    """
+    wide = probe_stroke([6.0, 24.0, 6.0])
+    flat = probe_stroke([6.0, 6.0, 6.0])
+
+    def across(image, x):
+        return int((image[:, x, 3] > 128).sum())
+
+    assert across(wide, 90) > across(flat, 90) + 6, 'the middle of the stroke ignored its profile'
+    assert across(wide, 22) < across(wide, 90) - 6, 'the ends and the middle came out the same width'
+
+
+def test_a_varying_profile_does_not_leave_beads_along_the_stroke():
+    """沿中线相邻像素的 alpha 不该大跳 —— 一串珠子是 dab 间距与半径不同步留下的。
+
+    修之前这样一条笔沿中线在 0.31 与 1.00 之间以约八像素的周期跳，而同样一条常宽度的笔是平的（0.541 到 0.600，
+    零次跳动）。`tools/probe_stroke_dab.py` 保留着这两行数。
+    """
+
+    def jumps(image):
+        line = image[30, 20:160, 3].astype(int)
+        return sum(1 for i in range(1, len(line)) if abs(line[i] - line[i - 1]) > 20)
+
+    assert jumps(probe_stroke([13.0, 13.0, 13.0])) == 0
+    assert jumps(probe_stroke([7.0, 13.0, 13.0, 6.0])) <= 2
+

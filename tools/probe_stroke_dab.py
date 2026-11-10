@@ -1,23 +1,27 @@
-"""A probe for one rendering fault: a stroke whose width profile varies comes out in beads.
+"""A probe for one rendering fault: a stroke whose width profile varies came out in beads.
 
 **What is measured.** A straight stroke is rendered through the path a picture takes -- `Project.add_stroke` and then
-`render_marks(..., sweep=True)`, not `sweep_layer`, which is a different loop -- and the alpha along its own centreline
-is read back. A stroke with one width value is flat along its length. A stroke with four width values is not: it swings
-between about 0.31 and 1.00 with a period near eight pixels, and the picture shows it as separate discs.
+`render_marks(..., sweep=True)`, not `sweep_layer` called directly, which is the same function with a different route
+into it -- and the alpha along its own centreline is read back.
 
-**Two numbers that make the fault visible, and the second one is not what it looks like.**
+**What it read before the repair.**
+
+    flat profile     centre 29  profile 3  alpha 0.541..0.600  jumps  0
+    varying profile  centre 43  profile 4  alpha 0.310..1.000  jumps 24
+
+**Two faults, and only the first one was visible.** `width_profile` and `alpha_profile` hold one value per control
+point, and `sweep_layer` filled them out to the resampled path with `np.resize` -- which repeats the array rather than
+stretching it, so a three-value profile became 6, 24, 6, 6, 24, 6, ... and the width swung along the stroke. That is
+the beading. The second fault was one level up: `stroke_layer`, the other route into the renderer, indexed the same
+profile by resampled segment number, so the curve covered the first per cent of the path and the last value covered
+the rest -- which is why adjusting a width curve in a painting script had almost no visible effect.
+
+Both now interpolate by position, and this file is what says so:
 
     python tools/probe_stroke_dab.py
 
-The centre of a four-point stroke is resampled to forty-three points, while the profile keeps four values. The renderer
-indexes the profile by the resampled segment number, so **the profile covers the first seven per cent of the path and the
-last value covers everything after it.** That is why adjusting a width curve here has almost no visible effect, and it
-is a separate fault from the beading -- although a bead and a width that jumps in the same place are easy to mistake for
-one another.
-
-**Not fixed here.** The repair is a resample of the profile against arc length before the dab loop, and it changes every
-painting already made; it needs its own round and its own before-and-after picture. This file exists so the measurement
-is not lost, and so the day it is fixed there is something to compare against.
+The last two lines of its output are the statement to read. `jumps` counts places along the centreline where the alpha
+moves by more than twenty levels between neighbouring pixels, and a stroke that is not beaded has none.
 """
 import sys
 
@@ -57,8 +61,8 @@ def main():
               % (label, len(record['centre']), len(widths),
                  min(values) / 255.0, max(values) / 255.0, jumps))
     print()
-    print('  A flat profile must read jumps 0. A varying one reading more than a handful is the fault.')
-    print('  The profile covers ceil(profile / centre) of the path; the rest takes the last value.')
+    print('  A flat profile must read jumps 0, and so must a varying one. A varying profile reading more than a')
+    print('  handful means the fill-out repeats the array instead of stretching it, and the stroke is beaded.')
     return 0
 
 

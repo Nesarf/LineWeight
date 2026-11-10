@@ -322,8 +322,11 @@ def stroke_layer(record: dict, width: int, height: int, scale: float = 1.0,
     median_pressure = sorted(pressure)[len(pressure) // 2] if pressure else 1.0
     if median_pressure <= 0:
         median_pressure = 1.0
-    widths = record.get('width_profile') or []
-    alphas = record.get('alpha_profile') or []
+    # **The profiles are resampled onto the path, not indexed by segment number.** `centre` has been resampled and the
+    # profiles have not; reading them by segment number truncated every curve to its first few segments. See
+    # `_resample_profile` for the measurement and against what.
+    widths = _resample_profile(record.get('width_profile') or [], len(centre))
+    alphas = _resample_profile(record.get('alpha_profile') or [], len(centre))
     # **Spacing is measured against the radius, not against the width times a factor.** The first version
     # multiplied the brush width by its spacing factor, which for a 22-pixel wash with a factor of 1.4 drew a
     # dab every 15 pixels -- a string of separate beads. A brush's spacing is how far apart its dabs sit
@@ -957,6 +960,37 @@ DENSITY_STEP = 0.025
 WIDE_STROKE = 1.0
 
 
+def _resample_profile(values, count):
+    """Stretch a per-control-point profile over the stroke's resampled path, by position.
+
+    **This is the repair for a fault that made every width curve a lie.** A record's `centre` is resampled -- a
+    four-point stroke becomes forty-three points -- while `width_profile` keeps the four values the caller wrote. The
+    dab loop indexes the profile by the resampled segment number, so the profile covered the first three segments and
+    the last value covered everything after them: **a curve meant to describe the whole stroke described its first
+    per cent, and a variable width produced a string of beads down the middle of an otherwise flat stroke.**
+    `tools/probe_stroke_dab.py` holds the measurement -- flat profiles read 0.541 to 0.600 along the centreline with no
+    jumps, varying ones read 0.310 to 1.000 with twenty-four.
+
+    **The stretch is by index, not by arc length.** Resampling the path is itself close to uniform in arc length within
+    a segment, so the index is a good proxy; measuring each control point's arc length would be more exact and would
+    also mean the two resamplings could disagree. A caller who needs a width at a specific point should give enough
+    control points that the difference is below a pixel.
+    """
+    if not values:
+        return []
+    if len(values) == 1 or count <= 1:
+        return [float(values[0])] * max(1, count)
+    out = []
+    last = len(values) - 1
+    for i in range(count):
+        position = i * last / (count - 1)
+        low = int(math.floor(position))
+        high = min(low + 1, last)
+        fraction = position - low
+        out.append(float(values[low]) * (1.0 - fraction) + float(values[high]) * fraction)
+    return out
+
+
 def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
                  paper: Paper | None = None, outlined: set | None = None,
                  outline_tint: float | None = None, outline_width: float | None = None,
@@ -1167,14 +1201,23 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
     # that draw a stroke on a 500-pixel canvas broke the moment the renderer started believing its own size. So a
     # caller that knows the page says so on the record, and a record that says nothing is read against the table's own
     # page. Every reader of that number -- this path, the vector paths, the auditor -- reads the same one.
+    # **剖面按位置铺开，不循环重复。** 上一版是 `np.resize`，而 `np.resize` 短了就把原数组循环填满 —— 三个值的
+    # 剖面落在一支笔上会变成 6,24,6,6,24,6,… 于是宽度沿路径来回跳，画面上就是一串分开的珠子（`AESTHETIC-LIBRARY`
+    # 4.74 记的就是它）。一条从宽到窄的曲线要的是插值，不是重复。`colour_profile` 下面用的是同一个写法，这里
+    # 照抄它。
     widths = _np.asarray(stroke_widths(record), dtype=_np.float64) * scale
     if widths.size != points.shape[0]:
-        widths = _np.resize(widths, points.shape[0])
+        widths = _np.interp(_np.linspace(0.0, 1.0, points.shape[0]),
+                            _np.linspace(0.0, 1.0, widths.size), widths)
     opacity = float(brush['opacity'])
     profile = record.get('alpha_profile') or []
     alpha = _np.full(points.shape[0], opacity, dtype=_np.float64)
     if profile:
-        alpha = opacity * _np.resize(_np.asarray(profile, dtype=_np.float64), points.shape[0])
+        stretched = _np.asarray(profile, dtype=_np.float64)
+        if stretched.size != points.shape[0]:
+            stretched = _np.interp(_np.linspace(0.0, 1.0, points.shape[0]),
+                                   _np.linspace(0.0, 1.0, stretched.size), stretched)
+        alpha = opacity * stretched
 
     # **The path is resampled along its length before anything is drawn.** A record's centre line arrives expanded to about
     # one point per pixel, and a distance field per point costs the same for a segment one pixel long as for one two pixels
