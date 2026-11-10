@@ -32,6 +32,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import paint_export                            # noqa: E402
+
 from lineweight import core, project          # noqa: E402
 from lineweight import raster as r            # noqa: E402
 
@@ -401,23 +403,27 @@ def drag_marks(cx, cy, radius, seed=913):
 def main():
     os.makedirs(OUT, exist_ok=True)
     cx, cy, radius = W * 0.50, H * 0.53, 232.0
+    # **每一块在 PSD 里是一层。** 苹果这张画是「底、投影、果身、果肉凹处、梗、高光、修边」八块，而分出这些名字之后，
+    # 「把高光关掉」变成一次点击 —— 那一步是判断，逐笔编辑给不了。
+    place, stack = paint_export.stacker(W, H)
     backdrop = ground(cx, cy, radius)
-    picture = backdrop
-    picture = r.blend(picture, table_shadow(cx, cy, radius), 'normal', 1.0)
+    picture = place(backdrop, 'ground', backdrop)
+    picture = place(picture, 'table shadow', table_shadow(cx, cy, radius))
     body_fig = body_marks(cx, cy, radius)
     body_layer = r.render_marks([m.to_dict() for m in body_fig.marks], W, H, sweep=True)
     for points, reach, strength in drag_marks(cx, cy, radius):
         r.smudge(body_layer, points, radius=reach, strength=strength)
-    picture = r.blend(picture, body_layer, 'normal', 1.0)
+    picture = place(picture, 'apple body', body_layer)
     order = (body_fig, dip_marks(cx, cy, radius), stem_marks(cx, cy, radius), gloss_marks(cx, cy, radius))
-    for fig in order[1:]:
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True),
-                          'normal', 1.0)
+    for name, fig in zip(('dip', 'stem', 'gloss'), order[1:]):
+        picture = place(picture, name, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'apple.png')
     r.save_png(r.light(picture, direction=(-0.50, -0.58, 1.15), strength=0.34, tilt=1.15), path,
                background=(22, 16, 13))
     project.save_project(body_fig, os.path.join(OUT, 'pass-body.json'))
-    print('%s  %d marks in %d passes' % (path, sum(len(fig.marks) for fig in order), len(order) + 2))
+    psd_path, layers = paint_export.export(stack, OUT, 'apple')
+    print('%s  %d marks in %d passes  %d layers  + %s'
+          % (path, sum(len(fig.marks) for fig in order), len(order) + 2, layers, os.path.basename(psd_path)))
     return 0
 
 

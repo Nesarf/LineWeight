@@ -21,6 +21,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import paint_export                            # noqa: E402
+
 from lineweight import core, project          # noqa: E402
 from lineweight import raster as r            # noqa: E402
 
@@ -218,8 +220,12 @@ def valley_marks(seed=77):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    picture = ground()
-    picture = r.blend(picture, r.render_marks([m.to_dict() for m in rod().marks], W, H, sweep=True), 'normal', 1.0)
+    # **四层：底、杆、布、暗谷。** 布与暗谷分成两层，因为它们是两种笔法（竖着走的宽笔与沿褶的窄笔），而「关掉暗谷
+    # 看还剩下什么」正是判断那张布靠什么立着的方法。
+    place, stack = paint_export.stacker(W, H)
+    backdrop = ground()
+    picture = place(backdrop, 'ground', backdrop)
+    picture = place(picture, 'rod', r.render_marks([m.to_dict() for m in rod().marks], W, H, sweep=True))
     body = cloth_marks()
     layer = r.render_marks([m.to_dict() for m in body.marks], W, H, sweep=True)
     rng = random.Random(313)
@@ -228,12 +234,16 @@ def main():
         y0 = rng.uniform(ROD_Y + 60, H - 120)
         points = [(fold_centre(fold * 0.98, y0 + k * 34.0), y0 + k * 34.0) for k in range(6)]
         r.smudge(layer, points, radius=rng.uniform(30, 52), strength=rng.uniform(0.35, 0.60))
-    picture = r.blend(picture, layer, 'normal', 1.0)
+    picture = place(picture, 'cloth', layer)
+    valleys = valley_marks()
+    picture = place(picture, 'valleys', r.render_marks([m.to_dict() for m in valleys.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'cloth.png')
     r.save_png(r.light(picture, direction=(-0.55, -0.40, 0.92), strength=0.30, tilt=1.1), path,
                background=(20, 16, 14))
     project.save_project(body, os.path.join(OUT, 'pass-cloth.json'))
-    print('%s  %d marks' % (path, len(body.marks)))
+    psd_path, layers = paint_export.export(stack, OUT, 'cloth')
+    print('%s  %d marks  %d layers  + %s' % (path, len(body.marks) + len(valleys.marks), layers,
+                                             os.path.basename(psd_path)))
     return 0
 
 
