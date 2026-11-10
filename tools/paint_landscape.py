@@ -153,18 +153,25 @@ def ridge_layer(ridge, depth, level, seed, ceiling=0.88, waterfall=None):
     if waterfall:
         centre, half = waterfall[0], waterfall[1]
         gaps = waterfall[2] if len(waterfall) > 2 else ()
-        columns = np.arange(W, dtype=np.float64)
-        # **上窄下宽**：水往下散，所以缝在底部更宽。用一个沿 y 的系数做不到（alpha 是二维的），所以缝的宽度按
-        # 这一列到中心的距离算，而**下半部取更松的幂** —— 那是「散开」在一条竖直缝上的写法。
-        rows_below = np.clip((rows - 380.0) / 420.0, 0.0, 1.0)
-        width = half * (0.45 + 0.85 * rows_below)
-        cut = np.clip(1.0 - np.abs(columns[None, :] - centre) / width, 0.0, 1.0) ** 0.7
-        # **「溪谷斷續以分淺深」—— 断的地方是浅滩，续的地方是深潭。** 郭熙那七个「無…則…」之后的又一条判据：
-        # 一条从头连到尾的缝是**一道沟**，而一条断断续续的缝才是水 —— 因为它说明底下的石头有高有低，而水在低处
-        # 积着、在高处流过去。所以 `gaps` 里那几段 y 区间不挖：缝在那里断开，纸上的墨连着，读成水下面的石头。
-        for low, high in gaps:
-            cut[max(0, int(low)):max(0, int(high)), :] = 0.0
-        alpha = alpha * (1.0 - cut)
+        # **只算它影响得到的那几列。** 上一版把 `cut` 算成整幅 H×W 的浮点数组，而 `mountain` 每层跑四遍、每层都
+        # 算一次 —— 瀑布只影响窄窄一条，却让整张画的计算量翻了二十倍（十七秒变成五十秒）。而画面一个像素都不变：
+        # `cut` 在 `reach` 之外本来是零，乘上去等于不乘。**一个局部的东西要只算它局部的代价。**
+        reach = int(half * 1.7) + 3
+        low = max(0, int(centre) - reach)
+        high = min(W, int(centre) + reach + 1)
+        if high > low:
+            columns = np.arange(low, high, dtype=np.float64)
+            # **上窄下宽**：水往下散，所以缝在底部更宽。用一个沿 y 的系数做不到（alpha 是二维的），所以缝的宽度
+            # 按这一列到中心的距离算，而**下半部取更松的幂** —— 那是「散开」在一条竖直缝上的写法。
+            rows_below = np.clip((rows - 380.0) / 420.0, 0.0, 1.0)
+            width = half * (0.45 + 0.85 * rows_below)
+            cut = np.clip(1.0 - np.abs(columns[None, :] - centre) / width, 0.0, 1.0) ** 0.7
+            # **「溪谷斷續以分淺深」—— 断的地方是浅滩，续的地方是深潭。** 一条从头连到尾的缝是**一道沟**，而一条
+            # 断断续续的缝才是水 —— 因为它说明底下的石头有高有低，而水在低处积着、在高处流过去。所以 `gaps` 里
+            # 那几段 y 区间不挖：缝在那里断开，纸上的墨连着，读成水下面的石头。
+            for low_y, high_y in gaps:
+                cut[max(0, int(low_y)):max(0, int(high_y)), :] = 0.0
+            alpha[:, low:high] *= (1.0 - cut)
     rgba[:, :, 0] = int(round(tone[0]))
     rgba[:, :, 1] = int(round(tone[1]))
     rgba[:, :, 2] = int(round(tone[2]))
