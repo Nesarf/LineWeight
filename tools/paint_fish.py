@@ -227,9 +227,11 @@ def fin_marks(seed=505):
     fig = canvas('fins')
     # **辐射中心是根，不是质心。** 质心落在形状中央，笔触从那里朝四面八方散开 —— 读成一朵花。鳍条是从
     # 贴着身体的那条边长出来的，所以中心取在根上，每一条只朝一个方向去。三个鳍的根不在同一侧，所以各给一个。
-    for shape, density, root in ((FIN, 150, (188.0, 440.0)),
-                                 (DORSAL, 170, (586.0, 338.0)),
-                                 (TAIL, 200, (167.0, 474.0))):
+    # **而笔触要按形状的尺寸缩放。** 尾鳍只有一百五十乘七十，给它的鳍条却和背鳍一样长，于是每一条都伸出轮廓
+    # 之外，散成一把刺。它自己的尺寸是它自己的事。
+    for shape, density, root, reach in ((FIN, 150, (188.0, 440.0), 1.00),
+                                        (DORSAL, 170, (586.0, 338.0), 1.00),
+                                        (TAIL, 200, (167.0, 474.0), 0.58)):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
@@ -246,7 +248,7 @@ def fin_marks(seed=505):
             spin = rng.uniform(-0.28, 0.28)
             ux, uy = ux * math.cos(spin) - uy * math.sin(spin), ux * math.sin(spin) + uy * math.cos(spin)
             # 鳍条要比上一版长：短笔从根部散开只是毛，长的才读成条。
-            length = rng.uniform(34.0, 90.0) * (0.55 + 0.45 * thin)
+            length = rng.uniform(34.0, 90.0) * (0.55 + 0.45 * thin) * reach
             alpha = 0.22 + 0.66 * thin
             fig.add_stroke(core.stroke_record(
                 [(x - ux * length * 0.5, y - uy * length * 0.5), (x, y),
