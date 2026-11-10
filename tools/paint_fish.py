@@ -77,14 +77,18 @@ BODY = tall([(168, 444), (238, 428), (326, 386), (430, 356), (556, 338), (700, 3
              (846, 620), (726, 634), (594, 638), (468, 630), (356, 600), (272, 556), (200, 510), (162, 486)])
 FIN = tall([(910, 546), (848, 596), (786, 646), (812, 664), (872, 620), (906, 578)])
 TAIL = tall([(168, 446), (58, 412), (12, 462), (52, 520), (166, 484)])
-DORSAL = tall([(470, 336), (520, 306), (588, 296), (660, 304), (700, 336), (586, 340)])
+# **And the fin's root sat above the body's own edge, which is why it looked like it floated.** The dorsal polygon's
+# lower points were at y 336 while the outline's upper edge passes through y 350 at that x -- fourteen pixels of gap
+# that no drawing change could hide, and that `tall()` preserved because it moved both by the same factor. The two
+# lower corners are pulled down into the body, so the fin grows out of it.
+DORSAL = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352), (586, 340)])
 # **The dorsal fin's root is a line, not a point.** `fin_marks` radiates from a root for the pectoral and the tail, and
 # that is right for them: a pectoral springs from one attachment and a tail fin from a short one. The dorsal springs
 # from the whole length of the back, so radiating from its centre produced a fan of bristles, and the bristles were
 # longer than the fin was tall. These two edges are the fin as a strip of membrane -- the root follows the back, the
 # tip is the outer curve -- and a ray is a mark that spans between them.
-DORSAL_ROOT = tall([(470, 336), (586, 340), (700, 336)])
-DORSAL_TIP = tall([(470, 336), (520, 306), (588, 296), (660, 304), (700, 336)])
+DORSAL_ROOT = tall([(470, 364), (586, 340), (700, 352)])
+DORSAL_TIP = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352)])
 FIN_ROOT = tall([(908, 548)])[0]
 TAIL_ROOT = tall([(166, 466)])[0]
 # **And the eye was in the wrong half of the head.** It sat sixty-six pixels from a snout that is a hundred and
@@ -345,6 +349,28 @@ def ray_reach(mask, x0, y0, dx, dy, limit=420.0, step=2.0):
     return limit
 
 
+def fin_film():
+    """三片鳍的膜：**一片鳍是有底的，而底不是笔触堆出来的。**
+
+    上一版用几条很宽的径向笔当膜，alpha 只有零点一几 —— 放大四倍看，背鳍是一排悬在深色背脊上的细线，下面什么也
+    没有。原因是那些笔各自的宽度是「这一条能走多远」的一个比例，而一片鳍的高度沿长轴一直在变，任何一条恒定宽度
+    的笔都对不上它自己的边界。
+
+    所以膜改成一个**填出来的形状**，再裁到软边（硬裁的边会在 `light` 下变成一条亮线，4.64 那一节）。鳍条压在它
+    上面，于是「条」与「膜」是两层，而不是一层笔触兼做两件事。
+
+    **而颜色第一次是错的，错法是无声的。** 第一版的膜是 (46,44,48)、alpha 零点六，而背景是 (38,34,32) —— 混合
+    之后是 (44,41,42)，和它要盖住的那片地方几乎相同。**膜确实画了，只是看不见。** 一片鳍在水里比背后的暗处亮，
+    因为它是半透明的、透过来的是光，所以它该比背景亮一档，而不是比背脊暗一档。
+    """
+    film = r.Layer(W, H)
+    for shape, level in ((DORSAL, 0.30), (FIN, 0.26), (TAIL, 0.28)):
+        patch = r.Layer(W, H)
+        r.fill_polygon(patch, [tuple(p) for p in shape], (70, 72, 70), level)
+        film = r.blend(film, r.clip(patch, soft_mask_layer(mask_of(shape), blur=3.0)), 'normal', 1.0)
+    return film
+
+
 def fin_marks(seed=505):
     """鳍：**一片膜，上面是一排从根一直走到边缘的鳍条。**
 
@@ -394,12 +420,12 @@ def fin_marks(seed=505):
             mx, my = int(round(mid_x)), int(round(mid_y))
             thin = math.sqrt(max(0.0, float(relief[my, mx]))) if 0 <= mx < W and 0 <= my < H else 0.4
             pigment = jitter(mix((46, 42, 44), (108, 100, 96), min(1.0, float(tone[my, mx]))), 6.0, rng)
-            alpha = 0.22 + 0.50 * thin
+            alpha = 0.28 + 0.52 * thin
             fig.add_stroke(core.stroke_record(
                 [(root[0] + dx * start, root[1] + dy * start), (mid_x, mid_y),
                  (root[0] + dx * end, root[1] + dy * end)], 'brush', seed=900 + i,
                 colour=hexed(pigment), soft=0.5, height=0.14, bristle=0.20,
-                width_profile=[rng.uniform(4.2, 6.4), rng.uniform(5.6, 8.6), rng.uniform(2.8, 4.6)],
+                width_profile=[rng.uniform(5.2, 7.6), rng.uniform(6.8, 10.2), rng.uniform(3.4, 5.6)],
                 alpha_profile=[alpha * 0.72, alpha, alpha * 0.60],
                 absolute_width=True, edge=rng.uniform(1.2, 2.2)), stage='line', layer='paint', note='')
     # **背鳍：根是一条线，鳍条跨在这条线与外缘之间。** 上一版给它一个「根点」、让笔从那里向四面八方辐射，于是
@@ -422,7 +448,7 @@ def fin_marks(seed=505):
             stations, 'brush', seed=1080 + i, colour='#332f30', soft=1.0, height=0.10,
             width_profile=[26.0, 32.0, 26.0], alpha_profile=[0.16, 0.24, 0.16],
             absolute_width=True, edge=9.0), stage='line', layer='paint', note='')
-    for i in range(95):
+    for i in range(32):
         x0 = rng.uniform(478.0, 692.0)
         y_root = along(DORSAL_ROOT, x0)
         y_tip = along(DORSAL_TIP, x0)
@@ -438,17 +464,17 @@ def fin_marks(seed=505):
         if not (0 <= row < H and 0 <= column < W) or not mask[row, column]:
             continue
         thin = math.sqrt(max(0.0, float(relief[row, column])))
-        pigment = jitter(mix((52, 48, 50), (118, 110, 104), min(1.0, float(tone[row, column]))), 6.0, rng)
+        pigment = jitter(mix((52, 48, 50), (96, 90, 86), min(1.0, float(tone[row, column]))), 6.0, rng)
         length = fin_height * rng.uniform(0.72, 1.06)
         ux, uy = x0 - tip_x, y_root - y_tip
         norm = math.hypot(ux, uy) or 1.0
         ux, uy = ux / norm, uy / norm
-        alpha = 0.10 + 0.38 * thin
+        alpha = 0.18 + 0.50 * thin
         fig.add_stroke(core.stroke_record(
             [(cx - ux * length * 0.5, cy - uy * length * 0.5), (cx, cy),
              (cx + ux * length * 0.5, cy + uy * length * 0.5)], 'brush', seed=1100 + i,
             colour=hexed(pigment), soft=0.8, height=0.18, bristle=0.26,
-            width_profile=[rng.uniform(3.4, 7.4)] * 3,
+            width_profile=[rng.uniform(2.2, 3.2)] * 3,
             alpha_profile=[alpha * 0.78, alpha, alpha * 0.72],
             absolute_width=True, edge=rng.uniform(1.8, 3.4)), stage='line', layer='paint', note='')
     return fig
@@ -590,8 +616,8 @@ def side_structure(mask, relief, seed=4040):
             # 最不该归整的东西 —— 真的鳞会缺、会挤、会有大半片被前一片压住。
             if rng.random() < 0.13:
                 continue
-            y_use = y + rng.uniform(-1.7, 1.7)
-            x_use = x + 0.40 * (y - (top + bot) * 0.5) + rng.uniform(-1.7, 1.7)
+            y_use = y + rng.uniform(-3.2, 3.2)
+            x_use = x + 0.40 * (y - (top + bot) * 0.5) + rng.uniform(-3.2, 3.2)
             column_use = int(round(x_use))
             row_use = int(round(y_use))
             if not (0 <= column_use < W and 0 <= row_use < H) or not mask[row_use, column_use]:
@@ -627,13 +653,13 @@ def side_structure(mask, relief, seed=4040):
                       (x_use + tx * bend, y_use + ty * bend),
                       (x_use + nx * length * 0.5 + tx * bend * 0.72,
                        y_use + ny * length * 0.5 + ty * bend * 0.72)]
-            alpha = 0.52 * visible * rng.uniform(0.72, 1.12)
+            alpha = 0.42 * visible * rng.uniform(0.62, 1.18)
             fig.add_stroke(core.stroke_record(
                 points, 'brush', seed=1400 + index, colour=hexed(pigment), soft=0.7,
-                colour_profile=[[min(255.0, c * 1.28 + 10.0) for c in pigment], list(pigment),
+                colour_profile=[[min(255.0, c * 1.18 + 6.0) for c in pigment], list(pigment),
                                 [c * 0.78 for c in pigment]],
                 bristle=0.14, bristle_pitch=3.2,
-                width_profile=[rng.uniform(2.0, 2.8), rng.uniform(3.0, 4.0), rng.uniform(1.7, 2.6)],
+                width_profile=[rng.uniform(3.5, 4.6), rng.uniform(4.4, 5.8), rng.uniform(2.6, 3.8)],
                 alpha_profile=[alpha * 0.66, alpha, alpha * 0.80],
                 absolute_width=True, edge=1.2), stage='line', layer='paint', note='')
             index += 1
@@ -689,6 +715,7 @@ def main():
     scales = side_structure(mask, relief)
     picture = r.blend(picture, r.render_marks([m.to_dict() for m in scales.marks], W, H, sweep=True),
                       'normal', 1.0)
+    picture = r.blend(picture, fin_film(), 'normal', 1.0)
     for fig in (fin_marks(), head_marks(), eye_marks()):
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True),
                           'normal', 1.0)
