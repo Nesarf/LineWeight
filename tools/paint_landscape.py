@@ -51,6 +51,19 @@ NEAR = [(-140, 800), (40, 700), (170, 560), (250, 620), (400, 690), (520, 540), 
         (760, 650), (890, 530), (910, 660), (925, 770), (1010, 590), (1160, 690), (1290, 620),
         (1430, 720), (1540, 810)]
 
+# **高远的那一套。** 郭熙：「自山下而仰山顛，謂之高遠……高遠之色清明……高遠之勢突兀。」所以这三层是**尖峰加深谷**，
+# 一层比一层陡、一层比一层高，而底部只留一条窄窄的水 —— 观者站在山脚，抬头。**同一片山，视点换了，画就换了种**
+# 这件事，是这一轮唯一想演给人看的东西。
+GAO_FAR = [(-140, 760), (100, 700), (220, 260), (300, 640), (430, 180), (520, 560),
+           (660, 120), (760, 600), (900, 220), (1000, 680), (1140, 160), (1240, 620),
+           (1380, 340), (1540, 760)]
+GAO_MID = [(-140, 860), (80, 780), (200, 380), (280, 720), (400, 300), (500, 680),
+           (640, 240), (760, 700), (900, 320), (1020, 760), (1160, 280), (1280, 720),
+           (1400, 460), (1540, 860)]
+GAO_NEAR = [(-140, 880), (60, 800), (180, 460), (260, 780), (380, 380), (480, 760),
+            (620, 320), (740, 780), (880, 420), (1000, 820), (1140, 360), (1260, 780),
+            (1400, 560), (1540, 860)]
+
 
 def ridge_curve(points, per=14, rounds=7):
     """一条圆润的山脊：**先按线性插值加密，再做几遍邻域平均。**
@@ -271,7 +284,21 @@ def water_marks(seed=3100):
     return fig
 
 
+SCENES = {
+    # 平远：脊缓、深度浅、浓度低、平滑足 —— 观者站在近山上望远山，所以一切都摊开在水平方向上。
+    'ping': (((FAR, 70.0, INK_LEVELS[4], 0),
+              (MID, 160.0, INK_LEVELS[3], 34),
+              (NEAR, 220.0, INK_LEVELS[2], 56)), 7),
+    # 高远：脊陡、深度深、浓度高、平滑少 —— 尖峰留着，因为「其勢突兀」就是这四步里被平滑得最少的那一步。
+    'gao': (((GAO_FAR, 200.0, INK_LEVELS[4], 0),
+             (GAO_MID, 260.0, INK_LEVELS[3], 30),
+             (GAO_NEAR, 320.0, INK_LEVELS[2], 60)), 3),
+}
+
+
 def main():
+    mode = os.environ.get('LAND_MODE', 'ping')
+    planes, rounds = SCENES[mode]
     os.makedirs(OUT, exist_ok=True)
     picture = r.Layer(W, H)
     r.fill_polygon(picture, [(-20.0, -20.0), (W + 20.0, -20.0), (W + 20.0, H + 20.0), (-20.0, H + 20.0)],
@@ -281,10 +308,8 @@ def main():
     # **远山不皴。** 「遠山無皴，遠水無波，遠人無目 —— 非無也，如無耳」（郭熙《林泉高致》）。三句说的是同一件事：
     # 远处的细节不是「没画」，是画了也读不出来。所以远山那一档的组数是零，而不是小一点 —— 这不是省笔，是那条
     # 判据本身：**远处的形体要被减去它显示不出来的东西。**
-    for ridge, depth, level, groups in ((FAR, 70.0, INK_LEVELS[4], 0),
-                                        (MID, 160.0, INK_LEVELS[3], 34),
-                                        (NEAR, 220.0, INK_LEVELS[2], 56)):
-        smooth = ridge_curve(ridge)
+    for ridge, depth, level, groups in planes:
+        smooth = ridge_curve(ridge, rounds=rounds)
         layer, solid = mountain(smooth, depth, level, seed=len(ridge))
         picture = r.blend(picture, layer, 'normal', 1.0)
         fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7)
@@ -302,7 +327,7 @@ def main():
     picture = r.blend(picture, r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True,
                                               paper=rough), 'normal', 1.0)
     marks += len(water.marks)
-    path = os.path.join(OUT, 'landscape.png')
+    path = os.path.join(OUT, 'landscape-%s.png' % mode)
     r.save_png(picture, path, background=PAPER)
     print('%s  %d marks' % (path, marks))
     return 0
