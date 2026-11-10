@@ -18,6 +18,7 @@ import random
 import sys
 
 import numpy as np
+from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -150,13 +151,19 @@ def ridge_layer(ridge, depth, level, seed, ceiling=0.88, waterfall=None):
     # 水」，是从山体里**减去**一条：alpha 在那一列上降到零，纸自己露出来。**加法做出来的水是一条贴在石头上的白
     # 带，减法做出来的水是石头让开的地方。**
     if waterfall:
-        centre, half = waterfall
+        centre, half = waterfall[0], waterfall[1]
+        gaps = waterfall[2] if len(waterfall) > 2 else ()
         columns = np.arange(W, dtype=np.float64)
         # **上窄下宽**：水往下散，所以缝在底部更宽。用一个沿 y 的系数做不到（alpha 是二维的），所以缝的宽度按
         # 这一列到中心的距离算，而**下半部取更松的幂** —— 那是「散开」在一条竖直缝上的写法。
         rows_below = np.clip((rows - 380.0) / 420.0, 0.0, 1.0)
         width = half * (0.45 + 0.85 * rows_below)
         cut = np.clip(1.0 - np.abs(columns[None, :] - centre) / width, 0.0, 1.0) ** 0.7
+        # **「溪谷斷續以分淺深」—— 断的地方是浅滩，续的地方是深潭。** 郭熙那七个「無…則…」之后的又一条判据：
+        # 一条从头连到尾的缝是**一道沟**，而一条断断续续的缝才是水 —— 因为它说明底下的石头有高有低，而水在低处
+        # 积着、在高处流过去。所以 `gaps` 里那几段 y 区间不挖：缝在那里断开，纸上的墨连着，读成水下面的石头。
+        for low, high in gaps:
+            cut[max(0, int(low)):max(0, int(high)), :] = 0.0
         alpha = alpha * (1.0 - cut)
     rgba[:, :, 0] = int(round(tone[0]))
     rgba[:, :, 1] = int(round(tone[1]))
@@ -390,6 +397,35 @@ def splash(centre, y, level=0.50, seed=6200):
     return fig
 
 
+def reflection(picture, waterline, strength=0.20, squash=0.45, blur=3.0):
+    """水面的倒影：**岸上的东西翻过来，而它一定比岸上淡、比岸上软、比岸上矮。**
+
+    郭熙「山無水則不媚」—— 而水的「媚」有一半来自倒影，因为它把山的墨**还给了水**。三个必然的偏差各有一条理由：
+    **淡**（水面只反射一部分，其余透下去或被碎浪打散）、**软**（水在动，倒影的边从来没有清的）、**矮**（透视把
+    竖直的影像压扁）。**倒影画成岸上那张的等大复制，读成「地上放了一块镜子」，而不是水。**
+
+    而它还有一个副作用，比倒影本身值钱：**山脚与水面之间那条硬边被泡软了。** 平远那张画到这里，山是浮在水面上
+    的一块墨 —— 有了倒影，山才有重量，因为它开始把东西压进水里。
+    """
+    source = np.frombuffer(bytes(picture.data), dtype=np.uint8).reshape(H, W, 4).astype(np.float64)
+    line = int(max(1, min(H - 2, waterline)))
+    out = np.zeros((H, W, 4), dtype=np.float64)
+    for y in range(H - line):
+        row = line - 1 - int(y * squash)
+        if 0 <= row < H:
+            out[line + y, :, 0:3] = source[row, :, 0:3]
+            out[line + y, :, 3] = 255.0
+    # **软，而且是沿竖直方向软。** 水在动，动的是上下 —— 一条横向的模糊把倒影抹平，一条纵向的模糊才让它像水。
+    out[:, :, 3] = ndimage.gaussian_filter1d(out[:, :, 3], blur, axis=0)
+    out[:, :, 0] = ndimage.gaussian_filter1d(out[:, :, 0], blur, axis=0)
+    out[:, :, 1] = ndimage.gaussian_filter1d(out[:, :, 1], blur, axis=0)
+    out[:, :, 2] = ndimage.gaussian_filter1d(out[:, :, 2], blur, axis=0)
+    out[:, :, 3] *= strength
+    layer = r.Layer(W, H)
+    layer.data[:] = out.astype(np.uint8).tobytes()
+    return layer
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -451,7 +487,9 @@ SCENES = {
     'shen': (((SHEN_FAR, 150.0, 0.62, 34, None),
               (SHEN_A, 160.0, 0.50, 30, None),
               (SHEN_B, 140.0, 0.40, 26, None),
-              (SHEN_C, 140.0, 0.31, 22, (700.0, 16.0)),
+              # **山涧挖在中间那一层。** 挖在最近的一层，它会被看成前景的一道裂缝；挖在最远的一层，它被四层墨盖住
+              # 看不见。而第三层正好是「窥」那一眼停下的地方 —— 缝在那里断开三次，每一次断开都是一处浅滩。
+              (SHEN_C, 140.0, 0.31, 22, (700.0, 15.0, ((452, 492), (536, 578), (624, 668)))),
               (SHEN_NEAR, 150.0, 0.24, 18, None)), 5, (14.0, 34.0)),
 }
 
@@ -508,9 +546,12 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in walker.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(walker.marks)
-    # 深远那一场没有湖。观者是**从山前窥山后**，脚下是山口而不是水面；六层的底在 y 820，再往下就是纸。给它加一片
+    # 深远那一场没有湖。观者是**从山前窥山后**，脚下是山口而不是水面；五层的底在 y 840，再往下就是纸。给它加一片
     # 平的水，等于把「向里看」改成「向远看」—— 那是平远。**一条水法的错用能改掉一个视点。**
     if mode != 'shen':
+        # **倒影先于波纹。** 波纹是水面上的东西，倒影是水面里的东西 —— 先铺水面下的，再压水面上的。
+        if mode == 'ping':
+            picture = r.blend(picture, reflection(picture, 748.0, strength=0.22), 'normal', 1.0)
         water = water_marks()
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
