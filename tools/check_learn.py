@@ -5,7 +5,7 @@ writes down on the shelf; a page is extracted for a book whose name is spelled d
 matching the number of items it claims to count. **Each of those is silent** -- the library still loads, still reads
 plausibly, and is wrong in a way that only shows up when somebody tries to use the entry.
 
-So this checks six things and reports the ones that fail:
+So this checks seven things and reports the ones that fail:
 
 1. `facts.json` parses and every counted entry's `count` matches `len(items)`.
 2. Every `source` string in `facts.json` names a document that `sources.md` also names.
@@ -13,6 +13,10 @@ So this checks six things and reports the ones that fail:
 4. Every file named in `extracts/index.json` exists on disk.
 5. No entry appears twice with the same name.
 6. The prose files exist and are not empty.
+7. **A fact and the code that reads it agree.** Two entries so far are read by a program rather than only by a person:
+   the line roles and their order, against `lineweight/roles.py`, and the three mixing operations with the pigment
+   table behind them, against `lineweight/pigment.py`. Two copies of one fact drift in silence, and this project has
+   already kept a wrong threshold in service for two whole rounds that way.
 
     python tools/check_learn.py
 """
@@ -89,6 +93,42 @@ def main():
     if tiers_file != roles.PART_TIERS:
         problems.append('part_order in facts.json is %r but roles.PART_TIERS is %r'
                         % (tiers_file, roles.PART_TIERS))
+
+    # 7c -- the three mixing operations and the pigment table behind them
+    #
+    # **The second fact read by a program, and the first with a table behind it.** `learn/facts.json` says a colour is
+    # changed in three named ways and which one adds what; `lineweight/pigment.py` carries the operations and the
+    # opacity of each pigment. The pairs matter more than the names: the whole point of 4.72 is that opacity and
+    # tinting strength are separate axes, so a pair whose opaque member the table calls transparent is the one editing
+    # mistake that would quietly undo the fact.
+    from lineweight import pigment as pigments
+
+    mix_entry = facts.get('paint_mix_operations') or {}
+    listed = tuple(mix_entry.get('items', []))
+    if listed != pigments.MIX_OPERATIONS:
+        problems.append('paint_mix_operations in facts.json is %r but pigment.MIX_OPERATIONS is %r'
+                        % (listed, pigments.MIX_OPERATIONS))
+    added = mix_entry.get('added') or {}
+    for name in pigments.MIX_OPERATIONS:
+        if not added.get(name):
+            problems.append('paint_mix_operations in facts.json does not say what %r adds' % name)
+
+    for pair in (facts.get('pigment_opacity_pairs') or {}).get('items', []):
+        if not isinstance(pair, dict):
+            continue
+        for side, expected in (('opaque', pigments.OPAQUE), ('transparent', pigments.TRANSPARENT)):
+            named = pair.get(side)
+            if not named:
+                problems.append('pigment_opacity_pairs has a pair with no %r member' % side)
+                continue
+            key = str(named).replace(' ', '_')
+            if key not in pigments.PIGMENTS:
+                problems.append('pigment %r is paired in facts.json but missing from pigment.PIGMENTS' % named)
+                continue
+            actual = pigments.opacity_of(key)
+            if actual != expected:
+                problems.append('pigment %r is on the %s side of its pair but the table calls it %r'
+                                % (named, side, actual))
 
     # 2 -- a source that the shelf does not name
     shelf = (LEARN / 'sources.md').read_text(encoding='utf-8')

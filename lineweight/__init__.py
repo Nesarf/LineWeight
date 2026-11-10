@@ -39,6 +39,11 @@ from .invariants import (Finding, MEASURES, check as check_invariants,  # noqa: 
                          check_project, format_findings, measure_layer)
 from . import roles  # noqa: E402,F401
 from .roles import ROLES, Role  # noqa: E402,F401
+# `pigment` is the other half of the painting material model: `roles` says what a line is for, `pigment` says what a
+# colour does when it is mixed. Both are conventions with a sanctioned source, and both are read by a checker against
+# `learn/facts.json` rather than being left to drift.
+from . import pigment  # noqa: E402,F401
+from .pigment import MIX_OPERATIONS, OPACITY_CLASSES, PIGMENTS  # noqa: E402,F401
 
 __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',
             'write_xfl', 'run', 'resize_to_fit',
@@ -46,4 +51,5 @@ __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_co
             'Project', 'Mark', 'save_project', 'load_project', 'DEFAULT_STAGES',
             'LIVE', 'SUPERSEDED', 'DRAFT', 'ROUGH_STAGES',
             'Finding', 'MEASURES', 'check_invariants', 'check_project', 'format_findings', 'measure_layer',
-            'roles', 'ROLES', 'Role']
+            'roles', 'ROLES', 'Role',
+            'pigment', 'MIX_OPERATIONS', 'OPACITY_CLASSES', 'PIGMENTS']

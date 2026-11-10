@@ -81,3 +81,39 @@ procedure. Every entry below is one such rule.
 > The multiplier-layer article says **64 percent**. Measured over 26,829 Blue Archive assets, the ratio of a multiplied
 > colour to its lit neighbour has a **median of 0.742**. **A hand-typed percentage and a ratio measured from a corpus
 > landed close to the same value.**
+
+---
+
+# The manufacturers, and what the paint itself does
+
+**Why a third shelf.** The books teach drawing and the articles each carry one rule about making a picture. A paint
+manufacturer's technical page is a different kind of evidence again: it is about **the material**, and the material does
+not care what is being painted. Winsor & Newton say which of their blues covers and which one lets the ground through;
+Gamblin say what a scumble is and why thin layers outlast thick ones. None of that changes between a still life and a
+portrait, which is exactly what makes it worth having before the subject is chosen.
+
+**Two limits, and they are different kinds.**
+
+The first is that a manufacturer is selling something. Their diagrams demonstrate real behaviour -- the black line under
+a pull-down is a fair test and its outcome can be seen in the photograph -- but a page that ends in a product link has
+an interest in the reader's palette, and nothing here is recorded as a comparison between brands.
+
+The second is more useful: **Phoenix Art Materials states its own limit in the article the other numbers came from.**
+Their brand comparison is called an artist's observation rather than a controlled laboratory comparison and is not to be
+used for product-wide ratings. That is worth more than the numbers themselves, because it is the sentence that says how
+much of the rest can be believed.
+
+| source | what it gave |
+|---|---|
+| **Winsor & Newton**, Masterclass, `oil-opaque-and-transparent` | **three same-family pairs**: cadmium/transparent yellow, cadmium red/permanent rose, cerulean/ultramarine · the test that settles it -- pull the colour over a black line, the opaque one erases it and the transparent one lets it show |
+| **Winsor & Newton**, Masterclass, `the-art-of-glazing` | what a glaze is for: unifying light and dark and bringing luminosity out of the dark · its depth comes from how much pigment is in it and from layering, not from one heavier application · a transparent pigment is the only one that can do it |
+| **Gamblin**, `Painting Glossary` | **tint / shade / tone as three operations with three different effects** · glaze, scumble, impasto, grisaille, imprimatura, underpainting, mass tone, value, chroma · **fat-over-lean**: under layers leaner than upper ones, so the film stays flexible and cracks less |
+| **Gamblin**, `Building Permanent Paintings` | **multiple thin layers beat fewer thicker ones**, and the rule holds for ground, paint and varnish alike · thin with solvent *and* binder, because solvent alone leaves the layer too lean to adhere |
+| **Phoenix Art Materials**, `oil-paint-opacity-undertone-tinting-strength` | **tinting strength is not pigment load** · it depends on pigment type, particle properties, dispersion, opacity and the white it is mixed into · a strong tint is efficient in a large mixture and hard to control in a delicate passage · evaluate with a tint ladder of at least three ratios |
+
+**What these five add up to, said once.** Every painting script in this repository carried the same four-line
+`mix(a, b, t)` -- a linear interpolation weighted by how much of each tube was used. The shelf says that weight is the
+wrong quantity: strength is a property of the pigment and of the white it is mixed into, and a pigment can be opaque and
+weak (cadmium yellow) or transparent and strong (ultramarine). That is one fact, from one page, and it is the only thing
+on this shelf that any code here implements. The other four are checks a picture can be held against.
+

@@ -231,5 +231,56 @@
     ],
     "source": "measured: tools/line_width_library.py --regions, on two labelled drawings, in units of each figure's own height. 150605691 (pencil full figure): face 0.309, eye 0.300, boot 0.197, hair 0.194, cloth 0.165. 150609781 (grey-toned figure): eye 0.345, face 0.335, hair 0.291, dress 0.230, leg 0.229, boot 0.200.",
     "note": "**An order, and only the part of it that repeats.** Face and eye are above hair and boot in both drawings. Face against eye swaps between them (0.309 over 0.300, then 0.345 over 0.335), and hair against boot swaps too, so each pair shares a tier. A tier means the order inside it was not measured, not that it is absent -- a third drawing, a smooth outline with no interior detail, scores 1.22 between its heaviest and lightest part and is a drawing this table does not apply to. The same tiers live in `lineweight/roles.py` as `PART_TIERS`, and `tools/check_learn.py` refuses a difference."
+  },
+
+  "paint_mix_operations": {
+    "count": 3,
+    "items": ["tint", "shade", "tone"],
+    "added": {"tint": "white", "shade": "black", "tone": "grey"},
+    "source": "Gamblin, Painting Glossary: 'A tint is any hue (color) that has been mixed with white', 'Shade - A color mixed with black', 'Tone - A color mixed with grey'.",
+    "note": "**The second fact in this file that a program reads.** The same three names live in `lineweight/pigment.py` as `MIX_OPERATIONS`, and `tools/check_learn.py` refuses a difference, on the same argument as `part_roles`. The three are not synonyms for 'lighter' and 'darker': white raises value and lowers chroma, black lowers both, and grey lowers chroma while keeping more of the value that a shade of the same ratio spends. That last difference was measured in `tests/test_pigment.py` after a first version of the test asserted a hue claim the arithmetic did not support."
+  },
+
+  "pigment_opacity_pairs": {
+    "count": 3,
+    "items": [
+      {"opaque": "cadmium yellow", "transparent": "transparent yellow"},
+      {"opaque": "cadmium red", "transparent": "permanent rose"},
+      {"opaque": "cerulean blue", "transparent": "ultramarine blue"}
+    ],
+    "test": "pull the colour down a white board and across a solid black line: 'the opaque colour obliterates the black whereas the transparent colour allows it to show through'",
+    "source": "Winsor & Newton, Masterclass, 'Opaque and transparent pigments in oil painting'. Six colours, given as three same-family pairs.",
+    "note": "Six colours in three same-family pairs, and the point is that the pairs are not interchangeable, and this is the list that says which is which without a measurement. **Where it changes a picture:** a transparent colour is the only one that can glaze, because a glaze is a layer that lets what is under it through; an opaque colour over the same place erases it. The pairs live in `lineweight/pigment.py` as the `opacity` column of `PIGMENTS`."
+  },
+
+  "paint_brushwork_kinds": {
+    "count": 4,
+    "items": ["glaze", "scumble", "impasto", "dry brush"],
+    "source": "Gamblin, Painting Glossary; Winsor & Newton, Masterclass, 'Glazing in oils'.",
+    "note": "Four ways one mark differs from another in oil, and each is defined by what it does to the layer beneath rather than by what it looks like on its own: a glaze is 'a thin, transparent layer of paint' used on top of one another to build depth and modify colours; a scumble is 'a thin or broken layer of color brushed over another so that patches of the color beneath show through'; impasto is thick and textured, which puts the mark above the surface rather than in it. **The fourth is the one the glossary does not give its own entry** -- 'dry brush' appears inside the definition of scumbling, and is kept separate here because it is the only one of the four that is about how much paint the brush is carrying."
+  },
+
+  "paint_layer_rule": {
+    "summary": "multiple thin layers are better than fewer thicker layers, and this holds for the ground, the varnish and the paint layers alike",
+    "source": "Gamblin, 'Building Permanent Paintings', the second of ten tips.",
+    "note": "Stated by the manufacturer as a permanence rule, with the reason given elsewhere on the same page: thin layers stay flexible, and a painting that is built this way is less likely to crack. **The library arrived at the same structure for a different reason** -- every paint pass here is its own `Project`, rendered separately and stacked, because a mark placed on a flattened composite can no longer be revised. Two unrelated arguments for one arrangement is the reason to record it; neither one would have been enough on its own."
+  },
+
+  "fat_over_lean": {
+    "rule": "the under layers of a painting should be leaner than the upper layers",
+    "reason": "so that the paint film stays flexible and there will be less cracking over time",
+    "corollary": "extend a colour with a mixture of solvent and binder rather than solvent alone, because solvent-only thinning makes the paint too lean to adhere",
+    "source": "Gamblin, Painting Glossary (Fat, Lean, Fat-Over-Lean) and 'Building Permanent Paintings'.",
+    "note": "Recorded although no code here implements it. **A rule exists in this file when it is something a picture can be checked against, not when something can be built from it** -- and this one is a check: a paint layer that was thinned with solvent alone is thinner in binder than the layer under it, which is the failure the rule names."
+  },
+
+  "tinting_strength": {
+    "definition": "how strongly a paint changes a mixture, usually observed by adding the colour to white at a fixed ratio",
+    "not": "pigment load, which is the amount of pigment in the formula and cannot be read off a visual tint",
+    "depends_on": ["pigment type", "particle properties", "dispersion", "opacity", "the white it is mixed into"],
+    "trade": "a strong tint can be efficient for large mixtures and harder to control in delicate passages",
+    "method": "a tint ladder of at least three documented ratios rather than one arbitrary mixture",
+    "source": "Phoenix Art Materials, 'Opacity, Undertone and Tinting Strength: Three Ways Oil Colours Behave'. The article states its own limit: its comparison of two brands is an artist's observation, not a controlled laboratory comparison, and is not to be used for product-wide ratings.",
+    "note": "**This is the fact that made every `mix(a, b, t)` in the painting scripts wrong.** Those four lines interpolated by how much of each tube was scooped, which assumes two pigments move a mixture equally; the article says strength is affected by the pigment's type and by the white it is mixed into, so 'a touch' is not a quantity. `lineweight/pigment.py` carries a strength rank per pigment and `mix_by_strength` weighs by it, degenerating to the old interpolation when the strengths are equal -- so the change to a picture appears only where the pigments differ. Two axes, not one: the table keeps a pigment that is opaque and weak (cadmium yellow) beside one that is transparent and strong (ultramarine), and if a future edit ranks one column by the other, those two are what will notice."
   }
 }
