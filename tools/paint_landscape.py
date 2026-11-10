@@ -297,7 +297,7 @@ def trees_on_ridge(ridge, solid, level, count, seed):
     return fig
 
 
-def pavilion(x, y, level=0.70, seed=5000):
+def pavilion(x, y, level=0.70, seed=5000, scale=1.0):
     """亭子：**五笔，而它把一片山变成可以住的地方。**
 
     郭熙「山之樓觀以標勝概」—— 楼观标出名胜。而「四可」里最高的两档是可游与可居，两者都要一样具体的东西：一个
@@ -309,24 +309,27 @@ def pavilion(x, y, level=0.70, seed=5000):
     """
     fig = project.Project(width=W, height=H, title='pavilion')
     ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(min(0.90, level)))
+    # **尺寸是参数，因为「远」有两个意思。** 高远里那座在次峰的坡上，你走得到它；深远里那座藏在层间，你只能看
+    # 见它 —— 而让同一座亭子在不同的场景里缩小，比写两座亭子更诚实：**远不是另一种东西，是同一件东西更小。**
+    s = float(scale)
     # 屋顶：一条略拱的横笔，**比台基宽** —— 亭子的檐是它最宽的地方，第一版把台基画宽了，读成一个倒梯形。
     fig.add_stroke(core.stroke_record(
-        [(x - 16.0, y - 15.0), (x, y - 20.0), (x + 16.0, y - 15.0)], 'brush', seed=seed,
-        colour=ink, soft=0.6, edge=1.6,
-        width_profile=[5.5, 6.5, 5.5], alpha_profile=[0.72, 0.84, 0.72], absolute_width=True),
-        stage='line', layer='paint', note='')
+        [(x - 16.0 * s, y - 15.0 * s), (x, y - 20.0 * s), (x + 16.0 * s, y - 15.0 * s)],
+        'brush', seed=seed, colour=ink, soft=0.6, edge=1.6,
+        width_profile=[5.5 * s, 6.5 * s, 5.5 * s], alpha_profile=[0.72, 0.84, 0.72],
+        absolute_width=True), stage='line', layer='paint', note='')
     # 两柱：直、等宽、等长。**等长是「人造」在画面上最省的一句** —— 自然里的两根柱子不会一样长。
     for side in (-1.0, 1.0):
         fig.add_stroke(core.stroke_record(
-            [(x + side * 9.0, y - 14.0), (x + side * 9.0, y - 1.0)], 'brush', seed=seed + 1,
-            colour=ink, soft=0.4, edge=1.0,
-            width_profile=[2.6, 2.6], alpha_profile=[0.76, 0.76], absolute_width=True),
+            [(x + side * 9.0 * s, y - 14.0 * s), (x + side * 9.0 * s, y - 1.0 * s)],
+            'brush', seed=seed + 1, colour=ink, soft=0.4, edge=1.0,
+            width_profile=[2.6 * s, 2.6 * s], alpha_profile=[0.76, 0.76], absolute_width=True),
             stage='line', layer='paint', note='')
     # 台基：一条横，比顶略窄 —— 它把亭子按在坡上，而没有它亭子会浮着。
     fig.add_stroke(core.stroke_record(
-        [(x - 9.0, y), (x + 9.0, y)], 'brush', seed=seed + 2,
+        [(x - 9.0 * s, y), (x + 9.0 * s, y)], 'brush', seed=seed + 2,
         colour=ink, soft=0.4, edge=1.2,
-        width_profile=[3.2, 3.2], alpha_profile=[0.62, 0.62], absolute_width=True),
+        width_profile=[3.2 * s, 3.2 * s], alpha_profile=[0.62, 0.62], absolute_width=True),
         stage='line', layer='paint', note='')
     return fig
 
@@ -579,6 +582,13 @@ def main():
     # **深远不画云带。** 它的云是层与层之间剩下的那条缝 —— 4.89 记过「云是两层之间没有被墨碰到的一条」。在那张
     # 画上再横一条淡墨，等于把两种云叠在一起，而两种都不明显。**一个画面只需要一种方法做同一件事**，而深远已经
     # 有了一种更好的：它的云是减法出来的，那条横带是加法，谁也不服谁。
+    # **深远要有一个「窥」的目标。** 那座亭子藏在第三层的脊上（x=760 处），只有正常大小的六成二，而且被上面那几
+    # 层遮掉一半 —— 它不在等你走过去，它在等你看见它。郭熙「深遠者細碎」：细碎的不只是树，也是人做出的东西。
+    if mode == 'shen':
+        house = pavilion(760.0, 516.0, 0.34, seed=5100, scale=0.62)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(house.marks)
     if mode == 'gao':
         # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
         # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
