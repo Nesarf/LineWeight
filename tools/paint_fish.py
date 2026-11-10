@@ -100,10 +100,12 @@ DORSAL_ROOT = tall([(470, 364), (586, 340), (700, 352)])
 DORSAL_TIP = tall([(470, 364), (520, 300), (580, 286), (640, 292), (700, 352)])
 FIN_ROOT = tall([(922, 534)])[0]
 TAIL_ROOT = tall([(166, 466)])[0]
-# **And the eye was in the wrong half of the head.** It sat sixty-six pixels from a snout that is a hundred and
-# thirty-three from the gill cover -- the middle of the head. A fish's eye sits at a third to two fifths of the way
-# back, so it moved forward eighteen pixels and the gill cover stayed where the anatomy puts it.
-EYE = (1018.0, 446.0)
+# **And the eye was in the wrong part of the head, and the head was too short.** At sixty-six pixels from a snout that
+# is a hundred and thirty-three from the gill cover, the eye sat in the middle of a head that was itself only a seventh
+# of the body -- while a fish's head runs a fifth to a quarter of it and its eye sits at a third to two fifths of that.
+# Both numbers moved: the gill cover back seventy pixels, the eye forward, and the two now sit in the proportions the
+# animal has instead of being crowded into the front eighth.
+EYE = (993.0, 446.0)
 
 # **三段体色的着色力，不是三段明度。** 背脊那管深色是透明的，一点就压住整片；腹部的白是弱色，要加很多才推得
 # 动同样的距离。等权的四行 `mix` 让暗部亮得太早、腹部白得太快，改成按这三个数加权之后，过渡带才落在形体真正
@@ -514,12 +516,12 @@ def head_marks(seed=610):
     # 「一只眼贴着一道弧」。真实的鱼吻端到眼睛约占头长的三分之一，眼睛到鳃盖再占三分之一 —— 所以鳃盖要退到
     # 眼睛后方六十像素左右，两者才各占一段，头才是一个头而不是一个点。
     fig.add_stroke(core.stroke_record(
-        tall([(940, 404), (920, 452), (926, 508), (950, 554)]), 'brush', seed=610,
+        tall([(870, 404), (850, 452), (856, 508), (880, 554)]), 'brush', seed=610,
         colour='#161c1e', soft=0.25,
         width_profile=[6.0, 13.0, 13.0, 5.0], alpha_profile=[0.10, 0.50, 0.48, 0.12],
         absolute_width=True, edge=2.0), stage='line', layer='paint', note='')
     fig.add_stroke(core.stroke_record(
-        tall([(954, 410), (934, 456), (940, 504), (962, 546)]), 'brush', seed=611,
+        tall([(884, 410), (864, 456), (870, 504), (892, 546)]), 'brush', seed=611,
         colour='#ded4bc', soft=0.25,
         width_profile=[4.0, 9.0, 9.0, 4.0], alpha_profile=[0.08, 0.34, 0.32, 0.09],
         absolute_width=True, edge=2.4), stage='line', layer='paint', note='')
@@ -610,7 +612,7 @@ def side_structure(mask, relief, seed=4040):
     fig = canvas('scales')
     index = 0
     x = 240.0
-    while x < 934.0:
+    while x < 866.0:
         column = int(round(x))
         if not mask[:, column].any():
             x += 12.0
