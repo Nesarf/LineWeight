@@ -33,6 +33,8 @@ from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import paint_export                            # noqa: E402
+
 from lineweight import core, pigment, project    # noqa: E402
 from lineweight import raster as r            # noqa: E402
 
@@ -798,12 +800,16 @@ def contact_shadow(mask, seed=3500):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    picture = ground()
-    picture = r.blend(picture, surface(), 'normal', 1.0)
+    # **七层，而它们的分界是鱼自己的构造。** 桌、影、身（裁到轮廓）、鳞与侧线、鳍膜、鳍条、头与眼 —— 一张鱼的画法
+    # 就是这几句，而分层让「把鳞关掉看还剩下什么」变成一次点击。
+    place, stack = paint_export.stacker(W, H)
+    backdrop = ground()
+    picture = place(backdrop, 'ground', backdrop)
+    picture = place(picture, 'surface', surface())
     body, mask, relief = fish_marks()
     # **影先于鱼。** 影落在桌面上，鱼落在影上 —— 反过来写，鱼的下缘会被自己的影盖住一圈，读成一条更暗的边。
-    picture = r.blend(picture, r.render_marks([m.to_dict() for m in contact_shadow(mask).marks], W, H,
-                                              sweep=True), 'normal', 1.0)
+    picture = place(picture, 'contact shadow',
+                    r.render_marks([m.to_dict() for m in contact_shadow(mask).marks], W, H, sweep=True))
     layer = r.render_marks([m.to_dict() for m in body.marks], W, H, sweep=True)
     rng = random.Random(404)
     for _ in range(16):
@@ -811,16 +817,14 @@ def main():
         x0 = rng.uniform(220.0, 760.0)
         points = [(x0 + k * 34.0, y + math.sin(k * 0.6) * 6.0) for k in range(6)]
         r.smudge(layer, points, radius=rng.uniform(22, 40), strength=rng.uniform(0.28, 0.48))
-    picture = r.blend(picture, r.clip(layer, soft_mask_layer(mask)), 'normal', 1.0)
+    picture = place(picture, 'body', r.clip(layer, soft_mask_layer(mask)))
     # **第二层落在湿拖之后。** 鳞与侧线是这个形体上的构造，被 `smudge` 拖过一遍就又是一片没有方向的糊；而第一
     # 层要的正是那点糊 —— 两层先后不是排版问题，是它们各自该受什么处理。
     scales = side_structure(mask, relief)
-    picture = r.blend(picture, r.render_marks([m.to_dict() for m in scales.marks], W, H, sweep=True),
-                      'normal', 1.0)
-    picture = r.blend(picture, fin_film(), 'normal', 1.0)
-    for fig in (fin_marks(), head_marks(), eye_marks()):
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True),
-                          'normal', 1.0)
+    picture = place(picture, 'scales', r.render_marks([m.to_dict() for m in scales.marks], W, H, sweep=True))
+    picture = place(picture, 'fin film', fin_film())
+    for name, fig in (('fin rays', fin_marks()), ('head', head_marks()), ('eye', eye_marks())):
+        picture = place(picture, name, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'fish.png')
     # **`light` 是最后一道，也是唯一一道会自己造出结构的地方。** 它按 relief 打光，而 relief 是每一笔的高度
     # 叠出来的 —— 笔尖是圆的，叠出来的地形就是一串圆丘，打光把圆丘变成亮暗相间的一节一节。灯开着的时候，
@@ -831,7 +835,9 @@ def main():
     r.save_png(lit, path, background=(18, 15, 14))
     project.save_project(body, os.path.join(OUT, 'pass-fish.json'))
     project.save_project(scales, os.path.join(OUT, 'pass-fish-scales.json'))
-    print('%s  %d marks  +%d scales' % (path, len(body.marks), len(scales.marks)))
+    psd_path, layers = paint_export.export(stack, OUT, 'fish')
+    print('%s  %d marks  +%d scales  %d layers  + %s'
+          % (path, len(body.marks), len(scales.marks), layers, os.path.basename(psd_path)))
     return 0
 
 

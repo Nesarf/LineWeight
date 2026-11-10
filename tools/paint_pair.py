@@ -21,6 +21,8 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import paint_export                            # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lineweight import core, project          # noqa: E402
@@ -50,21 +52,32 @@ def wet_drags(layer, cx, cy, radius, seed):
         r.smudge(layer, points, radius=rng.uniform(24.0, 42.0), strength=rng.uniform(0.30, 0.55))
 
 
-def apple_body(picture, cx, cy, radius, seed, dim=1.0, aspect=1.06, squash=0.95, lean=0.0):
+def _put(place, picture, name, layer):
+    """有 `place` 就记一层，没有就直接合成。
+
+    **这个文件的辅助函数都是「收一张画、返回一张画」，所以它们可以完全不关心分层。** 而分层只需要在 `main` 那一条
+    链上传一个 `place` 进来 —— 那让「哪几块是一层」变成一处决定，而不是散在四个函数里。
+    """
+    if place is None:
+        return r.blend(picture, layer, 'normal', 1.0)
+    return place(picture, name, layer)
+
+
+def apple_body(picture, cx, cy, radius, seed, dim=1.0, aspect=1.06, squash=0.95, lean=0.0, place=None):
     """一只果子的全部笔触：果身、湿拖、凹陷、梗、高光 —— 顺序就是遮挡的顺序。"""
     body = pa.body_marks(cx, cy, radius, seed, dim, aspect, squash, lean)
     layer = r.render_marks([m.to_dict() for m in body.marks], W, H, sweep=True)
     wet_drags(layer, cx, cy, radius, seed + 7)
-    picture = r.blend(picture, layer, 'normal', 1.0)
+    picture = _put(place, picture, 'fruit %d body' % seed, layer)
     for extra in (pa.dip_marks(cx, cy, radius, seed + 1),
                   pa.stem_marks(cx, cy, radius, seed + 2),
                   pa.gloss_marks(cx, cy, radius, seed + 3)):
-        picture = r.blend(picture,
-                          r.render_marks([m.to_dict() for m in extra.marks], W, H, sweep=True), 'normal', 1.0)
+        picture = _put(place, picture, 'fruit %d detail' % seed,
+                       r.render_marks([m.to_dict() for m in extra.marks], W, H, sweep=True))
     return picture
 
 
-def wall(picture):
+def wall(picture, place=None):
     """一堵墙，一面临画。
 
     **这张画之前没有房间。** 两只果子浮在一片深色里 —— 没有地面，也没有后面。而一幅静物的背景几乎总是一个
@@ -91,8 +104,9 @@ def wall(picture):
             width_profile=[rng.uniform(150.0, 280.0)] * 3,
             alpha_profile=[rng.uniform(0.30, 0.52)] * 3,
             absolute_width=True, edge=rng.uniform(14.0, 26.0)), stage='line', layer='paint', note='')
-    return r.blend(r.blend(picture, layer, 'normal', 1.0),
-                   r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
+    picture = _put(place, picture, 'wall base', layer)
+    return _put(place, picture, 'wall brush',
+                r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True))
 
 
 def cup_colour(value):
@@ -110,7 +124,7 @@ def cup_colour(value):
     return body
 
 
-def cup(picture, cx, top, radius, height, seed=909):
+def cup(picture, cx, top, radius, height, seed=909, place=None):
     """一只杯子：圆柱，笔触沿母线走，明暗由法线算。
 
     **这是第一个既不是球、也不是「到轮廓的距离」能给的形体。** 圆柱的法线只随角度变、不随高度变，所以一支
@@ -125,7 +139,7 @@ def cup(picture, cx, top, radius, height, seed=909):
     mouth = r.Layer(W, H)
     r.fill_polygon(mouth, [(cx + radius * 0.97 * math.sin(a), top - rim_b * 0.97 * math.cos(a))
                            for a in (2.0 * math.pi * k / 48.0 for k in range(48))], (46, 38, 34), 0.92)
-    picture = r.blend(picture, mouth, 'normal', 1.0)
+    picture = _put(place, picture, 'cup mouth', mouth)
     fig = project.Project(width=W, height=H, title='cup')
     light_x, light_z = -0.362, 0.832          # LIGHT 归一化之后的横、深两个分量
     for i in range(520):
@@ -160,7 +174,7 @@ def cup(picture, cx, top, radius, height, seed=909):
             colour=pa.hexed(pigment), soft=0.6, width_profile=[3.0, 4.0, 3.0],
             alpha_profile=[0.72, 0.86, 0.72], absolute_width=True, edge=1.4),
             stage='line', layer='paint', note='')
-    return r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
+    return _put(place, picture, 'cup', r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True))
 
 
 def linen_colour(value):
@@ -176,7 +190,7 @@ def linen_colour(value):
     return body
 
 
-def table_cloth(picture, seed=1201):
+def table_cloth(picture, seed=1201, place=None):
     """铺在桌面上的一块布：**先定轮廓，再在轮廓里落笔。**
 
     这是这条线上第一次这么做。前面每一个形体都是反过来的 —— 撒点、落笔，让边由笔触自己长出来。苹果可以
@@ -247,8 +261,8 @@ def table_cloth(picture, seed=1201):
             width_profile=[width * 0.90, width, width * 0.92],
             alpha_profile=[rng.uniform(0.72, 0.86)] * 3,
             absolute_width=True, edge=rng.uniform(1.8, 4.0)), stage='line', layer='paint', note='')
-    picture = r.blend(picture, r.clip(r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), mask),
-                      'normal', 1.0)
+    picture = _put(place, picture, 'cloth',
+                    r.clip(r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), mask))
     # **折边是布上唯一一条硬线，而它同时盖住裁剪的锯齿。** 一条布边有厚度，所以它比布面暗一档、宽九个像素。
     rim = project.Project(width=W, height=H, title='cloth rim')
     for i in range(len(edge) - 1):
@@ -262,33 +276,40 @@ def table_cloth(picture, seed=1201):
             colour=pa.hexed(tone_here), soft=0.6, width_profile=[6.0, 8.0, 6.0],
             alpha_profile=[0.88, 0.96, 0.88], absolute_width=True, edge=1.6),
             stage='line', layer='paint', note='')
-    return r.blend(picture, r.render_marks([m.to_dict() for m in rim.marks], W, H, sweep=True), 'normal', 1.0)
+    return _put(place, picture, 'cloth hem',
+                r.render_marks([m.to_dict() for m in rim.marks], W, H, sweep=True))
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    picture = pa.ground(*BACK)
-    picture = wall(picture)
+    # **九层，而它们的分界是这几样东西本身。** 墙、桌布、三道影、杯、两只果子各自两层。分层之后「关掉前面那只果子
+    # 的阴影」变成一次点击 —— 而那一步正好能看出它是不是压住了后面那只。
+    place, stack = paint_export.stacker(W, H)
+    backdrop = pa.ground(*BACK)
+    picture = place(backdrop, 'ground', backdrop)
+    picture = wall(picture, place=place)
     # **桌布回来了，而它回来靠的是「先定轮廓」。** 前三次都栽在「边由笔触自己长出来」这件事上 —— 布的边是
     # 剪出来的一条线，一堆圆头笔触凑不出直线。现在先算出那条边缘、把笔触裁进去、再沿边画一圈折边。
-    picture = table_cloth(picture)
+    picture = table_cloth(picture, place=place)
     # **两道阴影都要在两只果子之前。** 第一版按「一只果子一整套」来排：后一只的地面阴影、后一只的果身、
     # 前一只的地面阴影、前一只的果身 —— 于是前一只的阴影压在后一只的果身上，后面那只被绕了一圈黑环，
     # 前面那只像在发光。阴影落在桌面上，两只果子都在桌面上方，所以阴影必须全部排在果身之前。
-    picture = r.blend(picture, pa.table_shadow(*BACK), 'normal', 1.0)
-    picture = r.blend(picture, pa.table_shadow(*FRONT), 'normal', 1.0)
+    picture = place(picture, 'shadow back', pa.table_shadow(*BACK))
+    picture = place(picture, 'shadow front', pa.table_shadow(*FRONT))
     # **第三样东西，才能量出桌面有多大。** 两只果子只给了「前和后」，没有给「左和右」也没有给尺度；
     # 一只小杯子在左边，桌面的宽度就有了参照，而它的投影把桌面从「一片暗」变成「一块地」。
-    picture = r.blend(picture, pa.table_shadow(CUP[0], CUP[1] + CUP[3] - 26.0, CUP[2] * 1.05), 'normal', 1.0)
-    picture = cup(picture, *CUP)
+    picture = place(picture, 'shadow cup',
+                    pa.table_shadow(CUP[0], CUP[1] + CUP[3] - 26.0, CUP[2] * 1.05))
+    picture = cup(picture, *CUP, place=place)
     # **两个果子要有两个形。** 后面那只更圆、略朝右歪；前面那只更扁、朝左歪。椭圆率与剪切都由
     # `body_marks` 的三个新参数给，而它们默认就是原来写死的那两个数。
-    picture = apple_body(picture, *BACK, 20261106, 0.84, 1.02, 0.99, 0.035)
-    picture = apple_body(picture, *FRONT, 771103, 1.0, 1.10, 0.90, -0.060)
+    picture = apple_body(picture, *BACK, 20261106, 0.84, 1.02, 0.99, 0.035, place=place)
+    picture = apple_body(picture, *FRONT, 771103, 1.0, 1.10, 0.90, -0.060, place=place)
     path = os.path.join(OUT, 'pair.png')
     r.save_png(r.light(picture, direction=(-0.50, -0.58, 1.15), strength=0.34, tilt=1.15), path,
                background=(22, 16, 13))
-    print(path)
+    psd_path, layers = paint_export.export(stack, OUT, 'pair')
+    print('%s  %d layers  + %s' % (path, layers, os.path.basename(psd_path)))
     return 0
 
 
