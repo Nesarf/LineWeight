@@ -86,10 +86,17 @@ def body_strokes(seed=2027):
             points.append((float(x), (top + bot) * 0.5 + offset * span))
             widths.append(span * share)
         thick = [widths[min(len(widths) - 1, int(i * (len(widths) - 1) / 7.0))] for i in range(8)]
+        # **一笔之内有浓淡，而这是写意最基本的一件事。** 笔尖上的墨是一点一点用掉的：起笔最浓，收笔最淡。上一版
+        # 每一笔是一个常数色相，于是九笔读成九个均匀的色块 —— 而「墨色」在这条路上不是九个色块，是九次变成。
+        body = wash(level)
         fig.add_stroke(core.stroke_record(
-            points, 'brush', seed=2000 + index, colour=hexed(wash(level)),
+            points, 'brush', seed=2000 + index, colour=hexed(body),
             soft=0.9, edge=rng.uniform(10.0, 18.0),
-            bristle=0.34, bristle_pitch=rng.uniform(3.0, 4.6),
+            # **飞白是笔毛的，不是纸的。** 粗纸给的是细密的颗粒 —— 那是「纸纹」，而飞白是墨没跟上的那几条**顺着
+            # 笔画**的空隙，它由笔上分开的毛决定。所以毛的幅度提上去、间距拉开：每一根毛自己决定留下多少墨，
+            # 相邻两根之间那道缝就是白的。纸的咬墨留着，它是这两件事的底噪，不是其中任何一件。
+            bristle=0.78, bristle_pitch=rng.uniform(7.0, 13.0),
+            colour_profile=[[v * 0.90 for v in body], list(body), [min(255.0, v * 1.16) for v in body]],
             width_profile=thick,
             alpha_profile=[0.66, 0.84, 0.78, 0.72, 0.76, 0.68, 0.56, 0.30],
             absolute_width=True), stage='line', layer='paint', note='')
@@ -111,11 +118,13 @@ def gill_stroke(seed=2100):
     x0 = 936
     top = float(top_of[x0])
     bot = float(bot_of[x0])
+    # **而它的墨不能比身体浓太多。** 第一版给它「浓」那一档、alpha 零点五八，画出来是一条黑线压在鱼身上 —— 鳃盖
+    # 是同一块墨在转折处厚了一点，不是另一笔更黑的墨。所以降到「重」那一档，中段的 alpha 也压下来。
     fig.add_stroke(core.stroke_record(
         [(x0 + 8, top + 26.0), (x0 - 10, (top + bot) * 0.5), (x0 + 2, bot - 26.0)],
-        'brush', seed=2100, colour=hexed(wash(INK_LEVELS[1])), soft=0.85, edge=9.0,
+        'brush', seed=2100, colour=hexed(wash(INK_LEVELS[2])), soft=0.85, edge=9.0,
         bristle=0.20, width_profile=[14.0, 22.0, 11.0],
-        alpha_profile=[0.24, 0.56, 0.20], absolute_width=True), stage='line', layer='paint', note='')
+        alpha_profile=[0.18, 0.40, 0.14], absolute_width=True), stage='line', layer='paint', note='')
     return fig
 
 
@@ -168,9 +177,13 @@ def main():
     r.fill_polygon(picture, [(-20.0, -20.0), (W + 20.0, -20.0), (W + 20.0, H + 20.0), (-20.0, H + 20.0)],
                    PAPER, 1.0)
     marks = 0
+    # **纸咬墨，就是飞白。** 粗纸的凸起盖不住墨，于是笔划过的地方留下细碎的白点 —— 那是水彩与书法共用的一个
+    # 效果，而它在 `lineweight` 里不需要新的机制：`Paper.bite` 早就在，只是没有人给它一张粗纸。**这一条是这一节
+    # 唯一一处「不用写代码」的改动**，也是把墨从「灰色的水」变成「墨」的最后一步。
+    rough = r.PAPERS['rough']
     for fig in (body_strokes(), gill_stroke(), fin_stroke(), tail_strokes(), eye_dot()):
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True),
-                          'normal', 1.0)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
         marks += len(fig.marks)
     path = os.path.join(OUT, 'ink.png')
     r.save_png(picture, path, background=PAPER)
