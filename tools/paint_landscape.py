@@ -305,6 +305,53 @@ def pavilion(x, y, level=0.70, seed=5000):
     return fig
 
 
+def path_marks(level=0.62, segments=26, seed=6000):
+    """山路：**断续的短笔，而「断」是山遮住它的地方。**
+
+    郭熙「山之人物以標道路」—— 人物标出道路。反过来读也一样：路要先有，人物才有地方站。而一条画成连续线的路是
+    一条**看得见全貌**的路，那只有鸟瞰才有；从山脚往上看的路上，它一段在坡上、一段被石头挡住、一段拐到看不见的
+    那一侧。所以路是断续的，**而断续的比例就是这座山有多起伏。**
+
+    位置不跟着山脊走。脊是山的最高处，而路沿坡走 —— 一条贴着脊的路是「看山的人」，不是「住在山里的人」。
+    """
+    rng = random.Random(seed)
+    fig = project.Project(width=W, height=H, title='path')
+    colour = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(min(0.94, level + 0.18)))
+    for i in range(segments):
+        t = (i + rng.uniform(0.0, 0.6)) / segments
+        x = 1240.0 - t * 820.0
+        y = 834.0 - t * 300.0 + math.sin(t * 9.0) * 14.0
+        length = rng.uniform(12.0, 30.0)
+        # **笔要顺着坡，不是横着。** 第一版的每一段都是短横线，落在坡上读成一道擦痕；而这条路的方向是
+        # (−820, −300) 归一化之后的样子 —— 每一段都该是那个方向的一小截。
+        fig.add_stroke(core.stroke_record(
+            [(x, y), (x - length * 0.94, y - length * 0.34 + rng.uniform(-3.0, 3.0))], 'brush',
+            seed=seed + i, colour=colour, soft=0.5, edge=1.4,
+            width_profile=[3.4, 2.2], alpha_profile=[rng.uniform(0.44, 0.64), 0.32],
+            absolute_width=True), stage='line', layer='paint', note='')
+    return fig
+
+
+def figure_dot(x, y, seed=6100):
+    """一个人：两点。**远人无目 —— 而这里连脸都没有，只有一竖一点。**
+
+    它比一棵树还小，而它的用处不是「有个人」，是**让那条路成立**：一条没有人的路是一道裂缝，一条有一个人的路是
+    一条可以走的路。郭熙把这句话写成了「山之人物以標道路」，而模特本身不需要任何细节 —— **点在画上，路就有了
+    尺度与方向。**
+    """
+    fig = project.Project(width=W, height=H, title='figure')
+    ink = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(0.92))
+    fig.add_stroke(core.stroke_record(
+        [(x, y - 10.0), (x, y)], 'brush', seed=seed, colour=ink, soft=0.4, edge=0.8,
+        width_profile=[1.8, 1.5], alpha_profile=[0.84, 0.84], absolute_width=True),
+        stage='line', layer='paint', note='')
+    fig.add_stroke(core.stroke_record(
+        [(x - 0.7, y - 13.0), (x + 0.7, y - 12.2)], 'brush', seed=seed + 1, colour=ink,
+        soft=0.4, edge=0.6, width_profile=[2.6, 2.3], alpha_profile=[0.92, 0.92], absolute_width=True),
+        stage='line', layer='paint', note='')
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -402,6 +449,17 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(house.marks)
+        # **路先于人物。** 人物标出道路，而它标的是一个已经在的地方；反过来把人先放上去，那条路就成了「从这里到
+        # 那里」的图解，而不是山里本来就有的那条。
+        trail = path_marks(0.62, segments=26, seed=6000)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in trail.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(trail.marks)
+        # 人在 t=0.42 处：x = 1240 - 0.42*820 = 896，y = 834 - 0.42*300 + sin(3.78)*14 ≈ 711
+        walker = figure_dot(896.0, 712.0, seed=6100)
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in walker.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(walker.marks)
     # 深远那一场没有湖。观者是**从山前窥山后**，脚下是山口而不是水面；六层的底在 y 820，再往下就是纸。给它加一片
     # 平的水，等于把「向里看」改成「向远看」—— 那是平远。**一条水法的错用能改掉一个视点。**
     if mode != 'shen':
