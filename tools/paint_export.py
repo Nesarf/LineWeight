@@ -20,7 +20,7 @@ paint_export.export(stack, OUT, 'apple')
 """
 import os
 
-from lineweight import psd
+from lineweight import gltf, psd
 from lineweight import raster as r
 
 
@@ -46,7 +46,12 @@ def stacker(width, height):
 
 
 def export(stack, out_dir, stem):
-    """写一份 PSD。工程文件由调用方自己存 —— 它需要知道哪几个 `Project` 才是这张画的笔。"""
-    path = os.path.join(out_dir, '%s.psd' % stem)
-    psd.save_psd(stack, path)
-    return path, len(stack)
+    """写一份分层 PSD 与一份 glTF。**同一个 stack 去两个地方，因为它就是这张画的结构。**
+
+    glTF 用 `embed=True`（纹理与缓冲都塞进 JSON），得到一个可以直接拖进 Blender 的单文件 —— 那份文件体积大一些，
+    而它省掉了一整类「贴图找不到」的问题。PSD 那边照旧带外部资源，因为 SAI 与 CSP 读的就是那样。
+    """
+    psd_path = os.path.join(out_dir, '%s.psd' % stem)
+    psd.save_psd(stack, psd_path)
+    gltf.save_gltf(stack, os.path.join(out_dir, '%s.gltf' % stem), embed=True)
+    return psd_path, len(stack)

@@ -34,6 +34,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lineweight import core, project, psd   # noqa: E402
 from lineweight import raster as r          # noqa: E402
+
+import paint_export                          # noqa: E402
 from paint_fish import BODY, DORSAL, EYE, FIN, TAIL, H, W, mask_of   # noqa: E402
 
 OUT = os.environ.get('INK_OUT') or os.path.join(os.getcwd(), 'ink')
@@ -190,7 +192,7 @@ def main():
     r.save_png(picture, path, background=PAPER)
     project.save_project(fig, os.path.join(OUT, 'pass-ink.json'))
     stack = psd.layers_from_project(fig)
-    psd.save_psd(stack, os.path.join(OUT, 'ink.psd'))
+    paint_export.export(stack, OUT, 'ink')
     print('%s  %d marks  %d layers  + ink.psd' % (path, len(fig.live()), len(stack)))
     return 0
 
