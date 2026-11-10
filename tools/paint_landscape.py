@@ -44,8 +44,12 @@ MID = [(-140, 720), (80, 590), (250, 490), (400, 560), (560, 450), (700, 530), (
        (1010, 570), (1170, 500), (1330, 590), (1540, 640)]
 # **而近山要留出水面。** 上一版的近山脊一路压到画底（y 900），于是水被它整片盖住 —— 一张山水画没有水就不是山水。
 # 脊抬到五百上下、深度收到二百二，画底那一条才空出来，而空出来的部分是**纸** —— 水不画，它是没有被墨碰到的地方。
+#
+# **再加一处崖。** 一条只有缓波的脊是丘，不是山：山在某一处突然掉下去，而那一处是整座山最重的地方。断崖用三个
+# 靠得很近的点给出（水平二十像素、垂直一百二十），因为平滑会把任何一处陡降磨圆 —— 给它三个点，磨完还是一条崖。
 NEAR = [(-140, 800), (40, 700), (170, 560), (250, 620), (400, 690), (520, 540), (600, 580),
-        (760, 650), (890, 530), (1010, 570), (1160, 690), (1290, 620), (1430, 720), (1540, 810)]
+        (760, 650), (890, 530), (910, 660), (925, 770), (1010, 590), (1160, 690), (1290, 620),
+        (1430, 720), (1540, 810)]
 
 
 def ridge_curve(points, per=14, rounds=7):
@@ -199,6 +203,56 @@ def cun_marks(ridge, solid, level, groups, seed):
     return fig
 
 
+def trees_on_ridge(ridge, solid, level, count, seed):
+    """山顶的树：**几十粒墨，而它们让山读成山。**
+
+    一条光脊的石头没有尺度 —— 观者不知道该拿什么去比。树给了它：人都知道一棵树多大，所以一粒墨落在脊上，那一
+    整片就变成了几十米。**这是整个画面里最经济的一笔**，因为它同时交代了远近、坡向，和「这片山有人走过」。
+
+    每棵树是一小簇三到六笔：中间一笔高而直（干），旁边几笔短而斜（枝）。它们比皴浓，也比皴小 —— 皴说石头，树说
+    尺度，而两者的浓度差就是这两件事的区别。
+    """
+    rng = random.Random(seed)
+    top_of = np.argmax(solid, axis=0)
+    fig = project.Project(width=W, height=H, title='trees')
+    colour = '#%02x%02x%02x' % tuple(max(0, min(255, int(round(v)))) for v in wash(min(0.92, level + 0.34)))
+    index = 0
+    planted = 0
+    while planted < count:
+        # **树是一丛一丛的，不是均匀撒的。** 种子落在母树旁边，风把它送出去是一段一段的 —— 所以山脊上的树有疏有
+        # 密，密的地方两三棵并排，疏的地方一整段没有。均匀撒出来的是「一片苗」，而苗不是林。
+        anchor = rng.uniform(ridge[1][0], ridge[-1][0])
+        for k in range(rng.randint(2, 6)):
+            column = int(round(anchor + k * rng.uniform(6.0, 13.0)))
+            planted += 1
+            if not (0 <= column < W) or not solid[:, column].any():
+                continue
+            base = float(top_of[column]) + rng.uniform(0.0, 6.0)
+            height = rng.uniform(9.0, 22.0)
+            if rng.random() < 0.42:
+                continue
+            fig.add_stroke(core.stroke_record(
+                [(column, base), (column + rng.uniform(-1.5, 1.5), base - height * 0.55),
+                 (column + rng.uniform(-3.0, 3.0), base - height)], 'brush', seed=4000 + index,
+                colour=colour, soft=0.6, edge=1.4, bristle=0.30, bristle_pitch=2.2,
+                width_profile=[3.0, 2.2, 1.0], alpha_profile=[0.72, 0.62, 0.34],
+                absolute_width=True), stage='line', layer='paint', note='')
+            index += 1
+            # **枝要短而细，否则一棵树会读成一个人。** 第一版的斜笔有五到九像素、宽二点二，两笔一分就是「人」字 ——
+            # 而真实的远树在画面上只是主干旁的两三道细痕，比主干短一半以上。枝越像枝，树越像树；枝越清楚，树越
+            # 像符号。
+            for _ in range(rng.randint(1, 2)):
+                side = rng.choice((-1.0, 1.0))
+                fig.add_stroke(core.stroke_record(
+                    [(column + side * 1.0, base - height * 0.30),
+                     (column + side * rng.uniform(2.0, 4.5), base - height * rng.uniform(0.42, 0.74))],
+                    'brush', seed=4000 + index, colour=colour, soft=0.6, edge=1.2,
+                    width_profile=[1.6, 0.6], alpha_profile=[0.48, 0.20], absolute_width=True),
+                    stage='line', layer='paint', note='')
+                index += 1
+    return fig
+
+
 def water_marks(seed=3100):
     """水：**几笔横向的淡墨，而它们的间距比它们的长度大。** 水不是画出来的，是留白加上几条暗示。"""
     rng = random.Random(seed)
@@ -234,6 +288,13 @@ def main():
         picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
                                                   paper=rough), 'normal', 1.0)
         marks += len(fig.marks)
+        # **树按远近分大小与数量**：远山的树少而小（几粒），近山的多而大 —— 而这两组数不是风格，是尺度：
+        # 同一种树在两座山上要长得一样大，只有它的墨要跟着山淡。
+        trees = trees_on_ridge(smooth, solid, level, 10 if depth < 100 else (26 if depth < 200 else 70),
+                               seed=int(len(ridge) * 13))
+        picture = r.blend(picture, r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
+                                                  paper=rough), 'normal', 1.0)
+        marks += len(trees.marks)
     water = water_marks()
     picture = r.blend(picture, r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True,
                                               paper=rough), 'normal', 1.0)
