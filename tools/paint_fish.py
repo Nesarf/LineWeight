@@ -76,11 +76,11 @@ BODY = tall([(168, 444), (238, 428), (326, 386), (430, 356), (556, 338), (700, 3
              (930, 372), (1012, 414), (1064, 462), (1068, 508), (1030, 556), (944, 596),
              (846, 620), (726, 634), (594, 638), (468, 630), (356, 600), (272, 556), (200, 510), (162, 486)])
 # **The pectoral was too far back, opened too narrow, and was the wrong shape.** A pectoral grows from just behind the
-# gill cover low on the flank and fans back and down through most of a right angle; this one sat twelve pixels further
-# aft, reached through half that, and its outline was a long wedge rather than a fan -- a hundred pixels wide against
-# a hundred and eighty long. The root moved forward and the outline is now an arc of radius 175 swept from 2.15 to 2.95
-# radians, so the fin is as wide as it is long.
-FIN = tall([(922, 534), (826, 681), (799, 658), (777, 630), (761, 599), (750, 567)])
+# gill cover low on the flank and fans back and down through most of a right angle. And when the head grew in 4.103 the
+# cover moved back seventy pixels while the root stayed put -- so the fin ended up **in front of the cover it is
+# supposed to grow from**, which is the mirror image of the first error and just as wrong. Root and outline moved
+# together: a fin belongs behind the cover, not beside the eye.
+FIN = tall([(846, 540), (750, 678), (723, 652), (701, 624), (685, 594), (674, 562)])
 TAIL = tall([(168, 446), (58, 412), (12, 462), (52, 520), (166, 484)])
 # **And the fin's root sat above the body's own edge, which is why it looked like it floated.** The dorsal polygon's
 # lower points were at y 336 while the outline's upper edge passes through y 350 at that x -- fourteen pixels of gap
@@ -98,7 +98,7 @@ DORSAL = tall([(470, 364), (520, 300), (580, 286), (640, 292), (700, 352), (586,
 # tip is the outer curve -- and a ray is a mark that spans between them.
 DORSAL_ROOT = tall([(470, 364), (586, 340), (700, 352)])
 DORSAL_TIP = tall([(470, 364), (520, 300), (580, 286), (640, 292), (700, 352)])
-FIN_ROOT = tall([(922, 534)])[0]
+FIN_ROOT = tall([(846, 540)])[0]
 TAIL_ROOT = tall([(166, 466)])[0]
 # **And the eye was in the wrong part of the head, and the head was too short.** At sixty-six pixels from a snout that
 # is a hundred and thirty-three from the gill cover, the eye sat in the middle of a head that was itself only a seventh
