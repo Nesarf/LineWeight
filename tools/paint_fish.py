@@ -707,10 +707,91 @@ def side_structure(mask, relief, seed=4040):
     return fig
 
 
+#: The near edge of the table, and how it wanders. **It sits just under the fish's lowest point**, because a fish
+#: drawn from the side is lying down: a table twenty-six pixels below its belly leaves it floating in front of the
+#: table rather than on it, and no shadow fixes that.
+TABLE_EDGE = 674.0
+
+
+def table_edge(x):
+    """桌面的前缘 —— 一条不是直线的线。一条完美的直线在这一整张画里是唯一一处「机器画的」痕迹。"""
+    return TABLE_EDGE + 9.0 * math.sin(x * 0.0042 + 0.6) + 4.0 * math.sin(x * 0.011 - 1.3)
+
+
+def surface(seed=3300):
+    """桌面：**一条鱼要有一个可以放着的地方。**
+
+    画到这一轮为止，这条鱼浮在一片深褐里 —— 它是从空气里长出来的。桌面做的只有三件事：给鱼一条明确的地平线、
+    让它的接触阴影有地方落、把背景从「一片深」拆成「后墙与桌面」。而三者之中只有第二件是画法问题，前两件是
+    构图问题 —— 一条鱼浮着的时候，观者不知道它多大。
+    """
+    rng = random.Random(seed)
+    layer = r.Layer(W, H)
+    edge = [(float(x), table_edge(float(x))) for x in range(-40, W + 60, 9)]
+    # **桌面的底色要比背景亮一档，否则看不见那条前缘。** 第一版是 (48,38,32)，而后墙的笔在 (22,19,18) 到
+    # (86,76,66) 之间 —— 两者一混合，桌面就是背景上的一块补丁，「鱼放在桌上」这件事没有发生。一张桌子的上表面
+    # 是朝上的，它比身后的墙受光，这是它能被看见的全部理由。**而第一次修过了头**：暖亮的木头把冷调的鱼压住，
+    # 于是桌面成了主体。压回到比背景亮一档，不多。
+    r.fill_polygon(layer, edge + [(W + 60.0, H + 40.0), (-40.0, H + 40.0)], (58, 48, 40), 1.0)
+    fig = canvas('table grain')
+    for i in range(120):
+        x = rng.uniform(-80.0, W + 80.0)
+        y = rng.uniform(TABLE_EDGE - 8.0, H + 40.0)
+        # 越靠近观者越暗 —— 一盏在桌上方的灯照不到桌沿以外。
+        near = max(0.0, min(1.0, (y - TABLE_EDGE) / 240.0))
+        tone = mix((80, 66, 52), (40, 32, 26), near * rng.uniform(0.45, 1.0))
+        length = rng.uniform(140.0, 420.0)
+        fig.add_stroke(core.stroke_record(
+            [(x - length * 0.5, y), (x, y + rng.uniform(-3.0, 3.0)),
+             (x + length * 0.5, y + rng.uniform(-2.0, 2.0))],
+            'brush', seed=3300 + i, colour=hexed(jitter(tone, 7.0, rng)), soft=0.9,
+            height=rng.uniform(0.008, 0.020), bristle=0.30, bristle_pitch=rng.uniform(3.4, 5.2),
+            width_profile=[rng.uniform(26.0, 64.0)] * 3,
+            alpha_profile=[rng.uniform(0.34, 0.66)] * 3,
+            absolute_width=True, edge=rng.uniform(7.0, 15.0)), stage='line', layer='paint', note='')
+    return r.blend(layer, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True), 'normal', 1.0)
+
+
+def contact_shadow(mask, seed=3500):
+    """鱼压出来的影：**它让鱼落在桌上，而不是飘在桌前。**
+
+    影的位置不是「鱼下面」这么简单 —— 它要从鱼的下缘开始，越往下越淡，而且只出现在下缘以下。所以这一层必须问
+    掩膜「这一列的底在哪里」，而不是问一个固定的 y。**一条沿体轴的均匀暗带会读成另一条鱼**，那正是 `paint_pair`
+    在 4.61 记过的错。
+    """
+    rng = random.Random(seed)
+    bot_of = H - 1 - np.argmax(mask[::-1, :], axis=0)
+    fig = canvas('contact shadow')
+    for i in range(80):
+        column = int(rng.uniform(200.0, 1040.0))
+        if not (0 <= column < W) or not mask[:, column].any():
+            continue
+        bottom = float(bot_of[column])
+        reach = rng.uniform(14.0, 44.0)
+        depth = rng.uniform(2.0, reach)
+        y = bottom + depth
+        fade = max(0.0, 1.0 - depth / reach)
+        alpha = 0.55 * fade * fade
+        if alpha < 0.015:
+            continue
+        span = rng.uniform(26.0, 58.0)
+        fig.add_stroke(core.stroke_record(
+            [(column - span, y), (column, y + rng.uniform(-3.0, 3.0)), (column + span, y)],
+            'brush', seed=3500 + i, colour='#1a1411', soft=0.9,
+            width_profile=[rng.uniform(20.0, 40.0)] * 3,
+            alpha_profile=[alpha * 0.55, alpha, alpha * 0.55],
+            absolute_width=True, edge=rng.uniform(6.0, 13.0)), stage='line', layer='paint', note='')
+    return fig
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     picture = ground()
+    picture = r.blend(picture, surface(), 'normal', 1.0)
     body, mask, relief = fish_marks()
+    # **影先于鱼。** 影落在桌面上，鱼落在影上 —— 反过来写，鱼的下缘会被自己的影盖住一圈，读成一条更暗的边。
+    picture = r.blend(picture, r.render_marks([m.to_dict() for m in contact_shadow(mask).marks], W, H,
+                                              sweep=True), 'normal', 1.0)
     layer = r.render_marks([m.to_dict() for m in body.marks], W, H, sweep=True)
     rng = random.Random(404)
     for _ in range(16):
