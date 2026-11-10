@@ -75,7 +75,12 @@ def tall(points):
 BODY = tall([(168, 444), (238, 428), (326, 386), (430, 356), (556, 338), (700, 332), (826, 344),
              (930, 372), (1012, 414), (1064, 462), (1068, 508), (1030, 556), (944, 596),
              (846, 620), (726, 634), (594, 638), (468, 630), (356, 600), (272, 556), (200, 510), (162, 486)])
-FIN = tall([(910, 546), (848, 596), (786, 646), (812, 664), (872, 620), (906, 578)])
+# **The pectoral was too far back, opened too narrow, and was the wrong shape.** A pectoral grows from just behind the
+# gill cover low on the flank and fans back and down through most of a right angle; this one sat twelve pixels further
+# aft, reached through half that, and its outline was a long wedge rather than a fan -- a hundred pixels wide against
+# a hundred and eighty long. The root moved forward and the outline is now an arc of radius 175 swept from 2.15 to 2.95
+# radians, so the fin is as wide as it is long.
+FIN = tall([(922, 534), (826, 681), (799, 658), (777, 630), (761, 599), (750, 567)])
 TAIL = tall([(168, 446), (58, 412), (12, 462), (52, 520), (166, 484)])
 # **And the fin's root sat above the body's own edge, which is why it looked like it floated.** The dorsal polygon's
 # lower points were at y 336 while the outline's upper edge passes through y 350 at that x -- fourteen pixels of gap
@@ -89,7 +94,7 @@ DORSAL = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352), (586,
 # tip is the outer curve -- and a ray is a mark that spans between them.
 DORSAL_ROOT = tall([(470, 364), (586, 340), (700, 352)])
 DORSAL_TIP = tall([(470, 364), (520, 306), (588, 296), (660, 304), (700, 352)])
-FIN_ROOT = tall([(908, 548)])[0]
+FIN_ROOT = tall([(922, 534)])[0]
 TAIL_ROOT = tall([(166, 466)])[0]
 # **And the eye was in the wrong half of the head.** It sat sixty-six pixels from a snout that is a hundred and
 # thirty-three from the gill cover -- the middle of the head. A fish's eye sits at a third to two fifths of the way
@@ -364,9 +369,9 @@ def fin_film():
     因为它是半透明的、透过来的是光，所以它该比背景亮一档，而不是比背脊暗一档。
     """
     film = r.Layer(W, H)
-    for shape, level in ((DORSAL, 0.30), (FIN, 0.26), (TAIL, 0.28)):
+    for shape, level in ((DORSAL, 0.42), (FIN, 0.26), (TAIL, 0.28)):
         patch = r.Layer(W, H)
-        r.fill_polygon(patch, [tuple(p) for p in shape], (70, 72, 70), level)
+        r.fill_polygon(patch, [tuple(p) for p in shape], (72, 76, 80), level)
         film = r.blend(film, r.clip(patch, soft_mask_layer(mask_of(shape), blur=3.0)), 'normal', 1.0)
     return film
 
@@ -386,8 +391,8 @@ def fin_marks(seed=505):
     """
     rng = random.Random(seed)
     fig = canvas('fins')
-    for shape, root, span, density in ((FIN, FIN_ROOT, (2.15, 3.15), 18),
-                                       (TAIL, TAIL_ROOT, (2.70, 3.64), 19)):
+    for shape, root, span, density in ((FIN, FIN_ROOT, (2.15, 2.95), 14),
+                                       (TAIL, TAIL_ROOT, (2.70, 3.64), 15)):
         mask = mask_of(shape)
         relief = height_of(mask, exponent=0.75)
         tone = shading(relief, tilt=0.6)
@@ -419,13 +424,13 @@ def fin_marks(seed=505):
             mid_x, mid_y = root[0] + dx * (start + end) * 0.5, root[1] + dy * (start + end) * 0.5
             mx, my = int(round(mid_x)), int(round(mid_y))
             thin = math.sqrt(max(0.0, float(relief[my, mx]))) if 0 <= mx < W and 0 <= my < H else 0.4
-            pigment = jitter(mix((46, 42, 44), (108, 100, 96), min(1.0, float(tone[my, mx]))), 6.0, rng)
+            pigment = jitter(mix((48, 48, 52), (92, 96, 100), min(1.0, float(tone[my, mx]))), 6.0, rng)
             alpha = 0.28 + 0.52 * thin
             fig.add_stroke(core.stroke_record(
                 [(root[0] + dx * start, root[1] + dy * start), (mid_x, mid_y),
                  (root[0] + dx * end, root[1] + dy * end)], 'brush', seed=900 + i,
                 colour=hexed(pigment), soft=0.5, height=0.14, bristle=0.20,
-                width_profile=[rng.uniform(5.2, 7.6), rng.uniform(6.8, 10.2), rng.uniform(3.4, 5.6)],
+                width_profile=[rng.uniform(3.2, 4.6), rng.uniform(4.2, 6.2), rng.uniform(2.4, 3.8)],
                 alpha_profile=[alpha * 0.72, alpha, alpha * 0.60],
                 absolute_width=True, edge=rng.uniform(1.2, 2.2)), stage='line', layer='paint', note='')
     # **背鳍：根是一条线，鳍条跨在这条线与外缘之间。** 上一版给它一个「根点」、让笔从那里向四面八方辐射，于是
@@ -434,20 +439,9 @@ def fin_marks(seed=505):
     mask = mask_of(DORSAL)
     relief = height_of(mask, exponent=0.75)
     tone = shading(relief, tilt=0.6)
-    # **膜先于条。** 上一版只有鳍条，于是一片鱼鳍读成一排悬着的竖线 —— 鳍本来是有底的，条是压在底上的。先横
-    # 着铺几条盖住整片，条才有东西可以落。
-    for i in range(7):
-        across = (i + 0.5) / 7.0
-        stations = []
-        for k in range(5):
-            x0 = 474.0 + 220.0 * k / 4.0
-            y_root = along(DORSAL_ROOT, x0)
-            y_tip = along(DORSAL_TIP, x0)
-            stations.append((x0, y_tip + (y_root - y_tip) * across))
-        fig.add_stroke(core.stroke_record(
-            stations, 'brush', seed=1080 + i, colour='#332f30', soft=1.0, height=0.10,
-            width_profile=[26.0, 32.0, 26.0], alpha_profile=[0.16, 0.24, 0.16],
-            absolute_width=True, edge=9.0), stage='line', layer='paint', note='')
+    # **旧的膜笔删掉了。** 那七条宽横笔是上一版的膜，而膜现在由 `fin_film` 填一次 —— 两套一起留着，膜就是两层
+    # 不均匀的半透明叠在一起，比任何一层都脏。**加了一层新机制之后，要回头找旧的那一层**，否则它不会报错，只会
+    # 让新的一层看起来不对。
     for i in range(32):
         x0 = rng.uniform(478.0, 692.0)
         y_root = along(DORSAL_ROOT, x0)
@@ -457,19 +451,20 @@ def fin_marks(seed=505):
             continue
         lean = (x0 - 586.0) / 118.0 * 0.12
         tip_x = x0 + lean * fin_height
-        s = rng.uniform(0.0, 1.0)
-        cx = tip_x + (x0 - tip_x) * s
-        cy = y_tip + fin_height * s
+        # **一根鳍条跨在根与尖之间，所以它的中心是中点，不是随机位置。** 上一版随机取一点当中心、再按鳍高画长度，
+        # 取到靠近根的时候，笔就向上伸出一整片，读成一根伸出膜外的针。
+        cx = (x0 + tip_x) * 0.5
+        cy = (y_root + y_tip) * 0.5
         column, row = int(round(cx)), int(round(cy))
         if not (0 <= row < H and 0 <= column < W) or not mask[row, column]:
             continue
         thin = math.sqrt(max(0.0, float(relief[row, column])))
         pigment = jitter(mix((52, 48, 50), (96, 90, 86), min(1.0, float(tone[row, column]))), 6.0, rng)
-        length = fin_height * rng.uniform(0.72, 1.06)
+        length = fin_height * rng.uniform(0.94, 1.06)
         ux, uy = x0 - tip_x, y_root - y_tip
         norm = math.hypot(ux, uy) or 1.0
         ux, uy = ux / norm, uy / norm
-        alpha = 0.18 + 0.50 * thin
+        alpha = 0.30 + 0.55 * thin
         fig.add_stroke(core.stroke_record(
             [(cx - ux * length * 0.5, cy - uy * length * 0.5), (cx, cy),
              (cx + ux * length * 0.5, cy + uy * length * 0.5)], 'brush', seed=1100 + i,
