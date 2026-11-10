@@ -71,16 +71,33 @@ def save_gltf(layers, path, gap=0.002, embed=False):
 
     for index, layer in enumerate(layers):
         z = index * gap
+        # **一块有厚度的板，而不是一块平面。** 没有厚度的平面在 Blender 里从侧面看会消失 —— 而一叠卡片从侧面
+        # 看正是一叠边，那是这个出口最该给人的那一眼。厚度取 `gap` 的四成，于是相邻两层之间还留着一条缝，
+        # 而在正面看它们仍然贴在一起。
+        half_t = gap * 0.4 * 0.5
+        z0, z1 = z - half_t, z + half_t
         # **v 翻过来。** 图像的第 0 行是画面顶端，而 glTF 的 v=1 才是顶端 —— 不翻的话整张画上下颠倒。
-        positions = np.array([[-hw, -hh, z], [hw, -hh, z], [hw, hh, z], [-hw, hh, z]], dtype=np.float32)
-        uvs = np.array([[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=np.float32)
-        indices = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint16)
+        positions = np.array([
+            [-hw, -hh, z1], [hw, -hh, z1], [hw, hh, z1], [-hw, hh, z1],
+            [-hw, -hh, z0], [hw, -hh, z0], [hw, hh, z0], [-hw, hh, z0],
+        ], dtype=np.float32)
+        uvs = np.array([[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0],
+                        [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype=np.float32)
+        # 十二个三角形：前面、后面、四条侧边。索引绕序在两面都按外向，因为材质是 `doubleSided` 而这里只要它不
+        # 自相交 —— 一张画的每一层从背后看仍然是那一层。
+        indices = np.array([0, 1, 2, 0, 2, 3,           # 前
+                            4, 6, 5, 4, 7, 6,           # 后
+                            0, 4, 5, 0, 5, 1,           # 下
+                            1, 5, 6, 1, 6, 2,           # 右
+                            2, 6, 7, 2, 7, 3,           # 上
+                            3, 7, 4, 3, 4, 0],          # 左
+                           dtype=np.uint16)
 
         pos_offset = len(buffer)
         buffer.extend(positions.tobytes())
         buffer_views.append({'buffer': 0, 'byteOffset': pos_offset, 'byteLength': positions.nbytes,
                              'target': ARRAY_BUFFER})
-        accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': FLOAT, 'count': 4,
+        accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': FLOAT, 'count': 8,
                           'type': 'VEC3',
                           'min': [float(positions[:, k].min()) for k in range(3)],
                           'max': [float(positions[:, k].max()) for k in range(3)]})
@@ -89,7 +106,7 @@ def save_gltf(layers, path, gap=0.002, embed=False):
         buffer.extend(uvs.tobytes())
         buffer_views.append({'buffer': 0, 'byteOffset': uv_offset, 'byteLength': uvs.nbytes,
                              'target': ARRAY_BUFFER})
-        accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': FLOAT, 'count': 4,
+        accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': FLOAT, 'count': 8,
                           'type': 'VEC2'})
 
         idx_offset = len(buffer)
@@ -99,7 +116,7 @@ def save_gltf(layers, path, gap=0.002, embed=False):
         buffer_views.append({'buffer': 0, 'byteOffset': idx_offset, 'byteLength': indices.nbytes,
                              'target': ELEMENT_ARRAY_BUFFER})
         accessors.append({'bufferView': len(buffer_views) - 1, 'componentType': UNSIGNED_SHORT,
-                          'count': 6, 'type': 'SCALAR'})
+                          'count': 36, 'type': 'SCALAR'})
 
         tex_name = '%02d_%s.png' % (index, _safe(layer.name))
         tex_path = os.path.join(tex_dir, tex_name)

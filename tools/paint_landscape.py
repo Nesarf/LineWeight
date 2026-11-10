@@ -25,6 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lineweight import core, project, psd   # noqa: E402
 from lineweight import raster as r          # noqa: E402
 
+import paint_export                          # noqa: E402
+
 W, H = 1400, 900
 OUT = os.environ.get('LAND_OUT') or os.path.join(os.getcwd(), 'landscape')
 PAPER = (234, 228, 214)
@@ -665,11 +667,10 @@ def main():
         marks += len(flock.marks)
     path = os.path.join(OUT, 'landscape-%s.png' % mode)
     r.save_png(picture, path, background=PAPER)
-    # **一张画是一个工程，而它的层是它自己说出来的那几样东西。** 导出 PSD 之后，「把树关掉」变成一次点击，而
-    # 那一步是判断 —— 它回答「这张画靠什么立着」，而这个问题逐笔编辑永远回答不了。
-    psd_path = os.path.join(OUT, 'landscape-%s.psd' % mode)
-    psd.save_psd(stack, psd_path)
-    print('%s  %d marks  %d layers  + %s' % (path, marks, len(stack), os.path.basename(psd_path)))
+    # **一张画是一个工程，而它的层是它自己说出来的那几样东西。** 导出 PSD 与 glTF 之后，「把树关掉」变成一次点击，
+    # 而那一步是判断 —— 它回答「这张画靠什么立着」，而这个问题逐笔编辑永远回答不了。
+    psd_path, layers = paint_export.export(stack, OUT, 'landscape-%s' % mode)
+    print('%s  %d marks  %d layers  + %s' % (path, marks, layers, os.path.basename(psd_path)))
     return 0
 
 
