@@ -22,8 +22,8 @@ from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lineweight import core, project      # noqa: E402
-from lineweight import raster as r        # noqa: E402
+from lineweight import core, project, psd   # noqa: E402
+from lineweight import raster as r          # noqa: E402
 
 W, H = 1400, 900
 OUT = os.environ.get('LAND_OUT') or os.path.join(os.getcwd(), 'landscape')
@@ -578,37 +578,50 @@ def main():
                    PAPER, 1.0)
     marks = 0
     rough = r.PAPERS['rough']
+    # **每一块在 PSD 里是一层，而层的名字是它在画里的身份。** 这张画不是「一堆笔」，是「山、皴、树、水、云、鸟、
+    # 亭、路、人」—— 而分出这些名字之后，才能把「树」整层关掉看还剩下什么。那一步是判断，不是编辑，而它要求
+    # 笔分属不同的纸。**一张所有笔都叫 `paint` 的画仍然逐笔可改，而它不能被"看"。**
+    stack = []
+
+    def place(name, layer):
+        nonlocal picture
+        picture = r.blend(picture, layer, 'normal', 1.0)
+        canvas = psd.Layer(name, W, H)
+        canvas.data = bytearray(layer.data)
+        for i in range(0, len(canvas.data), 4):
+            if canvas.data[i + 3] == 0:
+                canvas.data[i] = canvas.data[i + 1] = canvas.data[i + 2] = 255
+        stack.append(canvas)
+        return layer
     # **远山不皴。** 「遠山無皴，遠水無波，遠人無目 —— 非無也，如無耳」（郭熙《林泉高致》）。三句说的是同一件事：
     # 远处的细节不是「没画」，是画了也读不出来。所以远山那一档的组数是零，而不是小一点 —— 这不是省笔，是那条
     # 判据本身：**远处的形体要被减去它显示不出来的东西。**
     for ridge, depth, level, groups, fall in planes:
         smooth = ridge_curve(ridge, rounds=rounds)
         layer, solid = mountain(smooth, depth, level, seed=len(ridge), waterfall=fall)
-        picture = r.blend(picture, layer, 'normal', 1.0)
+        place('mountain-%d' % len(ridge), layer)
         fig = cun_marks(smooth, solid, level, groups, seed=len(ridge) * 7, reach=reach)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('cun-%d' % len(ridge), r.render_marks([m.to_dict() for m in fig.marks], W, H, sweep=True,
+                                                    paper=rough))
         marks += len(fig.marks)
         # **树按远近分大小与数量**：远山的树少而小（几粒），近山的多而大 —— 而这两组数不是风格，是尺度：
         # 同一种树在两座山上要长得一样大，只有它的墨要跟着山淡。
         trees = trees_on_ridge(smooth, solid, level, 10 if depth < 100 else (26 if depth < 230 else 70),
                                seed=int(len(ridge) * 13))
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('trees-%d' % len(ridge), r.render_marks([m.to_dict() for m in trees.marks], W, H, sweep=True,
+                                                      paper=rough))
         marks += len(trees.marks)
         # **瀑布底下要有水花**，而它比瀑布本身更说明那是水：一条竖直的缝可以是一道裂缝、一条石缝、一条什么都没画
         # 的空白，而水花把它认领成水。**加法里那几笔是减法最后需要的一句声明。**
         if fall:
             spray = splash(fall[0], 706.0, level, seed=6200 + len(ridge))
-            picture = r.blend(picture, r.render_marks([m.to_dict() for m in spray.marks], W, H, sweep=True,
-                                                      paper=rough), 'normal', 1.0)
+            place('splash', r.render_marks([m.to_dict() for m in spray.marks], W, H, sweep=True, paper=rough))
             marks += len(spray.marks)
     # **云在山之后画，而它盖在山腰上。** 顺序不是排版：先画山，云才有东西可以横穿；而云如果先画，山会把它整片
     # 盖掉 —— 云在山上，不在山后。
     if mode == 'gao':
         clouds = cloud_band(392.0, 0.22, seed=6300, count=3)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('cloud', r.render_marks([m.to_dict() for m in clouds.marks], W, H, sweep=True, paper=rough))
         marks += len(clouds.marks)
     # **深远不画云带。** 它的云是层与层之间剩下的那条缝 —— 4.89 记过「云是两层之间没有被墨碰到的一条」。在那张
     # 画上再横一条淡墨，等于把两种云叠在一起，而两种都不明显。**一个画面只需要一种方法做同一件事**，而深远已经
@@ -617,47 +630,45 @@ def main():
     # 层遮掉一半 —— 它不在等你走过去，它在等你看见它。郭熙「深遠者細碎」：细碎的不只是树，也是人做出的东西。
     if mode == 'shen':
         house = pavilion(760.0, 516.0, 0.34, seed=5100, scale=0.62)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('pavilion', r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True, paper=rough))
         marks += len(house.marks)
     if mode == 'gao':
         # 亭子落在左边那道次峰的坡上（x=520 处脊在 y 534 附近）。**位置比形状重要**：它要在一条坡上、并且能看见
         # 主峰 —— 观者站在画外往里看，而亭子里的人正看着同一座山。
         house = pavilion(520.0, 536.0, 0.66, seed=5000)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('pavilion', r.render_marks([m.to_dict() for m in house.marks], W, H, sweep=True, paper=rough))
         marks += len(house.marks)
         # **路先于人物。** 人物标出道路，而它标的是一个已经在的地方；反过来把人先放上去，那条路就成了「从这里到
         # 那里」的图解，而不是山里本来就有的那条。
         trail = path_marks(0.62, segments=26, seed=6000)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in trail.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('path', r.render_marks([m.to_dict() for m in trail.marks], W, H, sweep=True, paper=rough))
         marks += len(trail.marks)
         # 人在 t=0.42 处：x = 1240 - 0.42*820 = 896，y = 834 - 0.42*300 + sin(3.78)*14 ≈ 711
         walker = figure_dot(896.0, 712.0, seed=6100)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in walker.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('figure', r.render_marks([m.to_dict() for m in walker.marks], W, H, sweep=True, paper=rough))
         marks += len(walker.marks)
     # 深远那一场没有湖。观者是**从山前窥山后**，脚下是山口而不是水面；五层的底在 y 840，再往下就是纸。给它加一片
     # 平的水，等于把「向里看」改成「向远看」—— 那是平远。**一条水法的错用能改掉一个视点。**
     if mode != 'shen':
         # **倒影先于波纹。** 波纹是水面上的东西，倒影是水面里的东西 —— 先铺水面下的，再压水面上的。
         if mode == 'ping':
-            picture = r.blend(picture, reflection(picture, 786.0, strength=0.22), 'normal', 1.0)
+            place('reflection', reflection(picture, 786.0, strength=0.22))
         water = water_marks()
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('water', r.render_marks([m.to_dict() for m in water.marks], W, H, sweep=True, paper=rough))
         marks += len(water.marks)
     # **鸟在最前。** 它们不落在山里、落在天里，而天比云高、云比山高 —— 所以顺序是山、云、鸟。
     if mode in ('gao', 'ping'):
         flock = birds(6 if mode == 'gao' else 4, 196.0 if mode == 'gao' else 232.0,
                       seed=6400 if mode == 'gao' else 6410, level=0.66)
-        picture = r.blend(picture, r.render_marks([m.to_dict() for m in flock.marks], W, H, sweep=True,
-                                                  paper=rough), 'normal', 1.0)
+        place('birds', r.render_marks([m.to_dict() for m in flock.marks], W, H, sweep=True, paper=rough))
         marks += len(flock.marks)
     path = os.path.join(OUT, 'landscape-%s.png' % mode)
     r.save_png(picture, path, background=PAPER)
-    print('%s  %d marks' % (path, marks))
+    # **一张画是一个工程，而它的层是它自己说出来的那几样东西。** 导出 PSD 之后，「把树关掉」变成一次点击，而
+    # 那一步是判断 —— 它回答「这张画靠什么立着」，而这个问题逐笔编辑永远回答不了。
+    psd_path = os.path.join(OUT, 'landscape-%s.psd' % mode)
+    psd.save_psd(stack, psd_path)
+    print('%s  %d marks  %d layers  + %s' % (path, marks, len(stack), os.path.basename(psd_path)))
     return 0
 
 
