@@ -9,18 +9,18 @@
 ## 0. 规模与入口
 
 ```
-库      lineweight/    22 个模块   9 110 行     只管画线、组合、导出
-工具    tools/         114 个脚本 17 992 行    读参考图、做判断、生成工程
-测试    tests/         25 个文件   5 238 行     383 项（test_*.py，不含 tests/tools/）
+库      lineweight/    23 个模块   9 326 行     只管画线、组合、导出
+工具    tools/         117 个脚本 18 224 行    读参考图、做判断、生成工程
+测试    tests/         26 个文件   5 322 行     390 项（test_*.py，不含 tests/tools/）
 ```
 
-（三个数都是 `Get-ChildItem -Filter *.py | Get-Content | Measure-Object -Line` 实测的。上一版写的是 21 / 110 /
-24 / 5 116 / 371，再上一版是 8 733 / 104 / 14 784 / 23 / 5 018 / 362 —— 每一版都在当时是实测的，数变了是因为
-加了东西。**这三个数每次改动都该重新测，而不是照着上一版加。**）
+（三个数都是 `Get-ChildItem -Filter *.py | Get-Content | Measure-Object -Line` 实测的。上一版写的是 22 / 114 /
+25 / 9 110 / 17 992 / 5 238 / 383 —— 每一版都在当时是实测的，数变了是因为加了东西。**这三个数每次改动都该重新
+测，而不是照着上一版加。**）
 
-**而"加了东西"在这一版里是两支新笔**：`tools/paint_ink.py`（没骨的一条鱼，九笔）与 `tools/paint_landscape.py`
-（三远，三场），外加一个只做拼贴的 `tools/landscape_triptych.py`。**它们不是在原来那条路上调参，是另两条路** ——
-`§3.6` 记的就是第三条入口与它的区别。
+**而"加了东西"在这一版里是三样**：`tools/paint_ink.py`（没骨的一条鱼，九笔）、`tools/paint_landscape.py`
+（三远，三场），以及出口那一侧的 `lineweight/gltf.py`（一层一块板）与 `tools/gltf_preview.py`（读回来渲染）。
+**前两个是另两条画法上的路，后两个是第一个通向三维的出口** —— `§3.6` 记画法，`§7` 记出口。
 
 一条命令：
 
@@ -572,6 +572,7 @@ tools/paint_ink.py        161 行   没骨的一条鱼：九笔，边是笔的�
 | SVG | `core` 的 path 输出 | 自有 reader + cairo 作为独立参考 |
 | PNG | `raster.py` | 逐像素与参考实现对比 |
 | PNG（绘画） | `paint_*.py` 里的 `save_png` | 每一次改动出一张图，**用眼睛看**；两列数字只做定位 |
+| Blender / Rhino / Unity / MMD | `gltf.py` | `@gltf-transform/cli` 独立读入 + `tools/gltf_preview.py` 读回渲染；**没有在真的 Blender 里打开过** |
 
 **有一类 mark 走不了其中两条，而这件事被做成了一个方法。** 橡皮擦在 `render_marks` 里是 destination-out，而 SVG 没有
 擦除操作、PSD 的图层栈同样不能 —— 带擦除的工程渲染正确，导出时橡皮消失。`Project.unexportable()` 就是为这两个出口写
@@ -587,6 +588,20 @@ psd.layers_from_project    渲染器的字节 → 一层就是这个层         
 **同一个工程走两条路会得到两张不同的图**，而差别就在边缘：一条线在第一条路上是楼梯，在第二条路上与笔刷画的一样软。
 板绘软件打开的是画给人看的那张，所以 `layers_from_project` 是主路，`layers_from_document` 留着给形状。层名来自
 `Mark.layer`，层的顺序就是绘制顺序 —— 底到顶，与渲染器合成的一致。
+
+**glTF 是第三条出口，而它导的不是一条线，是一张画。** 每一层是一块有厚度的板（八顶点、十二个三角形），沿 z 错开
+`gap`，贴自己的纹理。三个判据，每一条都对应一类会让文件"合法而打开是错的"的错：
+
+```
+v 要翻两处    图像的 y 向下、glTF 的 y 向上。只翻一处整张画颠倒
+alpha 留到纹理 走「一张画」那条路会把每层变成不透明方片，叠起来"看起来对"而分层没了
+层名必须唯一   重名在 Blender 的大纲里变成 x 与 x.001，于是"这一层是什么"丢了一半
+```
+
+**而它的验证链比别的出口短一截，这一截要写清楚**：`@gltf-transform/cli inspect` 证明文件是合法 glTF 2.0；
+`tools/gltf_preview.py` 读文件、按 z 错开把纹理叠成一张图，证明纹理找得到、顺序对、看得见 —— **而它刻意不复用
+`lineweight` 的渲染器，否则它证明的只是那段代码和自己一致**。至于「在 Blender 里拖进去」，本机没有 Blender 也没有
+Rhino，所以**这一步没有做**。它离上面那两步很近，但不是同一步。
 
 ---
 
