@@ -114,6 +114,66 @@ def skin_colour(depth):
     return mix(SKIN_MID, SKIN_LIGHT, (depth - 0.5) / 0.5)
 
 
+def eye_marks(centre, width, height, seed=71000):
+    """一只眼：**上睑一道弧、下睑一道更平的弧、虹膜一圈、瞳孔一点、高光一点。**
+
+    **宽度不由这里定。** 「五眼」说脸宽分成五份、一份是一只眼，所以这一只眼的宽度是 `2 * FACE_W * 0.80 / 5` ——
+    它从脸上算出来，而这样改了脸宽之后眼睛会跟着改。**一个附属物的尺寸该由它所属的东西给。**
+
+    而高度是宽度的一半多一点：眼睛不是圆的，它的开口是一条缝，而**那条缝的形状比眼珠更像一个人**。所以上睑的弧
+    比下睑弯得多 —— 上面挂在眶骨上，下面只搭在脸颊上。
+    """
+    cx, cy = centre
+    fig = project.Project(width=W, height=H, title='figure eyes')
+    half = width * 0.5
+    # **上睑**：内眼角略低、中间拱起、外眼角略高。三个点足够 —— 而四个点会让它变成一条两边对称的拱。
+    upper = [(cx - half, cy + height * 0.04), (cx - half * 0.30, cy - height * 0.52),
+             (cx + half * 0.34, cy - height * 0.46), (cx + half, cy - height * 0.02)]
+    fig.add_stroke(core.stroke_record(
+        upper, 'brush', seed=seed, colour=hexed((38, 30, 32)), soft=0.35,
+        width_profile=[2.4, 4.4, 4.0, 2.0], alpha_profile=[0.62, 0.86, 0.84, 0.58],
+        absolute_width=True, edge=1.1), stage='line', layer='eye', note='')
+    # 下睑：更平、更淡。**它不该和上睑一样重** —— 上睑有睫毛与褶，下睑没有。
+    lower = [(cx - half, cy + height * 0.04), (cx - half * 0.24, cy + height * 0.40),
+             (cx + half * 0.30, cy + height * 0.36), (cx + half, cy - height * 0.02)]
+    fig.add_stroke(core.stroke_record(
+        lower, 'brush', seed=seed + 1, colour=hexed((92, 66, 60)), soft=0.5,
+        width_profile=[1.6, 2.6, 2.4, 1.4], alpha_profile=[0.30, 0.46, 0.44, 0.28],
+        absolute_width=True, edge=1.4), stage='line', layer='eye', note='')
+    # 虹膜：一个圆，而上缘被上睑压掉一点 —— **这一点是「眼珠在眶里」的全部证据**。
+    #
+    # **而四个点画不出圆。** 第一版给了上下左右四点，Catmull-Rom 过这四个点给的是一个圆角方 —— 而虹膜是这张脸上
+    # 唯一一个真正的圆，它方了，眼睛就变成了一对扣子。十六个点之后它才圆。
+    # **而它的半径不能大于眼裂。** 第一版给了眼高的零点七二，虹膜于是从眼睑外面绕了一圈 —— 读成一只戴圆环的
+    # 眼睛。真实的虹膜直径大约等于眼裂高度，所以半径是高度的五成半。
+    iris_r = height * 0.55
+    ring = [(cx + iris_r * math.cos(a), cy + iris_r * math.sin(a))
+            for a in (2.0 * math.pi * k / 16.0 for k in range(16))]
+    ring.append(ring[0])
+    fig.add_stroke(core.stroke_record(
+        ring, 'brush', seed=seed + 2, colour=hexed(IRIS), soft=0.3,
+        width_profile=[3.0] * len(ring), alpha_profile=[0.86] * len(ring),
+        absolute_width=True, edge=1.0), stage='line', layer='eye', note='')
+    # 瞳孔：比虹膜更浓，而它只占虹膜的六成。**而它也是十六个点** —— 圆这件事在一个直径二三十像素的东西上一样
+    # 成立，而四个点画出来的瞳孔是一颗方的扣子。
+    pupil_r = iris_r * 0.58
+    pupil = [(cx + pupil_r * math.cos(a), cy + pupil_r * math.sin(a))
+             for a in (2.0 * math.pi * k / 16.0 for k in range(16))]
+    pupil.append(pupil[0])
+    fig.add_stroke(core.stroke_record(
+        pupil, 'brush', seed=seed + 3, colour=hexed((18, 14, 16)), soft=0.2,
+        width_profile=[4.0] * len(pupil), alpha_profile=[0.94] * len(pupil),
+        absolute_width=True, edge=1.0), stage='line', layer='eye', note='')
+    # 高光：一点白，**位置在瞳孔的上外角** —— 光从左上过来，所以两只眼的高光在同一侧。而它是一点，不是一道：
+    # 一道白条读成反光板，一点才读成湿润的眼球。
+    fig.add_stroke(core.stroke_record(
+        [(cx + iris_r * 0.30, cy - iris_r * 0.34), (cx + iris_r * 0.38, cy - iris_r * 0.30)],
+        'brush', seed=seed + 4, colour='#f4ece2', soft=0.2,
+        width_profile=[2.4, 2.0], alpha_profile=[0.90, 0.84], absolute_width=True, edge=0.9),
+        stage='line', layer='eye', note='')
+    return fig
+
+
 def face_marks(seed=70701):
     """脸上的笔：**沿等高线走，而「等高线」是到轮廓的距离。**
 
@@ -134,7 +194,7 @@ def face_marks(seed=70701):
     # **脊上要磨一下。** 距离场在一个瘦长的形状里有一条中轴脊，梯度在那里不连续 —— 而笔的方向取自梯度，于是脸的正
     # 中央出现一块三角形，笔在那里互相交叉。**那不是噪声，是「一个函数在一条线上没有导数」画在纸上的样子。**
     # 模糊六像素换回一个连续的方向场，而代价只是最亮的那一条稍微塌一点。
-    depth = ndimage.gaussian_filter(depth, 6.0)
+    depth = ndimage.gaussian_filter(depth, 12.0)
     gy, gx = np.gradient(depth)
     fig = project.Project(width=W, height=H, title='figure face')
     for y in range(0, H, 8):
@@ -168,6 +228,17 @@ def main():
     face, mask = face_marks()
     picture = place(picture, 'face',
                     r.clip(r.render_marks([m.to_dict() for m in face.marks], W, H, sweep=True), soft_mask(mask)))
+    # **眼的宽度从脸算出来。** 五眼：脸宽分五份，一份是一只眼；两眼之间正好一份。而眼的垂直位置是「三停」给出的
+    # 那个中点 —— 头顶到下巴的一半，不是脸的半高。**两个判据各给一个坐标，而它们不互相迁就。**
+    eye_w = 2.0 * FACE_W * 0.80 / 5.0
+    # **眼是 3:1，不是 2:1。** 第一版给了宽度的五成五，画出来是一对方形的洞 —— 而真实的眼裂窄得多：上下睑之间
+    # 只有眼宽的三分之一，而虹膜有大半被上睑盖住。**那个比例是「像不像人」的第一个开关。**
+    eye_h = eye_w * 0.34
+    eyes_y = (CY + FACE_H * -1.00 + CY + FACE_H * 0.76) * 0.5
+    for name, sign in (('left', -1.0), ('right', 1.0)):
+        eyes = eye_marks((CX + sign * eye_w, eyes_y), eye_w, eye_h, seed=71000 + (17 if sign > 0 else 0))
+        picture = place(picture, 'eye %s' % name,
+                        r.render_marks([m.to_dict() for m in eyes.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'figure.png')
     r.save_png(picture, path, background=(28, 24, 28))
     print('%s  %d marks' % (path, len(face.marks)))
