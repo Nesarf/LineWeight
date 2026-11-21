@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np                          # noqa: E402
 
-from lineweight import core, project, pigment  # noqa: E402
+from lineweight import core, project, pigment, standards  # noqa: E402
 from lineweight import raster as r             # noqa: E402
 
 import paint_export                            # noqa: E402
@@ -416,13 +416,12 @@ def main():
     # 被裁干净的边，读成「戴了个头套」。
     hair = hair_marks(mask)
     picture = place(picture, 'hair', r.render_marks([m.to_dict() for m in hair.marks], W, H, sweep=True))
-    # **眼的宽度从脸算出来。** 五眼：脸宽分五份，一份是一只眼；两眼之间正好一份。而眼的垂直位置是「三停」给出的
-    # 那个中点 —— 头顶到下巴的一半，不是脸的半高。**两个判据各给一个坐标，而它们不互相迁就。**
-    eye_w = 2.0 * FACE_W * 0.80 / 5.0
-    # **眼是 3:1，不是 2:1。** 第一版给了宽度的五成五，画出来是一对方形的洞 —— 而真实的眼裂窄得多：上下睑之间
-    # 只有眼宽的三分之一，而虹膜有大半被上睑盖住。**那个比例是「像不像人」的第一个开关。**
-    eye_h = eye_w * 0.34
-    eyes_y = (CY + FACE_H * -1.00 + CY + FACE_H * 0.76) * 0.5
+    # **那组比值现在住在库里**（`standards.face`），因为判据比画法更可复用：换一张脸这组数还成立，而这支笔
+    # 不成立。库里也写着哪三个数是书上的、哪三个是这个库试出来的 —— 混在一起的那一天，就没有人知道哪个能改。
+    ratios = standards.face(FACE_W, FACE_H)
+    eye_w = ratios['eye_width']
+    eye_h = ratios['eye_height']
+    eyes_y = CY + ratios['eye_dy']
     brows, eyes = [], []
     for name, sign in (('left', -1.0), ('right', 1.0)):
         centre = (CX + sign * eye_w, eyes_y)
