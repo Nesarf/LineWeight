@@ -1376,10 +1376,21 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         gx, gy = _np.meshgrid(xs, ys)
         dx, dy = bx - ax, by - ay
         length2 = dx * dx + dy * dy
+        # **The projection onto the segment is one array, not three.** `(gx - ax) * dx + (gy - ay) * dy` was written
+        # out in the distance, again in `half`, and again in `share`, and its clip was evaluated twice as well -- three
+        # full passes over the box per segment to compute the same number. The expressions handed on are the same ones
+        # in the same order, so no pixel moves: `half` takes `t` because its own clip was `t`'s expression, and `share`
+        # takes the unclipped `u` because that is what it always was. The `distance` line keeps its original form --
+        # `gx - (ax + t * dx)` and `(gx - ax) - t * dx` are the same number only in exact arithmetic.
+        west = gx - ax
+        north = gy - ay
         if length2 <= 1e-12:
-            distance = _np.hypot(gx - ax, gy - ay)
+            distance = _np.hypot(west, north)
+            u = 0.0
+            t = 0.0
         else:
-            t = _np.clip(((gx - ax) * dx + (gy - ay) * dy) / length2, 0.0, 1.0)
+            u = (west * dx + north * dy) / length2
+            t = _np.clip(u, 0.0, 1.0)
             distance = _np.hypot(gx - (ax + t * dx), gy - (ay + t * dy))
         # **Half a width either side, with `edge` pixels of anti-aliasing at the boundary** -- the same statement the
         # dab's own coverage makes, so a two-pixel line looks the same under either model. **`edge = 1` is the shipped
@@ -1389,8 +1400,7 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         # **The reason it is a parameter is measured, not stylistic.** Walking across a line on eleven artist drawings,
         # the grey takes 2.70 to 4.43 pixels to fall from the field to the ink at the median, while a copy drawn with
         # this renderer crosses in 1.75 to 2.00 -- which is exactly what `edge_scale` reports as "the copy is harder".
-        half = 0.5 * (widths[i] + (widths[i + 1] - widths[i]) * _np.clip(
-            (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0, 0.0, 1.0))
+        half = 0.5 * (widths[i] + (widths[i + 1] - widths[i]) * t)
         ramp = _np.clip((half + 0.5 * edge - distance) / max(edge, 1e-6), 0.0, 1.0)
         coverage = ramp if soft <= 0.0 else ramp ** (1.0 + soft)
         # **湿的那一圈。** 在笔的有效半径之外，覆盖按指数衰减，峰值是笔心的一半以下 —— 它比任何一笔都淡，而它
@@ -1400,7 +1410,7 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
             outside = _np.clip(distance - half, 0.0, None)
             halo = _np.exp(-outside / bleed) * 0.28
             coverage = _np.maximum(coverage, halo)
-        share = (((gx - ax) * dx + (gy - ay) * dy) / length2) if length2 > 1e-12 else 0.0
+        share = u
         here = coverage * (alpha[i] + (alpha[i + 1] - alpha[i]) * share)
         # **一支笔是几十根毛，不是一条带。** `grain` 给的是均匀噪声，它能做「粗糙」，做不了「毛」—— 因为毛有
         # 方向：每一根沿着笔画走，相邻两根留下的量不同，而同一根在整笔里保持一致。所以这里按**横向的栅格**取编号，
@@ -1409,7 +1419,7 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         # 横向要有符号：到中心线的距离本身是对称的，两侧会用同一根毛的花纹，看起来像一条织带。
         if bristle > 0.0:
             seg_len = float(_np.hypot(dx, dy)) or 1.0
-            across = ((gx - ax) * (-dy) + (gy - ay) * dx) / seg_len
+            across = (west * (-dy) + north * dx) / seg_len
             strand = _np.floor(across / bristle_pitch)
             hashed = _np.sin(strand * 12.9898 + seed * 78.233) * 43758.5453
             hashed -= _np.floor(hashed)
