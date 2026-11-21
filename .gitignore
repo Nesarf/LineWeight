@@ -6,6 +6,14 @@ dist/
 build/
 .venv/
 
+# **The compiled encoder is a build product, and the source beside it is the thing to keep.** `lineweight/_packbits.c`
+# is the implementation and `tools/build_packbits.py` is the one command that turns it into a library; a checkout
+# without the library runs the Python encoder and writes byte-identical files, so a binary in version control would be
+# a second copy of something already stated, in a form only one architecture can run.
+lineweight/_packbits.dll
+lineweight/_packbits.so
+lineweight/_packbits.dylib
+
 # **No artwork, and no measured corpora.** The reference library is built from private collections of illustrations; the
 # distribution it produces is shared as tests/data/corpus_summary.json, and the images and the raw per-image records are
 # not. Ignored here so that a corpus placed beside the code by habit cannot be committed by accident -- a rule that

@@ -436,6 +436,13 @@ def packbits_rows(data: bytes, width: int) -> tuple:
     counts = bytearray()
     length = len(data)
     span = max(1, int(width))
+    # **The compiled encoder first, the Python one when it is absent.** Both produce the same bytes -- that is a test,
+    # not a claim (`tests/test_packbits_c.py`) -- and the C version exists because this loop measured at seven
+    # megabytes a second, which on a seventeen-layer drawing is twenty seconds of the write.
+    from . import fastpack
+    packed = fastpack.packbits_rows(data, span)
+    if packed is not None:
+        return packed
     for start in range(0, length, span):
         end = min(start + span, length)
         before = len(out)
