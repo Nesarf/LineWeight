@@ -359,6 +359,37 @@ def mouth_marks(seed=75000):
     return fig
 
 
+def collect(drawings, fills=(), title='figure'):
+    """**「改某一笔」需要的是一份工程，不是一张图。**
+
+    每个 `*_marks` 各自返回一个 `Project`，因为它们各自是一次独立的构图：眉算一次、眼算一次、头发一次。而一张
+    画最终是一份工程 —— `--marks` 要在它上面把四千多笔列出来，`--revise` 要能改其中一条。PSD 里的像素没有
+    身份，工程里的笔有，而这个库的产品是后者。
+
+    **`Mark.geometry` 已经是一份 `stroke_record` 的形状**，因为 `add_stroke` 的白名单当初就是从那里取的；所以
+    这里要补的只有 `colour`，它在 `appearance` 里，因为「没有颜色」意味着「角色决定」。
+
+    **`fills` 先于所有笔加进去，而且必须如此。** `render_marks` 按顺序合成，而背景与脸的底色是最下面那两层。
+    这两个东西本来是 `fill_polygon` 画进像素的，而像素不进工程 —— 于是从工程渲染出来的图少了它们：背景成了
+    纸色，脸成了透光的，与 `main` 直接画的那一张不是同一张画。**一份「工程就是这张画」的工程，缺一层就是缺
+    一层。**
+    """
+    merged = project.Project(width=W, height=H, title=title)
+    for fill in fills:
+        merged.add_fill(core.Region(points=[list(p) for p in fill['points']], d=fill.get('d', '')),
+                        stage=fill.get('stage', 'colour'), colour=fill['colour'],
+                        layer=fill.get('layer', ''), note=fill.get('note', ''))
+    for drawing in drawings:
+        for mark in drawing.marks:
+            record = dict(mark.geometry)
+            colour = mark.appearance.get('colour')
+            if colour:
+                record['colour'] = colour
+            merged.add_stroke(record, stage=mark.stage, layer=mark.layer,
+                              note=(mark.provenance or {}).get('note', ''))
+    return merged
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     place, stack = paint_export.stacker(W, H)
@@ -376,7 +407,9 @@ def main():
                     r.clip(r.blend(skin, r.render_marks([m.to_dict() for m in face.marks], W, H, sweep=True)),
                            soft_mask(mask)))
     # **鼻与嘴画在脸上，头发之上或之下都不影响** —— 头发只到脸的轮廓附近，而这两样在脸的中线上。
-    for name, drawing in (('nose', nose_marks()), ('mouth', mouth_marks())):
+    nose = nose_marks()
+    mouth = mouth_marks()
+    for name, drawing in (('nose', nose), ('mouth', mouth)):
         picture = place(picture, name,
                         r.render_marks([m.to_dict() for m in drawing.marks], W, H, sweep=True))
     # **头发画在脸之上。** 鬓与刘海压在额头与颊上，而那是头发与脸唯一的接触方式；若它在脸之下，两侧会是一条
@@ -390,17 +423,36 @@ def main():
     # 只有眼宽的三分之一，而虹膜有大半被上睑盖住。**那个比例是「像不像人」的第一个开关。**
     eye_h = eye_w * 0.34
     eyes_y = (CY + FACE_H * -1.00 + CY + FACE_H * 0.76) * 0.5
+    brows, eyes = [], []
     for name, sign in (('left', -1.0), ('right', 1.0)):
         centre = (CX + sign * eye_w, eyes_y)
         brow = brow_marks(centre, eye_w, eye_h, seed=72000 + (19 if sign > 0 else 0))
+        brows.append(brow)
         picture = place(picture, 'brow %s' % name,
                         r.render_marks([m.to_dict() for m in brow.marks], W, H, sweep=True))
-        eyes = eye_marks(centre, eye_w, eye_h, seed=71000 + (17 if sign > 0 else 0))
+        eye = eye_marks(centre, eye_w, eye_h, seed=71000 + (17 if sign > 0 else 0))
+        eyes.append(eye)
         picture = place(picture, 'eye %s' % name,
-                        r.render_marks([m.to_dict() for m in eyes.marks], W, H, sweep=True))
+                        r.render_marks([m.to_dict() for m in eye.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'figure.png')
     r.save_png(picture, path, background=(28, 24, 28))
+    # **同一份 stack 去两个地方，因为它就是这张画的结构。** 这张脸一直只写 PNG，而它的图层从画的时候就分好
+    # 了 —— 一份 PNG 只能看，一份分层 PSD 才能拿去 SAI 里关掉头发看看剩下什么，而后者才是这个库的产品。
+    psd_path, layers = paint_export.export(stack, OUT, 'figure')
+    # **而工程文件是第三种出口，也是「能改某一笔」唯一的一种。** PSD 里只有像素：层名对、透明度对、顺序对，
+    # 而一支笔与它旁边那一支在里面没有分别。工程文件里每一笔有一个 id。
+    drawing = collect(
+        [face, nose, mouth, hair] + brows + eyes,
+        fills=[
+            {'points': [(-20.0, -20.0), (W + 20.0, -20.0), (W + 20.0, H + 20.0), (-20.0, H + 20.0)],
+             'colour': hexed((28, 24, 28)), 'layer': 'ground', 'note': 'the ground'},
+            {'points': outline(), 'colour': hexed(SKIN_MID), 'layer': 'face', 'note': 'the base coat'},
+        ])
+    project_path = os.path.join(OUT, 'figure.json')
+    project.save_project(drawing, project_path)
     print('%s  face %d marks, hair %d marks' % (path, len(face.marks), len(hair.marks)))
+    print('%s  %d layers' % (psd_path, layers))
+    print('%s  %d marks, addressable by id' % (project_path, len(drawing.marks)))
     return 0
 
 
