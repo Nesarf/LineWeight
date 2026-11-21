@@ -2183,6 +2183,155 @@ def assign_roles(project_path: str, spec: str, note: str = '') -> int:
     return 0
 
 
+#: **The geometry fields a revision may write, per kind of mark.** Two sets rather than one because a fill is a region
+#: and a stroke is a pressure curve, and the intersection between them is empty. A name in neither set does not exist,
+#: and `revise_report` refuses it instead of writing it -- see the note there for why that is the loud option.
+STROKE_GEOMETRY = frozenset((
+    'centre', 'control', 'pressure', 'brush', 'seed', 'resolution', 'role', 'absolute_width',
+    'page_long', 'edge', 'soft', 'width_profile', 'colour_profile', 'height', 'bristle',
+    'bristle_pitch', 'bleed', 'alpha_profile',
+))
+REGION_GEOMETRY = frozenset(('points', 'd', 'holes'))
+
+
+def _mark_row(mark) -> str:
+    """One line per mark, with the two things a revision needs decided first.
+
+    **The width column is the resolved profile's range, not the brush's nominal size.** A stroke whose profile runs
+    2 to 9 pixels is not a 9-pixel brush, and the two are told apart only by reading the range -- which is also the
+    column that says whether a mark has 強弱 at all, because a range with no width to it is the flat line this
+    library exists to prevent.
+    """
+    geometry = mark.geometry
+    if mark.kind == 'stroke':
+        widths = stroke_widths(geometry)
+        shape = '%2dpt w %5.1f-%-5.1f' % (len(geometry.get('centre') or []),
+                                          min(widths) if widths else 0.0,
+                                          max(widths) if widths else 0.0)
+        ink = mark_ink(mark.to_dict())
+    else:
+        shape = '%2dpt region      ' % len(geometry.get('points') or [])
+        # **A region's colour lives under `fill`, and `mark_ink` does not look there.** It answers "what ink does this
+        # stroke use", so every fill printed the role's default -- a colour the fill does not have, in the one column
+        # whose job is to say which mark is which.
+        ink = mark.appearance.get('fill') or mark_ink(mark.to_dict())
+    return '%-6s %-6s %-7s %-14s %-10s %s  role %-11s %s' % (
+        mark.id, mark.kind, mark.stage, mark.layer or '-', mark.state, shape,
+        geometry.get('role') or '-', ink)
+
+
+def marks_report(project_path: str, stage: str = '', limit: int = 0) -> int:
+    """**Every mark with the name it answers to.**
+
+    `Project.revise_mark` has always been able to change one stroke and leave its neighbours alone. What was missing is
+    a way to find out *which* stroke: a project is a list of marks called `m0417`, and until now the only ids a person
+    could reach were the ones a drawing program happened to print while it was creating them.
+
+    That gap is why "revise one stroke" read as a feature of the library and not as something a person could do. The
+    model was there and had no handle on it.
+    """
+    from .project import load_project
+
+    project = load_project(project_path)
+    marks = [m for m in project.marks if not stage or m.stage == stage]
+    print('  %s: %d mark(s), %d live%s'
+          % (project_path, len(marks), sum(1 for m in marks if m.state == 'live'),
+             (', stage %r' % stage) if stage else ''))
+    shown = marks[:limit] if limit else marks
+    for mark in shown:
+        print('  ' + _mark_row(mark))
+    if len(shown) < len(marks):
+        print('  ... %d more; --limit 0 lists every one' % (len(marks) - len(shown)))
+    return 0
+
+
+def revise_report(project_path: str, spec: str, ink: str = '', to_stage: str = '', note: str = '',
+                  settings=(), dry: bool = False) -> int:
+    """**Changing one stroke from the command line**, which is the last thing between this library and a drawing
+    program that keeps its strokes: everything below this function already works.
+
+    `Project.revise_mark` refuses to touch identity and keeps the previous values in the log, so a revision made here
+    is undoable from the file alone -- `--log --rewind 1` puts it back. What this function adds is the part a person
+    needs when typing rather than calling: **a geometry field that does not exist is refused, not written.**
+
+    Writing it would be the quiet failure. A misspelled field would sit in the mark looking like a decision, change
+    nothing about the picture, and survive every round trip; the mistake would be found by noticing that a drawing did
+    not change, which is the slowest way to learn a field name was wrong. Refusing costs one line of output and names
+    the set the name had to come from.
+
+    **Two stage flags rather than one, and that is deliberate.** For `--marks`, `--stage` is a filter; here it would
+    have to mean "set the stage to this". One flag carrying two meanings is the shape of error this project has paid
+    for repeatedly -- a paper and a hair, two kinds of cloud, an intensity and an area -- so the setter is `--to-stage`
+    and neither command can be read as the other.
+    """
+    import json
+
+    from .project import load_project, save_project
+
+    appearance: dict = {}
+    geometry: dict = {}
+    for item in settings:
+        if '=' not in item:
+            raise SystemExit('--set wants field=value, e.g. role=silhouette; got %r' % item)
+        key, raw = item.split('=', 1)
+        key = key.strip()
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            value = raw          # a colour name, a role: a bare string is a legitimate value
+        if key.startswith('appearance.'):
+            appearance[key[len('appearance.'):]] = value
+        elif key.startswith('geometry.'):
+            geometry[key[len('geometry.'):]] = value
+        else:
+            geometry[key] = value
+    if ink:
+        # **`--ink` writes the mark's own colour, which is a different thing from its role's ink.** An absent colour
+        # means "the role decides" and a present one overrides it, so this is the one appearance field a revision has
+        # to be able to set without knowing what the role is.
+        appearance['colour'] = ink
+
+    ids = [piece.strip() for piece in spec.split(',') if piece.strip()]
+    if not ids:
+        raise SystemExit('--revise got no mark id')
+    if not appearance and not geometry and not to_stage and not note:
+        raise SystemExit('--revise got nothing to change: pass --ink, --set, --to-stage or --note')
+
+    project = load_project(project_path)
+    # **Both checks run before anything is written.** A bad id or a misspelled field in third position must not leave
+    # the first two revised and the file saved -- a half-applied edit is worse than a refused one, because the caller
+    # has no way to tell which half landed.
+    for mark_id in ids:
+        try:
+            mark = project.by_id(mark_id)
+        except KeyError:
+            # **A `KeyError` is the right answer from the model and the wrong one from a command line.** From the
+            # terminal it arrives as a traceback, which says a key was missing without saying what to do about it;
+            # this names the command that lists the ids that do exist.
+            raise SystemExit('%s is not in this project; --marks %s lists the ids it has'
+                             % (mark_id, project_path))
+        allowed = STROKE_GEOMETRY if mark.kind == 'stroke' else REGION_GEOMETRY
+        unknown = sorted(set(geometry) - allowed)
+        if unknown:
+            raise SystemExit('%s is a %s, which has no geometry field %s; it takes: %s'
+                             % (mark_id, mark.kind, ', '.join(repr(k) for k in unknown),
+                                ', '.join(sorted(allowed))))
+
+    if not dry:
+        project.next_turn(note or 'revise %d mark(s)' % len(ids))
+    for mark_id in ids:
+        mark = project.revise_mark(mark_id, appearance=dict(appearance) or None,
+                                   geometry=dict(geometry) or None,
+                                   stage=to_stage or None, note=note or None)
+        print('  %s %s' % ('would' if dry else '   did', _mark_row(mark)))
+    if dry:
+        print('  %s: nothing written (--dry)' % project_path)
+        return 0
+    save_project(project, project_path)
+    print('  %s: saved, %d log entr(ies)' % (project_path, len(project.log)))
+    return 0
+
+
 def uniformity_report(project_path: str) -> int:
     """**The failure this library exists to prevent, made visible.**
 
@@ -2302,7 +2451,7 @@ def median_of(values: list[float]) -> float:
     return ordered[len(ordered) // 2]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='strokes.svg')
     parser.add_argument('--against', default='corpus', choices=('corpus', 'linework'),
@@ -2363,7 +2512,26 @@ def main() -> int:
                         help='report strokes whose width profile has no variation in it')
     parser.add_argument('--roles', default='', metavar='PROJECT',
                         help="report a project's line roles, their widths, their inks and the trade each makes")
-    args = parser.parse_args()
+    parser.add_argument('--marks', default='', metavar='PROJECT',
+                        help='list every mark in a project with the id that --revise takes; --stage filters it')
+    parser.add_argument('--revise', default='', metavar='PROJECT',
+                        help='change the marks named by --mark-id and save; the log can undo it with --log --rewind')
+    parser.add_argument('--mark-id', default='', metavar='IDS',
+                        help='with --revise: m0001, or a comma-separated list of them')
+    parser.add_argument('--ink', default='', metavar='COLOUR',
+                        help="with --revise: the mark's own colour, which overrides the ink its role would give it")
+    parser.add_argument('--set', action='append', default=[], metavar='FIELD=VALUE',
+                        help='with --revise: one geometry field, e.g. role=silhouette or width_profile=[2,9]. '
+                             'Prefix it appearance. to write an appearance field instead. Repeatable')
+    parser.add_argument('--to-stage', default='', metavar='ROLE',
+                        help='with --revise: move the mark into this pass. Not --stage: with --marks that one filters')
+    parser.add_argument('--note', default='', metavar='TEXT',
+                        help='with --revise: why, kept on the mark and on the log entry')
+    parser.add_argument('--dry', action='store_true',
+                        help='with --revise: print what the revised marks would look like, and write nothing')
+    parser.add_argument('--limit', type=int, default=0, metavar='N',
+                        help='with --marks: print at most N rows; 0, the default, prints every one')
+    args = parser.parse_args(argv)
     if args.fit:
         return fit_report(args.fit, against=args.against)
     if args.fit_dir:
@@ -2442,6 +2610,11 @@ def main() -> int:
         if not args.roles:
             raise SystemExit('--assign-role needs a project: give --roles PROJECT')
         return assign_roles(args.roles, args.assign_role)
+    if args.marks:
+        return marks_report(args.marks, stage=args.stage, limit=args.limit)
+    if args.revise:
+        return revise_report(args.revise, args.mark_id, ink=args.ink, to_stage=args.to_stage,
+                             note=args.note, settings=args.set, dry=args.dry)
     if args.uniform:
         return uniformity_report(args.uniform)
     if args.roles:

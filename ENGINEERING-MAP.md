@@ -9,9 +9,9 @@
 ## 0. 规模与入口
 
 ```
-库      lineweight/    23 个模块   9 326 行     只管画线、组合、导出
-工具    tools/         117 个脚本 18 224 行    读参考图、做判断、生成工程
-测试    tests/         26 个文件   5 322 行     390 项（test_*.py，不含 tests/tools/）
+库      lineweight/    23 个模块   9 479 行     只管画线、组合、导出
+工具    tools/         118 个脚本 18 429 行    读参考图、做判断、生成工程
+测试    tests/         27 个文件   5 451 行     403 项（test_*.py，不含 tests/tools/）
 ```
 
 （三个数都是 `Get-ChildItem -Filter *.py | Get-Content | Measure-Object -Line` 实测的。上一版写的是 22 / 114 /
