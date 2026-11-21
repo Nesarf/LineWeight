@@ -381,11 +381,9 @@ def collect(drawings, fills=(), title='figure'):
                         layer=fill.get('layer', ''), note=fill.get('note', ''))
     for drawing in drawings:
         for mark in drawing.marks:
-            record = dict(mark.geometry)
-            colour = mark.appearance.get('colour')
-            if colour:
-                record['colour'] = colour
-            merged.add_stroke(record, stage=mark.stage, layer=mark.layer,
+            # **`as_record()` 是第三处副本的替代。** 从 `geometry` 抄回一份记录曾经在 `render_marks` 与这里各写
+            # 一遍，而记录的形状由 `geometry` 定，所以重建该归它自己。
+            merged.add_stroke(mark.as_record(), stage=mark.stage, layer=mark.layer,
                               note=(mark.provenance or {}).get('note', ''))
     return merged
 

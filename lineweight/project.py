@@ -157,6 +157,24 @@ class Mark:
     # through parts and name none.
     parts: tuple[str, ...] = ()
 
+    def as_record(self) -> dict:
+        """This mark as the `stroke_record` that would redraw it. **The record's shape is `geometry`'s, so rebuilding
+        one belongs here rather than in each caller.**
+
+        **This was a third copy.** `stroke_record` writes a record, `add_stroke` copies it into `geometry` through a
+        whitelist, and anything that wants to draw the mark again has to copy it back out -- which was written twice,
+        in `raster.render_marks` and in `tools/paint_figure.collect`. 「A new field has to be named in three places」 is
+        the mistake this module's whitelist comment is already about.
+
+        `colour` comes from `appearance`, because an absent colour is not a missing value but the answer "the role
+        decides", and that decision does not live in the record.
+        """
+        record = dict(self.geometry)
+        colour = self.appearance.get('colour')
+        if colour:
+            record['colour'] = colour
+        return record
+
     def to_dict(self) -> dict:
         return {'id': self.id, 'kind': self.kind, 'stage': self.stage, 'seq': self.seq,
                 'geometry': self.geometry, 'appearance': self.appearance,

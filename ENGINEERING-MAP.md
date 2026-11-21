@@ -685,9 +685,9 @@ PSD 文件本身。`flatten` 的第一版就是这么被抓到的：它逐层保
 所以三层，按价值排：
 
 ```
-第三层  流程：画一笔 → 查判据 → 改那一笔 → 再查           还没做
-第二层  判据：宽度是否均匀、不变量、错误模式、三停五眼      lineweight.standards，做完
-第一层  资产：47 条事实、10 种错误模式、出处、摘录          lineweight.aesthetic，做完
+第三层  流程：画一笔 → 查判据 → 改那一笔 → 再查       lineweight.workbench，做完
+第二层  判据：宽度是否均匀、不变量、错误模式、三停五眼  lineweight.standards，做完
+第一层  资产：47 条事实、10 种错误模式、出处、摘录      lineweight.aesthetic，做完
 ```
 
 **第一层做完了，而它顺带修掉一个真缺陷。** `tools/check_learn.py` 把 `E:\lineweight\learn` 写死在源码里，
@@ -708,8 +708,27 @@ PSD 文件本身。`flatten` 的第一版就是这么被抓到的：它逐层保
 **`standards` 只转调，不重新实现。** `line()` 问的正是 `core.is_uniform` 问过的；`stage()` 直接是
 `invariants.check`；`known()` 直接是 `aesthetic.errors()`。两份实现会漂移，而这条库已经为它付过两次账。
 
-**第三层是下一件**：把这三层串成一条路 —— 画一笔、查一次、不满意就 `revise_mark` 改哪一笔、再查一次。那条
-路现在每一步都在，缺的是把它们接起来的那个函数。
+**第三层也做完了，而它是唯一有状态的那一层。** 前两层只读，所以「你刚画的是哪一笔」它们都不记得 —— 而画画时
+画与查是交替的，交替本身就最容易漏。`workbench.Session` 把那四步收成一个对象：
+
+```python
+session = workbench.Session(1400, 900, title='a face')
+lid = session.stroke(points, 'brush', layer='eye', note='the upper lid')
+session.check(lid.id)[0].line()          #   line   FAIL  stroke variation   1.0000  < 0.95 ...
+session.revise(lid.id, width_profile=[2.4, 4.4, 4.0, 2.0])
+session.failures()                       #   []  —— 改完之后再查一次，这个空列表才是一个答案
+```
+
+**`failures()` 是一个方法而不是一句调用者自己拼的话**，因为「改过了」与「改对了」是两个不同的说法，而只有后者
+经得起再查一遍。测试里就有一条专门为此：改完再查通过，`rewind` 之后同一个检查又说它平。
+
+**它不新做任何一件事**：`stroke` 是 `stroke_record` 加 `add_stroke`，`check` 是 `standards.line`，`revise` 是
+`revise_mark`。顺带清掉的是第三处副本 —— `Mark.as_record()` 收走了「从 `geometry` 抄回一份记录」，而那份逻辑
+此前在 `render_marks` 与 `paint_figure.collect` 里各写一遍。
+
+**三层齐了之后缺的是什么**：不是更多的 API，是**第二层的覆盖**。`standards` 现在只判「一支笔的强弱」与「一层
+的不变量」，而 `known()` 那十种错误模式里只有一条有对应的检查。判据本身要一条一条长出来，而那需要先看见图 —— 
+这是为什么它排在画面成熟度后面，不是前面。
 
 ---
 
