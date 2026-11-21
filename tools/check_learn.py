@@ -5,195 +5,54 @@ writes down on the shelf; a page is extracted for a book whose name is spelled d
 matching the number of items it claims to count. **Each of those is silent** -- the library still loads, still reads
 plausibly, and is wrong in a way that only shows up when somebody tries to use the entry.
 
-So this checks seven things and reports the ones that fail:
-
-1. `facts.json` parses and every counted entry's `count` matches `len(items)`.
-2. Every `source` string in `facts.json` names a document that `sources.md` also names.
-3. Every book in `sources.md` is present in `extracts/index.json` or is explicitly marked as having given no extract.
-4. Every file named in `extracts/index.json` exists on disk.
-5. No entry appears twice with the same name.
-6. The prose files exist and are not empty.
-7. **A fact and the code that reads it agree.** Two entries so far are read by a program rather than only by a person:
-   the line roles and their order, against `lineweight/roles.py`, and the three mixing operations with the pigment
-   table behind them, against `lineweight/pigment.py`. Two copies of one fact drift in silence, and this project has
-   already kept a wrong threshold in service for two whole rounds that way.
+**The checks themselves now live in the library**, as `lineweight.aesthetic.verify()`, for two reasons. A caller outside
+this repository has no `tools/` and still needs to know whether the data agrees with the code; and two copies of one
+checker drift in silence, which is the same failure this file is about, one level up. This script keeps the part that is
+about reporting: the counts, and the books that have no extract page.
 
     python tools/check_learn.py
 """
-import json
 import pathlib
 import re
 import sys
 
-LEARN = pathlib.Path(r'E:\lineweight\learn')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from lineweight import aesthetic  # noqa: E402
 
 
-def main():
-    problems = []
+def main() -> int:
+    learn = pathlib.Path(aesthetic.learn_dir())
+    facts = aesthetic.facts()
+    counted = sum(1 for entry in facts.values() if isinstance(entry, dict) and 'count' in entry)
+    shelf = (learn / 'sources.md').read_text(encoding='utf-8')
+    books = re.findall(r'^\| `([^`]+\.pdf)` \|', shelf, re.M)
+
     notes = []
-
-    facts_path = LEARN / 'facts.json'
-    if not facts_path.exists():
-        print('  facts.json is missing')
-        return 1
-    facts = json.loads(facts_path.read_text(encoding='utf-8'))
-
-    # 1 -- a count that does not match its list
-    counted = 0
-    for key, entry in facts.items():
-        if not isinstance(entry, dict) or 'count' not in entry:
-            continue
-        counted += 1
-        items = entry.get('items')
-        if items is None:
-            notes.append('%s has a count but no items list' % key)
-            continue
-        if entry['count'] != len(items):
-            problems.append('%s says count %s but lists %d' % (key, entry['count'], len(items)))
-
-    # 5 -- a name used twice
-    seen = {}
-    for key in facts:
-        if isinstance(facts[key], dict) and 'items' in facts[key]:
-            for item in facts[key]['items']:
-                # **Not every list holds strings.** `part_roles` holds objects, and running a word-split over a dict's
-                # repr produces a "name" of `{'part':`, which then collides with nothing and reports nothing -- a check
-                # that silently stops checking. Only the string lists are about names.
-                if not isinstance(item, str):
-                    continue
-                stem = re.split(r'[\s(]', str(item))[0].lower()
-                if stem and stem in seen and seen[stem] != key:
-                    notes.append('%r appears in both %s and %s' % (stem, seen[stem], key))
-                seen[stem] = key
-
-    # 7 -- a fact and the code that reads it disagree
-    #
-    # **This is the check that makes the first fact worth having.** `learn/facts.json` records that five places on a face
-    # carry extra weight and what role each is drawn in; `lineweight/roles.py` carries the same pairs so a program can use
-    # them. Two copies of one fact drift in silence, and this project has already kept a wrong threshold in service for
-    # two whole rounds that way.
-    sys.path.insert(0, r'E:\lineweight')
-    from lineweight import roles
-
-    entry = facts.get('part_roles') or {}
-    from_file = {(str(item.get('part')), str(item.get('role')))
-                 for item in entry.get('items', []) if isinstance(item, dict)}
-    from_code = set(roles.PART_ROLES.items())
-    for part, role_name in sorted(from_file - from_code):
-        problems.append('part %r is %r in facts.json but missing from roles.PART_ROLES' % (part, role_name))
-    for part, role_name in sorted(from_code - from_file):
-        problems.append('part %r is %r in roles.PART_ROLES but missing from facts.json' % (part, role_name))
-    for part, role_name in sorted(from_code & from_file):
-        if role_name not in roles.ROLES:
-            problems.append('part %r is given the unknown role %r' % (part, role_name))
-
-    # 7b -- the ordering, on the same argument
-    order_entry = facts.get('part_order') or {}
-    tiers_file = tuple(tuple(tier) for tier in order_entry.get('items', []) if isinstance(tier, list))
-    if tiers_file != roles.PART_TIERS:
-        problems.append('part_order in facts.json is %r but roles.PART_TIERS is %r'
-                        % (tiers_file, roles.PART_TIERS))
-
-    # 7c -- the three mixing operations and the pigment table behind them
-    #
-    # **The second fact read by a program, and the first with a table behind it.** `learn/facts.json` says a colour is
-    # changed in three named ways and which one adds what; `lineweight/pigment.py` carries the operations and the
-    # opacity of each pigment. The pairs matter more than the names: the whole point of 4.72 is that opacity and
-    # tinting strength are separate axes, so a pair whose opaque member the table calls transparent is the one editing
-    # mistake that would quietly undo the fact.
-    from lineweight import pigment as pigments
-
-    mix_entry = facts.get('paint_mix_operations') or {}
-    listed = tuple(mix_entry.get('items', []))
-    if listed != pigments.MIX_OPERATIONS:
-        problems.append('paint_mix_operations in facts.json is %r but pigment.MIX_OPERATIONS is %r'
-                        % (listed, pigments.MIX_OPERATIONS))
-    added = mix_entry.get('added') or {}
-    for name in pigments.MIX_OPERATIONS:
-        if not added.get(name):
-            problems.append('paint_mix_operations in facts.json does not say what %r adds' % name)
-
-    for pair in (facts.get('pigment_opacity_pairs') or {}).get('items', []):
-        if not isinstance(pair, dict):
-            continue
-        for side, expected in (('opaque', pigments.OPAQUE), ('transparent', pigments.TRANSPARENT)):
-            named = pair.get(side)
-            if not named:
-                problems.append('pigment_opacity_pairs has a pair with no %r member' % side)
-                continue
-            key = str(named).replace(' ', '_')
-            if key not in pigments.PIGMENTS:
-                problems.append('pigment %r is paired in facts.json but missing from pigment.PIGMENTS' % named)
-                continue
-            actual = pigments.opacity_of(key)
-            if actual != expected:
-                problems.append('pigment %r is on the %s side of its pair but the table calls it %r'
-                                % (named, side, actual))
-
-    # 2 -- a source that the shelf does not name
-    shelf = (LEARN / 'sources.md').read_text(encoding='utf-8')
-    for key, entry in facts.items():
-        if not isinstance(entry, dict) or 'source' not in entry:
-            continue
-        src = entry['source']
-        # **Two kinds of source, and they are checked differently.** A fact taken from a book must name a book the shelf
-        # lists. A fact measured in this repository -- a line width, an order of parts -- has no book to name, and the
-        # `measured:` prefix says so; without it the checker would report every measurement as an uncited claim, which is
-        # the opposite of what it means.
-        if src.startswith('measured:'):
-            continue
-        # The shelf names books by author and articles by site, so match on the first distinctive word. **A page number
-        # has to come off first**: the citation reads `Hampton p10.` and the shelf says `Michael Hampton`, and matching
-        # the whole citation would report a source that is in fact listed.
-        head = re.split(r'[,\'"(]', src)[0].strip()
-        head = re.sub(r'\s+p\.?\s*\d+.*$', '', head).strip()
-        candidates = [head]
-        if 'MEDIBANG' in src:
-            candidates = ['MEDIBANG']
-        elif 'CLIP STUDIO' in src:
-            candidates = ['CLIP STUDIO']
-        if not any(c and c.lower() in shelf.lower() for c in candidates):
-            problems.append('%s cites a source the shelf does not name: %s' % (key, head))
-
-    # 3 and 4 -- extracts
-    index_path = LEARN / 'extracts' / 'index.json'
-    extracted_books = set()
-    if index_path.exists():
-        index = json.loads(index_path.read_text(encoding='utf-8'))
-        for row in index:
-            extracted_books.add(row['book'])
-            f = LEARN / 'extracts' / row.get('file', '')
-            if row.get('file') and not f.exists():
-                problems.append('extract for %s names %s, which is not on disk' % (row['book'], row['file']))
-        notes.append('%d extracts, from %d books' % (len(index), len(extracted_books)))
+    index = aesthetic.extracts()
+    if isinstance(index, list):
+        extracted = {row.get('book') for row in index if isinstance(row, dict)}
+        notes.append('%d extracts, from %d books' % (len(index), len(extracted)))
+        for book in books:
+            if book not in extracted:
+                notes.append('%s has no extract page (may be deliberate)' % book)
     else:
-        problems.append('extracts/index.json is missing')
-
-    for m in re.finditer(r'^\| `([^`]+\.pdf)` \|', shelf, re.M):
-        book = m.group(1)
-        if book not in extracted_books:
-            notes.append('%s has no extract page (may be deliberate)' % book)
-
-    # 6 -- prose files
-    for name in ('README.md', 'sources.md'):
-        p = LEARN / name
-        if not p.exists():
-            problems.append('%s is missing' % name)
-        elif p.stat().st_size < 200:
-            problems.append('%s is suspiciously short (%d bytes)' % (name, p.stat().st_size))
+        notes.append('extracts/index.json is not a list')
 
     print('  facts.json: %d entries, %d countable' % (len(facts), counted))
-    print('  sources.md: %d characters, %d books tabulated' % (len(shelf), len(re.findall(r'^\| `[^`]+\.pdf` \|', shelf, re.M))))
+    print('  sources.md: %d characters, %d books tabulated' % (len(shelf), len(books)))
     print()
     if notes:
         print('  notes:')
-        for n in notes:
-            print('    - %s' % n)
+        for note in notes:
+            print('    - %s' % note)
         print()
+
+    problems = aesthetic.verify()
     if problems:
         print('  PROBLEMS (%d):' % len(problems))
-        for p in problems:
-            print('    - %s' % p)
+        for problem in problems:
+            print('    - %s' % problem)
         return 1
     print('  all checks pass')
     return 0

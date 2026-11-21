@@ -43,6 +43,7 @@ from .roles import ROLES, Role  # noqa: E402,F401
 # colour does when it is mixed. Both are conventions with a sanctioned source, and both are read by a checker against
 # `learn/facts.json` rather than being left to drift.
 from . import pigment  # noqa: E402,F401
+from . import aesthetic  # noqa: E402,F401
 from .pigment import MIX_OPERATIONS, OPACITY_CLASSES, PIGMENTS  # noqa: E402,F401
 
 __all__ += ['Document', 'Layer', 'Path', 'Appearance', 'from_strokes', 'parse_colour', 'jsx_document',

@@ -302,6 +302,28 @@
 **三个已知的坑**（细节在地图 §6 第 7 条），这里只指路：1024 的渲染不能用，骨架有 7.8% 从没被走到而 2048 上是
 0.02%；深度图实际是 8 位，`color_depth` 设了不一定生效；矩形框不能切自由画，它的误差与被测的差异同量级。
 
+### SDK 的第一层：审美库有了名字（444 项通过）
+
+「SDK」在这个库里只有一种意思 —— 渲染器已经是 API（`stroke_record` + `render_marks`），再包一层不会让它更好
+用。难用的是**判断**：一个外部 agent 要知道自己画得对不对，此前只能读 352 KB 的 `AESTHETIC-LIBRARY.md`。
+
+这一轮把那份资产变成了 `lineweight.aesthetic`：`facts()` / `fact(name)` / `names()` / `errors()` / `sources()`
+/ `extracts()` / `learn_dir()`，加上 `verify()`。
+
+**顺带修掉一个真缺陷**：`tools/check_learn.py` 把 `E:\lineweight\learn` 写死在源码里，所以那份七项检查只能在
+开发机上跑。现在目录从模块自身位置解析，检查逻辑住进库里，工具只留报告的形状 —— 一份实现而不是两份。
+
+**而第一版 `verify()` 报了十一条假警报，全部是我猜规则而不是读规则：**
+
+1. `count` 没有 `items` 是一条**笔记**不是错（有的条目数的是「几组轴」，内容在 `axes` 里）。
+2. 引用要先摘掉页码（`Hampton p10.`）才能与书架（`Michael Hampton`）对上，还要跳过 `measured:` 前缀。
+3. 颜料的不透明度要查 `pigment.opacity_of()`，不是问名字在不在 `OPAQUE` 那个集合里（它是常量，不是名单）。
+
+**一条总在报的检查等于没有检查**，所以这三条都写进了模块的注释。
+
+**下一层是判据**：`core.is_uniform`、`invariants.check`、`learn/errors.jsonl`、三停五眼那组比值各在一处，
+而它们回答同一个问题。给它们一个名字，SDK 才真的存在。
+
 ### 那张脸有了三个出口，而改一笔能退回去（435 项通过）
 
 `paint_figure.py` 一直只写 PNG。它的图层从画的时候就分好了，所以同一份 stack 直接去了 PSD 与 glTF：
