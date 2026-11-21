@@ -6,6 +6,18 @@ dist/
 build/
 .venv/
 
+# **The paint programs write a folder named after their subject into the current directory**, so running one from the
+# repository root puts a drawing beside the source -- measured once, as 2.7 MB of PSD, PNG, glTF and pass records that
+# `git status` called untracked. Ignored by name rather than by moving the default to a temporary directory, because on
+# this machine the temporary directory is on the system drive and the rule there is that a drawing never lands on it.
+ink/
+apple/
+cloth/
+fish/
+pair/
+figure/
+landscape/
+
 # **The compiled encoder is a build product, and the source beside it is the thing to keep.** `lineweight/_packbits.c`
 # is the implementation and `tools/build_packbits.py` is the one command that turns it into a library; a checkout
 # without the library runs the Python encoder and writes byte-identical files, so a binary in version control would be
