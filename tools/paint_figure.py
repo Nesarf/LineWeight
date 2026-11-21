@@ -184,6 +184,14 @@ def face_marks(seed=70701):
     额头是一圈，鼻梁是两条，下颌是另一圈。而笔画沿等高线的切线，也就是垂直于梯度。
 
     `depth` 反着用：轮廓上最暗，往里亮起来。**而它只是一层**，因为这一版先要确认「位置对」，再谈有几层光。
+
+    **而短笔铺满会画成年轮。** 第一版是八像素一格、每笔十八到四十八像素长、十个像素宽，于是脸的等高线变成
+    一圈一圈的同心环，中央还有一条由中轴脊形成的三角 —— 读成一块木头。**那不是噪声，是「沿等高线撒短笔」这
+    个方法的形态**：等高线是环，短笔跟着环，而人的皮肤上没有环。
+
+    板绘里的皮肤是**低对比的大块**：笔很大、很淡，笔触几乎看不见，光靠一层薄薄的变化。所以这里把笔放大到
+    四十至一百像素、透明度降到零点一五到零点二五、间隔拉到十八像素 —— **笔数少一个数量级，而脸变成一层皮，
+    不再是一件木器。** 中轴脊的模糊因此也可以小一点，因为一支大笔不会沿着那条线排。
     """
     from scipy import ndimage
 
@@ -193,29 +201,162 @@ def face_marks(seed=70701):
     depth = (depth / max(1.0, float(depth.max()))) ** 0.75
     # **脊上要磨一下。** 距离场在一个瘦长的形状里有一条中轴脊，梯度在那里不连续 —— 而笔的方向取自梯度，于是脸的正
     # 中央出现一块三角形，笔在那里互相交叉。**那不是噪声，是「一个函数在一条线上没有导数」画在纸上的样子。**
-    # 模糊六像素换回一个连续的方向场，而代价只是最亮的那一条稍微塌一点。
-    depth = ndimage.gaussian_filter(depth, 12.0)
+    depth = ndimage.gaussian_filter(depth, 9.0)
     gy, gx = np.gradient(depth)
     fig = project.Project(width=W, height=H, title='figure face')
-    for y in range(0, H, 8):
-        for x in range(0, W, 8):
-            if not mask[y, x] or rng.random() > 0.72:
+    for y in range(0, H, 18):
+        for x in range(0, W, 18):
+            if not mask[y, x] or rng.random() > 0.62:
                 continue
             here = float(depth[y, x])
             dx, dy = float(gx[y, x]), float(gy[y, x])
             norm = math.hypot(dx, dy) or 1.0
             tx, ty = -dy / norm, dx / norm
-            length = 18.0 + 30.0 * here
-            tone = jitter(skin_colour(here), 5.0, rng)
+            length = 44.0 + 76.0 * here
+            tone = jitter(skin_colour(here), 4.0, rng)
             fig.add_stroke(core.stroke_record(
-                [(x - tx * length * 0.5, y - ty * length * 0.5 + rng.uniform(-1.5, 1.5)),
-                 (x + tx * length * 0.5, y + ty * length * 0.5 + rng.uniform(-1.5, 1.5))],
-                'brush', seed=seed + x * 7 + y, colour=hexed(tone), soft=0.9,
-                width_profile=[rng.uniform(9.0, 15.0)] * 2,
-                alpha_profile=[rng.uniform(0.34, 0.52)] * 2,
-                absolute_width=True, edge=rng.uniform(5.0, 9.0), height=0.3),
+                [(x - tx * length * 0.5, y - ty * length * 0.5 + rng.uniform(-4.0, 4.0)),
+                 (x + tx * length * 0.5, y + ty * length * 0.5 + rng.uniform(-4.0, 4.0))],
+                'brush', seed=seed + x * 7 + y, colour=hexed(tone), soft=1.1,
+                width_profile=[rng.uniform(26.0, 46.0)] * 2,
+                alpha_profile=[rng.uniform(0.14, 0.26)] * 2,
+                absolute_width=True, edge=rng.uniform(14.0, 24.0), height=0.3),
                 stage='line', layer='face', note='')
     return fig, mask
+
+
+def brow_marks(centre, width, height, seed=72000):
+    """一条眉：**内侧厚、眉峰靠外、眉尾薄。**
+
+    眉眼之间有它自己的距离，不由眼的大小推 —— 但这一版用了眼裂高的三倍，因为那是「一个人的眉长在她的眼睛
+    上面」看起来对的那一档，而不是解剖表里的数。**眉是这张脸上第一条「不由轮廓算出来」的线**：它的位置来自
+    眼睛，它的长度也来自眼睛，而眼睛来自「五眼」。三层依赖，任何一层改，眉跟着改。
+    """
+    cx, cy = centre
+    half = width * 0.5
+    # **眉高在眼上约一个眼裂高的一倍半**，不是三倍 —— 三倍时它贴在睑上，读成第二条睫毛。真实的眉眼间距比
+    # 「一条眉压在眼睛上」宽得多，而那宽度是这张脸安静下来的原因。
+    rise = height * 4.6
+    points = [
+        (cx - half, cy - rise + height * 0.40),
+        (cx - half * 0.30, cy - rise - height * 0.26),
+        (cx + half * 0.24, cy - rise - height * 0.18),
+        (cx + half, cy - rise + height * 0.66),
+    ]
+    fig = project.Project(width=W, height=H, title='figure brow')
+    fig.add_stroke(core.stroke_record(
+        points, 'brush', seed=seed, colour=hexed(HAIR_MID), soft=0.55,
+        width_profile=[4.4, 5.8, 4.2, 1.5], alpha_profile=[0.52, 0.70, 0.60, 0.30],
+        absolute_width=True, edge=1.7), stage='line', layer='brow', note='')
+    return fig
+
+
+def hair_marks(mask, seed=73000, depth=112.0, stride=6):
+    """**头发是脸的外面一圈，不是头上扣一块。**
+
+    这一圈由「到脸轮廓的距离」定义：距离在零到 `depth` 之间、且高度在颧骨以上。于是额头前一指处是发际线，
+    侧面是鬓，颅顶之上是那一片顶起来的发量 —— 而**它自己不需要另一个轮廓**，脸的轮廓已经是它的内边界。
+
+    方向沿用脸那一套办法：距离场的梯度是法向，转九十度是切向，笔顺切向走。所以发丝与脸的走向一致，而走向
+    一致是「这是同一个头」的唯一证据。
+
+    颜色沿这一圈的厚度变化：贴着头皮最深，往外亮起来 —— 一个球形的体积在任何一种光下都是这样，而这一版只
+    想要那个体积，不想要某个光源。
+    """
+    from scipy import ndimage
+
+    rng = random.Random(seed)
+    outside = ndimage.distance_transform_edt(~mask)
+    limit = CY + FACE_H * 0.62
+    zone = (outside > 0.0) & (outside < depth) & (np.arange(H)[:, None] < limit)
+    # **外缘的梯度比脸内部更乱**，因为那里没有第二侧的约束；磨得重一点，否则笔在颅顶会朝四面八方走。
+    field = ndimage.gaussian_filter(outside, 9.0)
+    gy, gx = np.gradient(field)
+    fig = project.Project(width=W, height=H, title='figure hair')
+    for y in range(0, H, stride):
+        for x in range(0, W, stride):
+            if not zone[y, x] or rng.random() > 0.74:
+                continue
+            here = min(1.0, float(outside[y, x]) / depth)
+            # **下缘要渐薄，不能是一条横线。** `zone` 在 `limit` 处截断，而截断的边界是水平的 —— 第一版在那里
+            # 留下了锯齿一样的硬边，读成「一顶帽子」。头发收尾靠的是发丝越来越少，不是刀切。
+            fade = 1.0 if y < limit - 46.0 else max(0.0, (limit - y) / 46.0)
+            dx, dy = float(gx[y, x]), float(gy[y, x])
+            norm = math.hypot(dx, dy) or 1.0
+            tx, ty = -dy / norm, dx / norm
+            # **外缘的笔更长。** 发丝在头皮上短、在发梢长，而发梢在外侧；这条长度差就是「一撮头发」与
+            # 「一片色块」的分别。
+            length = 24.0 + 46.0 * here
+            tone = mix(HAIR_DARK, HAIR_MID, 0.25 + 0.75 * here + rng.uniform(-0.06, 0.06))
+            fig.add_stroke(core.stroke_record(
+                [(x - tx * length * 0.5, y - ty * length * 0.5 + rng.uniform(-2.0, 2.0)),
+                 (x + tx * length * 0.5, y + ty * length * 0.5 + rng.uniform(-2.0, 2.0))],
+                'brush', seed=seed + x * 11 + y, colour=hexed(tone), soft=0.75,
+                width_profile=[rng.uniform(10.0, 19.0)] * 2,
+                alpha_profile=[rng.uniform(0.58, 0.92) * fade] * 2,
+                absolute_width=True, edge=rng.uniform(3.5, 7.0), height=0.4),
+                stage='line', layer='hair', note='')
+    return fig
+
+
+def nose_marks(seed=74000):
+    """**鼻子的全部信息是两条边、一个底、一点亮。**
+
+    它不由轮廓算，因为它不在轮廓上 —— 它是脸**内部**的第一个东西。位置来自三停的比例：眉在两停的交界，鼻底
+    在下一停的末尾，而这三段等长。
+
+    而**宽度来自脸，不来自眼**：鼻翼大约是脸宽的四分之一，这条比「鼻子是眼睛的多少倍」稳，因为它不随眼睛
+    的大小改。
+    """
+    fig = project.Project(width=W, height=H, title='figure nose')
+    top = CY - FACE_H * 0.04
+    tip = CY + FACE_H * 0.33
+    half = FACE_W * 0.13
+    # 鼻梁右侧的影：光从左上过来，所以影子在右下，且它是一条宽带，不是一个轮廓。
+    fig.add_stroke(core.stroke_record(
+        [(CX + half * 0.40, top), (CX + half * 0.80, CY + FACE_H * 0.16), (CX + half, tip - 7.0)],
+        'brush', seed=seed, colour=hexed(mix(SKIN_DARK, SKIN_MID, 0.45)), soft=1.0,
+        width_profile=[7.0, 10.0, 6.0], alpha_profile=[0.20, 0.30, 0.26],
+        absolute_width=True, edge=11.0), stage='line', layer='nose', note='')
+    # **鼻底是这张脸上最暗的一条短弧。** 它比任何一条睑线都短，而它决定了「这个人有没有鼻子」。
+    fig.add_stroke(core.stroke_record(
+        [(CX - half, tip), (CX, tip + 6.0), (CX + half, tip)],
+        'brush', seed=seed + 1, colour=hexed(mix(SKIN_DARK, SKIN_MID, 0.20)), soft=0.8,
+        width_profile=[5.0, 7.0, 5.0], alpha_profile=[0.40, 0.54, 0.40],
+        absolute_width=True, edge=3.0), stage='line', layer='nose', note='')
+    # 鼻头的一点亮，位置在鼻梁的影子对面。
+    fig.add_stroke(core.stroke_record(
+        [(CX - 6.0, tip - 13.0), (CX + 2.0, tip - 10.0)],
+        'brush', seed=seed + 2, colour=hexed(SKIN_LIGHT), soft=1.2,
+        width_profile=[10.0, 8.0], alpha_profile=[0.26, 0.20],
+        absolute_width=True, edge=10.0), stage='line', layer='nose', note='')
+    return fig
+
+
+def mouth_marks(seed=75000):
+    """**口缝是一条线，嘴唇是它上下两层很淡的色。**
+
+    嘴的宽是脸的零点四倍 —— 比鼻翼宽，比两眼的内角窄一点，而这条比例是「一张脸放松着」的样子。第一版没有嘴，
+    于是下半张脸是一整片肤色，读成面具。
+
+    颜色不是红：`LIP` 是这张脸上的第三个颜料，而它比皮肤**暗且偏紫**，不是加亮度。嘴唇的红是它自己的颜色，不是
+    脸颊的颜色调亮。
+    """
+    fig = project.Project(width=W, height=H, title='figure mouth')
+    y = CY + FACE_H * 0.52
+    half = FACE_W * 0.20
+    fig.add_stroke(core.stroke_record(
+        [(CX - half, y - 4.0), (CX - half * 0.34, y + 4.0),
+         (CX + half * 0.34, y + 4.0), (CX + half, y - 4.0)],
+        'brush', seed=seed, colour=hexed(mix(LIP, (58, 28, 30), 0.45)), soft=0.6,
+        width_profile=[2.0, 4.4, 4.4, 2.0], alpha_profile=[0.34, 0.62, 0.62, 0.34],
+        absolute_width=True, edge=2.2), stage='line', layer='mouth', note='')
+    fig.add_stroke(core.stroke_record(
+        [(CX - half * 0.60, y + 14.0), (CX, y + 20.0), (CX + half * 0.60, y + 14.0)],
+        'brush', seed=seed + 1, colour=hexed(mix(LIP, SKIN_LIGHT, 0.30)), soft=1.1,
+        width_profile=[6.0, 9.0, 6.0], alpha_profile=[0.28, 0.40, 0.28],
+        absolute_width=True, edge=6.0), stage='line', layer='mouth', note='')
+    return fig
 
 
 def main():
@@ -226,8 +367,22 @@ def main():
                    (28, 24, 28), 1.0)
     picture = place(picture, 'ground', picture)
     face, mask = face_marks()
+    # **底色先铺，再叠明暗。** 板绘的皮肤是两层：一层不透明的肤色，一层很淡的起伏。这一版之前只有后者，于是
+    # 背景从笔缝里透上来，脸读成一块暗斑 —— 那不是颜色选错，是少了一层。两层之后笔才是在**画**，不是在
+    # 猜底下有多深。
+    skin = r.Layer(W, H)
+    r.fill_polygon(skin, outline(), SKIN_MID, 1.0)
     picture = place(picture, 'face',
-                    r.clip(r.render_marks([m.to_dict() for m in face.marks], W, H, sweep=True), soft_mask(mask)))
+                    r.clip(r.blend(skin, r.render_marks([m.to_dict() for m in face.marks], W, H, sweep=True)),
+                           soft_mask(mask)))
+    # **鼻与嘴画在脸上，头发之上或之下都不影响** —— 头发只到脸的轮廓附近，而这两样在脸的中线上。
+    for name, drawing in (('nose', nose_marks()), ('mouth', mouth_marks())):
+        picture = place(picture, name,
+                        r.render_marks([m.to_dict() for m in drawing.marks], W, H, sweep=True))
+    # **头发画在脸之上。** 鬓与刘海压在额头与颊上，而那是头发与脸唯一的接触方式；若它在脸之下，两侧会是一条
+    # 被裁干净的边，读成「戴了个头套」。
+    hair = hair_marks(mask)
+    picture = place(picture, 'hair', r.render_marks([m.to_dict() for m in hair.marks], W, H, sweep=True))
     # **眼的宽度从脸算出来。** 五眼：脸宽分五份，一份是一只眼；两眼之间正好一份。而眼的垂直位置是「三停」给出的
     # 那个中点 —— 头顶到下巴的一半，不是脸的半高。**两个判据各给一个坐标，而它们不互相迁就。**
     eye_w = 2.0 * FACE_W * 0.80 / 5.0
@@ -236,12 +391,16 @@ def main():
     eye_h = eye_w * 0.34
     eyes_y = (CY + FACE_H * -1.00 + CY + FACE_H * 0.76) * 0.5
     for name, sign in (('left', -1.0), ('right', 1.0)):
-        eyes = eye_marks((CX + sign * eye_w, eyes_y), eye_w, eye_h, seed=71000 + (17 if sign > 0 else 0))
+        centre = (CX + sign * eye_w, eyes_y)
+        brow = brow_marks(centre, eye_w, eye_h, seed=72000 + (19 if sign > 0 else 0))
+        picture = place(picture, 'brow %s' % name,
+                        r.render_marks([m.to_dict() for m in brow.marks], W, H, sweep=True))
+        eyes = eye_marks(centre, eye_w, eye_h, seed=71000 + (17 if sign > 0 else 0))
         picture = place(picture, 'eye %s' % name,
                         r.render_marks([m.to_dict() for m in eyes.marks], W, H, sweep=True))
     path = os.path.join(OUT, 'figure.png')
     r.save_png(picture, path, background=(28, 24, 28))
-    print('%s  %d marks' % (path, len(face.marks)))
+    print('%s  face %d marks, hair %d marks' % (path, len(face.marks), len(hair.marks)))
     return 0
 
 
