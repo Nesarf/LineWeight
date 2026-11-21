@@ -387,17 +387,24 @@ class Project:
 
     def add_fill(self, region, stage: str = 'colour', colour: str = '#808080', opacity: float = 1.0,
                  blend: str = 'normal', note: str = '', source: str = '', commit: bool | None = None,
-                 tone: dict | None = None) -> Mark:
+                 tone: dict | None = None, layer: str = '') -> Mark:
         """A fill is a mark like any other, so it can be deleted by id.
 
         **This is the difference that matters.** `region_fill()` used to hand back bare `d` strings; a caller could
         paint them but could not say "remove the third one". A fill mark keeps the polygon it came from as well as the
         path data, so it can be re-styled, re-ordered or dropped without touching any other mark.
+
+        **`layer` was missing here while `add_stroke` had it, and the gap was invisible from inside a project file.**
+        `psd.layers_from_project` groups marks by `Mark.layer`, so every fill and every erase fell into the sheet whose
+        name is empty -- one flat `DEFAULT_LAYER` carrying all the colour, beside a stack of named sheets carrying the
+        linework. A drawing whose colour is its own layer is every digital painting there is, and the project could not
+        say which layer its colour was on.
         """
         self._check_stage(stage)
+        self._check_layer(layer)
         commit = (not self.incremental) if commit is None else commit
         self.counter += 1
-        mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks),
+        mark = Mark(id='m%04d' % self.counter, kind='fill', stage=stage, seq=len(self.marks), layer=layer,
                     geometry={'points': [list(p) for p in region.points], 'd': region.d,
                               'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])],
                               'gradient': getattr(region, 'gradient', None),
@@ -410,7 +417,7 @@ class Project:
         return mark
 
     def add_erase(self, region, stage: str = 'colour', note: str = '', source: str = '',
-                  commit: bool | None = None) -> Mark:
+                  commit: bool | None = None, layer: str = '') -> Mark:
         """**The eraser, and it is the only mark that takes ink away.**
 
         A drawing can always gain a line and, until now, could never lose one -- and every copying error this project has
@@ -426,11 +433,17 @@ class Project:
         no erase operation, and a PSD layer stack composites the same way. A project carrying an erase mark renders
         correctly and exports as if the eraser were absent -- so ask that method before writing a vector file, instead of
         finding out at the far end.
+
+        **It takes a `layer` because an erase is scoped to one sheet**, which is the limit `psd.layers_from_project`
+        states: it removes ink on the layer it is on. Without the parameter every eraser landed on the unnamed default
+        sheet, so a correction made on a named layer removed nothing at all -- the sheet it was meant to cut was not the
+        sheet it was on.
         """
         self._check_stage(stage)
+        self._check_layer(layer)
         commit = (not self.incremental) if commit is None else commit
         self.counter += 1
-        mark = Mark(id='m%04d' % self.counter, kind='erase', stage=stage, seq=len(self.marks),
+        mark = Mark(id='m%04d' % self.counter, kind='erase', stage=stage, seq=len(self.marks), layer=layer,
                     geometry={'points': [list(p) for p in region.points], 'd': region.d,
                               'holes': [[list(p) for p in ring] for ring in (getattr(region, 'holes', None) or [])]},
                     appearance={'fill': '#000000', 'opacity': 1.0},
