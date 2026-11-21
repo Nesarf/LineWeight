@@ -1164,6 +1164,78 @@ def render_marks(marks: list[dict], width: int, height: int, scale: float = 1.0,
     return out
 
 
+def _flatten_ink(ink, red, green, blue, colour, width, height, data):
+    """The coverage buffer written into an RGBA layer, one pixel at a time -- **the reference implementation.**
+
+    Kept rather than deleted for one reason: the vectorised version beside it has to prove it produces the same bytes,
+    and a comparison against "what it used to do" cannot be made once the old code is gone. `tests/test_flat_ink.py`
+    is the only caller, and it is the reason this function still exists.
+
+    **Two different roundings live in these six lines, and they are not interchangeable.** A stroke with no colour
+    profile writes the mark's single colour, which needs no rounding at all. One with a profile writes three channels
+    through `int()`, which **truncates**; the alpha channel uses `round()`, which does not. Truncation and rounding
+    disagree on every value with a fractional part above one half, so a vectorised version that used one for both
+    would leave a picture that looks right and differs in most of its pixels.
+    """
+    r, g, b = colour
+    flat = ink.ravel()
+    flat_r = red.ravel() if red is not None else None
+    flat_g = green.ravel() if green is not None else None
+    flat_b = blue.ravel() if blue is not None else None
+    for y in range(height):
+        row = y * width * 4
+        for x in range(width):
+            cell = y * width + x
+            a = flat[cell]
+            if a <= 0.0:
+                continue
+            index = row + x * 4
+            if flat_r is None:
+                data[index] = r
+                data[index + 1] = g
+                data[index + 2] = b
+            else:
+                data[index] = int(min(255.0, max(0.0, flat_r[cell])))
+                data[index + 1] = int(min(255.0, max(0.0, flat_g[cell])))
+                data[index + 2] = int(min(255.0, max(0.0, flat_b[cell])))
+            data[index + 3] = int(min(255.0, round(a * 255.0)))
+
+
+def _flatten_ink_numpy(ink, red, green, blue, colour, width, height, data):
+    """The same six decisions, applied to the whole layer at once.
+
+    **`np.rint` is the same rounding as Python's `round()`** -- both round a half to even -- and `astype` is the same
+    truncation as `int()` on a non-negative value, which is why the two paths agree rather than merely look alike.
+    The clipping is restated on both sides because a coverage of exactly zero is skipped by the reference loop rather
+    than written, and `np.clip` is what makes "skipped" and "written with zero" the same bytes.
+    """
+    view = _np.frombuffer(data, dtype=_np.uint8).reshape(height, width, 4)
+    # **The test for "did this pixel receive anything" is the raw coverage, not the rounded alpha.** They are not the
+    # same question and the difference is most of the pixels at the edge of a stroke: a coverage of 0.001 rounds to an
+    # alpha of zero and still writes its colour, because the reference loop skips only on `a <= 0.0` and the colour is
+    # written before the alpha is rounded. Judging by the rounded alpha instead skips those pixels and leaves their
+    # colour at zero -- invisible, since their alpha is zero, and a byte-level difference in every soft edge.
+    on = ink > 0.0
+    alpha = _np.rint(ink * 255.0)
+    _np.clip(alpha, 0.0, 255.0, out=alpha)
+    alpha = alpha.astype(_np.uint8)
+    if not on.any():
+        return
+    if red is None:
+        r, g, b = colour
+        view[on, 0] = r
+        view[on, 1] = g
+        view[on, 2] = b
+    else:
+        # **Truncation, to match the loop's `int()`.** `np.clip` then `astype` is the same operation the reference
+        # writes one pixel at a time; using `np.rint` here would be the rounding the alpha channel uses and would
+        # make every colour channel one shade light wherever the fraction is over a half.
+        for channel, plane in ((0, red), (1, green), (2, blue)):
+            value = _np.clip(plane, 0.0, 255.0).astype(_np.uint8)
+            view[on, channel] = value[on]
+    view[on, 3] = alpha[on]
+
+
 def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
                 paper: Paper | None = None) -> Layer:
     """A stroke laid down as **a distance from its centre line**, not as a row of stamped discs.
@@ -1365,29 +1437,11 @@ def sweep_layer(record: dict, width: int, height: int, scale: float = 1.0,
         rng = _np.random.default_rng(int(record.get('seed', 0)) + 7919)
         ink *= 1.0 - grain * rng.random(ink.shape)
 
-    r, g, b = colour
-    data = layer.data
-    flat = ink.ravel()
-    flat_r = red.ravel() if tint is not None else None
-    flat_g = green.ravel() if tint is not None else None
-    flat_b = blue.ravel() if tint is not None else None
-    for y in range(height):
-        row = y * width * 4
-        for x in range(width):
-            cell = y * width + x
-            a = flat[cell]
-            if a <= 0.0:
-                continue
-            index = row + x * 4
-            if flat_r is None:
-                data[index] = r
-                data[index + 1] = g
-                data[index + 2] = b
-            else:
-                data[index] = int(min(255.0, max(0.0, flat_r[cell])))
-                data[index + 1] = int(min(255.0, max(0.0, flat_g[cell])))
-                data[index + 2] = int(min(255.0, max(0.0, flat_b[cell])))
-            data[index + 3] = int(min(255.0, round(a * 255.0)))
+    # **One array operation writes the whole layer**, and the loop that did it a pixel at a time is `_flatten_ink`.
+    # The two produce the same bytes -- `tests/test_flat_ink.py` compares them across every rounding boundary rather
+    # than trusting the argument in the docstrings -- and the loop stays in the file as the statement of what "the same
+    # bytes" means, which is a thing a vectorised rewrite can drift from silently.
+    _flatten_ink_numpy(ink, red, green, blue, colour, width, height, layer.data)
     if relief is not None:
         layer.relief = relief
     return layer
