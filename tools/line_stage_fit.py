@@ -19,13 +19,13 @@ import pathlib
 import statistics
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import ref
 
 ANALYSIS = pathlib.Path(r'G:\lineweight-video\videos')
 FRAMES = pathlib.Path(r'G:\lineweight-video\frames')
-LIB = pathlib.Path(r'E:\lineweight\tests\data\corpus_summary.json')
+LIB = pathlib.Path(r'D:\lineweight\tests\data\corpus_summary.json')
 
 
 def line_stage_frames(vid, want):

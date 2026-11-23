@@ -18,7 +18,7 @@ import argparse
 import pathlib
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import quantise_trace as qt

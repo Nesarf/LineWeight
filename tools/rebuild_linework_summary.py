@@ -24,7 +24,7 @@ import pathlib
 import statistics
 
 CACHE = pathlib.Path(r'E:\DaShaoHuo\cache\tmp\linework-summary.json')
-OUT = pathlib.Path(r'E:\lineweight\tests\data\linework_summary.json')
+OUT = pathlib.Path(r'D:\lineweight\tests\data\linework_summary.json')
 
 #: **The cut is a choice and is named as one.** An ink fraction below 0.05 leaves fifteen pages and those are line
 #: drawings by eye; below 0.20 leaves 98 and starts including light washes. Rather than pick one and imply the rest

@@ -21,7 +21,7 @@ machinery applied once per chain rather than once per bone.
 import argparse
 import pathlib
 
-TOOL = pathlib.Path(r'E:\lineweight\tools\cel_drawing.py')
+TOOL = pathlib.Path(r'D:\lineweight\tools\cel_drawing.py')
 
 # --- edit 1: the profile learns where it sits in a chain ----------------------
 OLD_PROFILE = """def bone_profile(bone, n, taper_from=0.0):

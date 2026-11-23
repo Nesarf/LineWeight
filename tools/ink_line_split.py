@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, r'E:\lineweight\tools')
+sys.path.insert(0, r'D:\lineweight\tools')
 
 import copy_linework as cl
 

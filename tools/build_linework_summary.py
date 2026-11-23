@@ -25,12 +25,12 @@ import statistics
 import sys
 import time
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import ref
 
 SHEETS = pathlib.Path(r'F:\素材\图\碧蓝档案官方设定资料')
-OUT = pathlib.Path(r'E:\lineweight\tests\data\linework_summary.json')
+OUT = pathlib.Path(r'D:\lineweight\tests\data\linework_summary.json')
 CACHE = pathlib.Path(r'E:\DaShaoHuo\cache\tmp\linework-summary.json')
 
 

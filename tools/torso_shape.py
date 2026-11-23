@@ -17,7 +17,7 @@ import json
 import pathlib
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from lineweight import core, project
@@ -122,7 +122,7 @@ def main():
     if args.render:
         import subprocess
         subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out), '--out', args.png],
-                       capture_output=True, text=True, cwd=r'E:\lineweight')
+                       capture_output=True, text=True, cwd=r'D:\lineweight')
         print('  rendered to %s' % args.png)
     return 0
 

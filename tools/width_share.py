@@ -26,7 +26,7 @@ import sys
 import numpy as np
 from scipy import ndimage
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent))
 
 import copy_linework as cl

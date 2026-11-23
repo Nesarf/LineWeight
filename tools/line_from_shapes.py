@@ -24,7 +24,7 @@ import sys
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import shape_pass

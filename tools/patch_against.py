@@ -13,7 +13,7 @@ targets in the README came from, and the design sheets are what linework actuall
 """
 import pathlib
 
-P = pathlib.Path(r'E:\lineweight\lineweight\core.py')
+P = pathlib.Path(r'D:\lineweight\lineweight\core.py')
 
 EDITS = [
     ('def _library_targets() -> dict:\n'

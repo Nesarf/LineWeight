@@ -9,7 +9,7 @@ The property that actually separates them is **how many hues the drawing is made
 blue, or black -- plus paper. An illustration is many. So: find the ink, and measure the spread of its chroma.
 """
 import pathlib, statistics, sys, json, random
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 from lineweight import ref
 
 D = pathlib.Path(r'F:\素材\图\碧蓝档案官方设定资料')

@@ -5,7 +5,7 @@ buckets mean anything; the only check is the pages themselves, so this writes a 
 numbers are reported next to it rather than instead of it.
 """
 import json, pathlib, sys, statistics, collections
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 from PIL import Image, ImageDraw
 
 SRC = pathlib.Path(r'F:\素材\图\碧蓝档案官方设定资料')

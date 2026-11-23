@@ -20,7 +20,7 @@ beads per inch**, which is why an outline is the worst case rather than an edge 
 import argparse
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import core, raster
 

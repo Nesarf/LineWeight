@@ -37,7 +37,7 @@ def render(doc, path, sweep=False):
     # becomes pixels, not what the two layers are; the blur below is a decision about the layers and is untouched by it.
     if sweep:
         argv.append('--sweep')
-    proc = subprocess.run(argv, capture_output=True, text=True, cwd=r'E:\lineweight')
+    proc = subprocess.run(argv, capture_output=True, text=True, cwd=r'D:\lineweight')
     if proc.returncode != 0:
         print(proc.stderr[-400:])
         raise SystemExit('render failed for %s' % project)

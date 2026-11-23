@@ -20,7 +20,7 @@ import pathlib
 import re
 import sys
 
-POSE_FILE = pathlib.Path(r'E:\lineweight\tools\cel_drawing.py')
+POSE_FILE = pathlib.Path(r'D:\lineweight\tools\cel_drawing.py')
 
 #: **From `measure_rigs.py` over 860 rigs, with the `Bip001 Xtra*` helper bones excluded from the height.** They sit
 #: above the head -- `Bip001 Xtra_eyeblowR1` is the highest bone in every rig -- and including them inflated the

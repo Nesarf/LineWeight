@@ -12,7 +12,7 @@ geometry that draws nothing at all -- the last one being the one that happened o
 import pathlib
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import body, core, figure, project
 

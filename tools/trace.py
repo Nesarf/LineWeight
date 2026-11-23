@@ -23,7 +23,7 @@ import pathlib
 import subprocess
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import core, project as project_mod
 
@@ -227,7 +227,7 @@ def main():
 
     if args.render:
         subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out), '--out', str(args.png)],
-                       capture_output=True, text=True, cwd=r'E:\lineweight')
+                       capture_output=True, text=True, cwd=r'D:\lineweight')
         print('  rendered to %s' % args.png)
     return 0
 

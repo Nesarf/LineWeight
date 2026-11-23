@@ -21,7 +21,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from lineweight import core, project
@@ -688,7 +688,7 @@ def main():
         import subprocess
         png = args.png or str(out.with_suffix('.png'))
         subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out), '--out', png],
-                       capture_output=True, text=True, cwd=r'E:\lineweight')
+                       capture_output=True, text=True, cwd=r'D:\lineweight')
         print('  rendered to %s' % png)
     return 0
 

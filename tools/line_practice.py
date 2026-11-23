@@ -28,7 +28,7 @@ import statistics
 import subprocess
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 import numpy as np
 from PIL import Image
 from scipy import ndimage
@@ -128,7 +128,7 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     project_mod.save_project(proj, str(out.with_suffix('.json')))
     subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out.with_suffix('.json')),
-                    '--out', str(out)], capture_output=True, text=True, cwd=r'E:\lineweight')
+                    '--out', str(out)], capture_output=True, text=True, cwd=r'D:\lineweight')
 
     lum = np.array(Image.open(out).convert('L'))
     print('  drew %d practice strokes to %s' % (len(marks), out))

@@ -23,7 +23,7 @@ measurement of nothing.
 import math
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import core, raster
 

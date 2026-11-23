@@ -16,7 +16,7 @@ import json
 import pathlib
 import statistics
 
-REPO = pathlib.Path(r'E:\lineweight')
+REPO = pathlib.Path(r'D:\lineweight')
 CACHE = pathlib.Path(r'E:\DaShaoHuo\cache\tmp\linework-summary.json')
 
 

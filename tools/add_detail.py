@@ -24,7 +24,7 @@ import pathlib
 import subprocess
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 from lineweight import core, project as project_mod, ref
 
 TMP = pathlib.Path(r'E:\DaShaoHuo\cache\tmp')
@@ -219,7 +219,7 @@ def main():
     project_mod.save_project(proj, str(out))
     img = TMP / 'detailed.png'
     subprocess.run([sys.executable, '-m', 'lineweight', '--render', str(out), '--out', str(img)],
-                   capture_output=True, text=True, cwd=r'E:\lineweight')
+                   capture_output=True, text=True, cwd=r'D:\lineweight')
 
     rows = []
     for label, path in (('figure alone', r'E:\DaShaoHuo\cache\chained.png'), ('with detail', str(img))):

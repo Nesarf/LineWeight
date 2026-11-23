@@ -13,7 +13,7 @@ import pathlib
 import fitz
 
 BOOKS = pathlib.Path(r'E:\DaShaoHuo\downloads\books')
-OUT = pathlib.Path(r'E:\lineweight\learn\extracts')
+OUT = pathlib.Path(r'D:\lineweight\learn\extracts')
 
 #: book file, page number as printed in the book's own sequence (1-based as `fitz` indexes it), a short name, why.
 EXTRACTS = [

@@ -17,7 +17,7 @@ import math
 import pathlib
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import cel, core, figure, project
 

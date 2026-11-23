@@ -17,10 +17,10 @@ import pathlib
 import subprocess
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 from lineweight import ref
 
-REPO = pathlib.Path(r'E:\lineweight')
+REPO = pathlib.Path(r'D:\lineweight')
 TOOL = REPO / 'tools' / 'cel_drawing.py'
 TMP = pathlib.Path(r'E:\DaShaoHuo\cache\tmp')
 PROJECT = TMP / 'sweep-drawing.json'

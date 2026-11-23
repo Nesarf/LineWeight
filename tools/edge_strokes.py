@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from lineweight import core, project

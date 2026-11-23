@@ -25,7 +25,7 @@ moves by more than twenty levels between neighbouring pixels, and a stroke that 
 """
 import sys
 
-sys.path.insert(0, r'E:\lineweight')
+sys.path.insert(0, r'D:\lineweight')
 
 from lineweight import core, project   # noqa: E402
 from lineweight import raster as r     # noqa: E402
