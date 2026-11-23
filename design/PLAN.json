@@ -1,0 +1,62 @@
+{
+  "title": "lineweight — a drawing library an agent can draw like a person with",
+  "goals": [
+    {
+      "id": "mouth-ratio",
+      "title": "嘴的位置写成一条带出处的判据，放进 standards.face，用它重画那张脸",
+      "status": "pending",
+      "after": []
+    },
+    {
+      "id": "chin-round",
+      "title": "下巴收口圆钝：FACE 的末尾两段之间插一个点，让最后一段慢下来",
+      "status": "pending",
+      "after": []
+    },
+    {
+      "id": "lid-corners",
+      "title": "上睑弧两端向内收五到八像素，不再伸出眼角",
+      "status": "pending",
+      "after": []
+    },
+    {
+      "id": "hair-strands",
+      "title": "头发从一圈软毛改成一束一束：发根出发、带方向的曲线",
+      "status": "pending",
+      "after": ["chin-round"]
+    },
+    {
+      "id": "uniform-fill-note",
+      "title": "把「铺色的笔等宽不算错」写进 uniform 报告的例外或 errors.jsonl",
+      "status": "pending",
+      "after": []
+    }
+  ],
+  "units": [
+    {
+      "id": "mouth-ratio",
+      "files": ["lineweight/standards.py", "tools/paint_figure.py"],
+      "tests": ["tests/test_standards.py"]
+    },
+    {
+      "id": "chin-round",
+      "files": ["tools/paint_figure.py"],
+      "tests": []
+    },
+    {
+      "id": "lid-corners",
+      "files": ["tools/paint_figure.py"],
+      "tests": []
+    },
+    {
+      "id": "hair-strands",
+      "files": ["tools/paint_figure.py"],
+      "tests": []
+    },
+    {
+      "id": "uniform-fill-note",
+      "files": ["lineweight/standards.py", "learn/errors.jsonl"],
+      "tests": ["tests/test_standards.py"]
+    }
+  ]
+}
