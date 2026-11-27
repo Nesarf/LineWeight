@@ -1550,6 +1550,37 @@ def test_a_hand_written_flat_profile_is_caught_and_reported(tmp_path, capsys):
     assert '1 stroke(s)' in text
 
 
+def test_a_covering_stroke_is_flat_on_purpose_and_is_not_counted_as_a_flat_line(tmp_path, capsys):
+    """**The report has to know which question it is asking.** A wash wants one even width; a line with one even width
+    is the failure this library exists to prevent. Before `is_covering` both were in one table, so every skin stroke on
+    a face -- wide and faint by construction -- was listed under "no variation in it".
+
+    All three answers are pinned, because either quantity alone gets one of them wrong: **faint but narrow** is a
+    highlight and is a line; **wide but solid** is a heavy contour and is a line; only **wide and faint** is a wash.
+    """
+    from lineweight.core import is_covering, uniformity_report
+
+    walk = a_walk()
+    wash = stroke_record(walk, 'brush', seed=3, width_profile=[40.0], alpha_profile=[0.18],
+                         absolute_width=True)
+    highlight = stroke_record(walk, 'brush', seed=4, width_profile=[3.0], alpha_profile=[0.18],
+                              absolute_width=True)
+    heavy = stroke_record(walk, 'brush', seed=5, width_profile=[40.0], alpha_profile=[0.90],
+                          absolute_width=True)
+    assert is_covering(wash) is True
+    assert is_covering(highlight) is False, 'a highlight is faint but it is a line'
+    assert is_covering(heavy) is False, 'a heavy contour is wide but it is a line'
+
+    project = Project(width=800, height=600)
+    project.add_stroke(wash)
+    path = str(tmp_path / 'wash.json')
+    save_project(project, path)
+    assert uniformity_report(path) == 0
+    text = capsys.readouterr().out
+    assert 'cover an area rather than draw a line' in text
+    assert 'no uniform strokes' in text, 'the wash was counted as a flat line'
+
+
 def test_a_relative_path_carries_an_interval_derived_from_the_tolerance():
     """**An unbounded error in a drawing format is not a trade, it is a defect.** A relative path rounds every delta
     independently, so its error walks: on a 129-vertex outline at two decimals the worst case is 0.65 units against

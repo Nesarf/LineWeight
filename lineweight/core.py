@@ -1297,6 +1297,40 @@ def is_uniform(record: dict, floor: float = UNIFORM_FLOOR) -> bool:
     return stroke_variation(record) >= floor
 
 
+#: A stroke wider than this is covering an area rather than drawing a line. The library's line brushes run 2 to 10 px.
+COVERING_WIDTH = 20.0
+#: And one this transparent is a wash. Lines sit at half opacity and above; a highlight can be fainter but it is narrow.
+COVERING_ALPHA = 0.35
+
+
+def is_covering(record: dict) -> bool:
+    """**A stroke that covers an area is flat on purpose, and that is not the failure this library exists to prevent.**
+
+    `uniformity_report` looks for the forgotten 強弱, and the way a patch of skin or a ground is painted is the opposite
+    of how a line is drawn: it wants **one even colour**, so a constant width is its definition rather than its
+    oversight. The report used to put both in one table, so every skin stroke on a face -- 26 to 46 px wide at 0.14 to
+    0.26 opacity -- was listed as "no variation in it", which reads as a fault in the brush when it is a fault in what
+    the report chose to measure.
+
+    Two quantities together decide it, because either alone is wrong. **Width** (20 px and up; a line brush here is 2
+    to 10) alone would swallow a heavy contour. **Opacity** (0.35 and below) alone would swallow a highlight -- and a
+    highlight is faint but narrow, which is exactly the shape of a line.
+
+    **The threshold pair is not a measurement of artwork; it is a boundary between two ways of drawing.** A stroke
+    that is both wide and faint cannot be a line in this library, and a stroke that is either narrow or solid is
+    judged by the variation test as before.
+    """
+    if not record or 'brush' not in record:
+        return False
+    widths = stroke_widths(record)
+    if not widths or min(widths) < COVERING_WIDTH:
+        return False
+    alphas = [float(a) for a in (record.get('alpha_profile') or [])]
+    if alphas:
+        return (sum(alphas) / len(alphas)) <= COVERING_ALPHA
+    return float(record.get('alpha', 1.0)) <= COVERING_ALPHA
+
+
 def mark_ink(mark: dict) -> str:
     """The ink a mark is drawn in: its own if the caller chose one, the role's otherwise.
 
@@ -2353,13 +2387,25 @@ def uniformity_report(project_path: str) -> int:
         return 0
 
     measured = [(mark, stroke_variation(mark['geometry'])) for mark in strokes]
-    ordered = sorted(v for _, v in measured)
-    flat = [item for item in measured if item[1] >= UNIFORM_FLOOR]
+    # **Two kinds of stroke, two different questions.** A line is judged on whether its width varies; a stroke that
+    # covers an area is judged on nothing, because one even width is what covering means. Mixing them put every skin
+    # stroke on a face into the "no variation in it" list, which reads as a fault in the brush rather than a fault in
+    # what the report chose to measure. `is_covering` holds the boundary between the two ways of drawing.
+    covering = [item for item in measured if is_covering(item[0]['geometry'])]
+    lines = [item for item in measured if not is_covering(item[0]['geometry'])]
+    ordered = sorted(v for _, v in lines)
+    flat = [item for item in lines if item[1] >= UNIFORM_FLOOR]
 
     print('  %d strokes, 強弱 = thinnest fifth over the mean (low is strong variation)' % len(strokes))
-    print('    flattest %.3f   median %.3f   strongest %.3f'
-          % (ordered[-1], ordered[len(ordered) // 2], ordered[0]))
-    print('    uniform is 1.000, the floor is %.2f; the corpus puts a whole drawing at 0.421' % UNIFORM_FLOOR)
+    if ordered:
+        print('    flattest %.3f   median %.3f   strongest %.3f'
+              % (ordered[-1], ordered[len(ordered) // 2], ordered[0]))
+        print('    uniform is 1.000, the floor is %.2f; the corpus puts a whole drawing at 0.421' % UNIFORM_FLOOR)
+    if covering:
+        print('    %d of them cover an area rather than draw a line (wider than %.0f px, averaging %.2f or less in'
+              % (len(covering), COVERING_WIDTH, COVERING_ALPHA))
+        print('    opacity), so they are not in the numbers above: a wash has one width by definition, and calling')
+        print('    that a forgotten 強弱 would be the report measuring the wrong thing.')
     print()
     if not flat:
         print('  no uniform strokes: every line has width variation.')

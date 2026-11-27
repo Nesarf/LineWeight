@@ -82,24 +82,42 @@ def layers(drawing, scale: float = 1.0, background: tuple[int, int, int] = (244,
 
 
 def face(half_width: float, half_height: float, top: float = -1.00, chin: float = 0.76,
-         visible: float = 0.80, aspect: float = 0.34) -> dict:
-    """「三停五眼」落成坐标：**眼睛在脸的哪个高度、多大、两眼相距多少。**
+         visible: float = 0.80, aspect: float = 0.34, hairline: float = -0.648,
+         mouth_third: float = 1.0 / 3.0) -> dict:
+    """「三停五眼」落成坐标：**五官各在哪一行、多大、两眼相距多少。**
 
-    **三个数是解剖，三个数是这一版调的，而它们要分清。** 五等分与三段等长是《Hampton》里写下的规则；
-    `visible=0.80` 是「脸的可见宽度相对半宽」（颧骨那一点的 x）、`aspect=0.34` 是眼裂的高宽比、
-    `-0.12` 是眼中心相对脸中心的高度（由 `top + chin` 的一半给出）—— 这三个是这个库试出来的，不是书里的。
+    **三个数是解剖，五个数是这一版调的，要分清。** 五等分、三段等长、以及「嘴在下三停里」是《Hampton》与
+    画脸教程里写下的规则（`learn/sources.md`）；`visible=0.80` 是颧骨那一点的 x、`aspect=0.34` 是眼裂的高宽
+    比、`-0.12` 是眼中心相对脸中心的高度 —— 这三个是这个库试出来的。
 
-    **它们留在库里而不是留在画它的脚本里**，因为判据比画法更可复用：换一个题材、换一张脸，这组比值还成立，
-    而具体的笔与颜色不成立。
+    **坐标都以脸中心为原点、以半高为单位给出**（乘过 `half_height`），因为调用者拿到的是屏幕 y，而多一处换算
+    就多一处符号错误。`top` 与 `chin` 是脸的上下界，`hairline` 是发际。
+
+    **三停为什么需要发际这个参数。** `top=-1.00` 是颅顶，而三停的第一停从发际算起，少了这一条三段就不等长，
+    眉、鼻底、下巴会一路偏下去 —— 上一版正是这样：鼻底写在脸的 0.33 半高处，而三停给的是 0.29。
+
+    **那条从鼻底到下巴的线段里，嘴落在上三分之一。** 这一条是面部测量的常用值（口裂点位于鼻下点与颏下点之间
+    的上三分之一），而 `learn/sources.md` 里关于嘴只有一句「the mouth sits above the guide」，比它粗得多。
+    所以 `mouth_third` 是这个库选的精度，不是书上抄来的数；标在这里，是因为混在一起的那天就没有人知道哪个能改。
     """
     span = 2.0 * half_width * visible
     eye_width = span / 5.0
+    # **三停：发际到眉、眉到鼻底、鼻底到下巴，三段等长。** 眉与鼻底由等分给出，嘴不再等分，它在第三段里面。
+    stop = (chin - hairline) / 3.0
+    brow = hairline + stop
+    nose = hairline + 2.0 * stop
+    mouth = nose + (chin - nose) * mouth_third
     return {
         'visible_width': span,
         'eye_width': eye_width,
         'eye_height': eye_width * aspect,
         'eye_dx': eye_width,
         'eye_dy': half_height * (top + chin) * 0.5,
+        'hairline_y': half_height * hairline,
+        'brow_y': half_height * brow,
+        'nose_y': half_height * nose,
+        'mouth_y': half_height * mouth,
+        'chin_y': half_height * chin,
     }
 
 

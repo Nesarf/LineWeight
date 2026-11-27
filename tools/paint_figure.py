@@ -39,13 +39,17 @@ FACE_H = 252.0               # 半高
 # **脸的轮廓：额头宽、颧骨最宽、下颌收、下巴圆。** 一个椭圆在这里读成鸡蛋，而人不是鸡蛋 —— 差别全在下颌那一段：
 # 从颧骨到下巴要收掉四成，且最后那一段是**慢**的（下巴不是尖的）。
 #
+# **而「慢」是一个斜率，可以写下来。** 上一版最后一段从 (0.17, 0.71) 直接落到中线，斜率 0.73；上一段是 0.73 的
+# 一半都不到，于是下巴收成一个尖角，读成锥子。在两点之间插一个点之后，最后三段的斜率依次是 0.73、0.41、0.15 ——
+# **一路变平**，那才是下巴：它不是一条边，是一段圆弧的最后半格。这就是「圆钝」在坐标里的样子。
+#
 # **而第一版的宽度写窄了三分之一**：`FACE_H / FACE_W` 给出来是一比一点八，而真实的头（从颅顶到下巴）是一比一点
 # 四。那个差在画面上不是「有点长」，是**读成一颗杏仁**。脸的宽度由颧骨定，不由额头定 —— 额头在上半部，而它连着
 # 的不是一条直的边。
 FACE = [
     (0.00, -1.00), (0.36, -0.98), (0.58, -0.88), (0.72, -0.66),
     (0.80, -0.34), (0.78, -0.08), (0.68, 0.18), (0.52, 0.42),
-    (0.32, 0.60), (0.17, 0.71), (0.00, 0.76),
+    (0.32, 0.60), (0.17, 0.71), (0.075, 0.749), (0.00, 0.76),
 ]
 
 SKIN_DARK = (152, 104, 84)
@@ -126,9 +130,18 @@ def eye_marks(centre, width, height, seed=71000):
     cx, cy = centre
     fig = project.Project(width=W, height=H, title='figure eyes')
     half = width * 0.5
+    # **眼角要闭合，而闭合靠的是末段的方向，不是端点的位置。** 计划里写的是「上睑两端向内收五到八像素」，
+    # 照着做了之后放大看：两条弧不再在端点相遇，外眼角张开一个小口，上睑的线头与下睑的线头错开成一个小叉 ——
+    # 比原来的尾巴更难看。
+    #
+    # 真正的毛病在倒数第二个点：它在外侧三分之一处、高过端点，于是末段从眼睛内侧斜穿到下睑线上，与下睑交叉，
+    # 交点之外那一小截就是「撇出去的线头」。把两个控制点都挪到一半处（0.52），末段的角度就缓到与下睑汇入同一点，
+    # 眼角是一个尖，不是两条线的交叉。
+    #
+    # **这一条是计划被证据改掉的记录。** 端点收进是「照着一张图看不出来、放到三倍才看出来」的那类改动。
     # **上睑**：内眼角略低、中间拱起、外眼角略高。三个点足够 —— 而四个点会让它变成一条两边对称的拱。
-    upper = [(cx - half, cy + height * 0.04), (cx - half * 0.30, cy - height * 0.52),
-             (cx + half * 0.34, cy - height * 0.46), (cx + half, cy - height * 0.02)]
+    upper = [(cx - half, cy + height * 0.04), (cx - half * 0.52, cy - height * 0.50),
+             (cx + half * 0.52, cy - height * 0.46), (cx + half, cy + height * 0.04)]
     fig.add_stroke(core.stroke_record(
         upper, 'brush', seed=seed, colour=hexed((38, 30, 32)), soft=0.35,
         width_profile=[2.4, 4.4, 4.0, 2.0], alpha_profile=[0.62, 0.86, 0.84, 0.58],
@@ -225,23 +238,22 @@ def face_marks(seed=70701):
     return fig, mask
 
 
-def brow_marks(centre, width, height, seed=72000):
+def brow_marks(centre, width, height, y, seed=72000):
     """一条眉：**内侧厚、眉峰靠外、眉尾薄。**
 
-    眉眼之间有它自己的距离，不由眼的大小推 —— 但这一版用了眼裂高的三倍，因为那是「一个人的眉长在她的眼睛
-    上面」看起来对的那一档，而不是解剖表里的数。**眉是这张脸上第一条「不由轮廓算出来」的线**：它的位置来自
-    眼睛，它的长度也来自眼睛，而眼睛来自「五眼」。三层依赖，任何一层改，眉跟着改。
+    **眉的高度不由眼睛推，由三停给。** 上一版用眼裂高当尺度来定眉眼间距（先三倍、再四点六倍），两次都是在两个
+    猜出来的数之间换 —— 换个尺度就换一条眉，而没有哪一档是有依据的。按三停，眉在「发际到鼻底」这两停的交界上，
+    眼睛略低于这条线；所以高度归 `standards.face` 的 `brow_y`，这里只管这一条眉自己怎么弯。
+
+    而长相仍由眼睛给：眉的长短跟着眼走，因为「一个人眉毛有多长」这件事，看的是眼睛。
     """
     cx, cy = centre
     half = width * 0.5
-    # **眉高在眼上约一个眼裂高的一倍半**，不是三倍 —— 三倍时它贴在睑上，读成第二条睫毛。真实的眉眼间距比
-    # 「一条眉压在眼睛上」宽得多，而那宽度是这张脸安静下来的原因。
-    rise = height * 4.6
     points = [
-        (cx - half, cy - rise + height * 0.40),
-        (cx - half * 0.30, cy - rise - height * 0.26),
-        (cx + half * 0.24, cy - rise - height * 0.18),
-        (cx + half, cy - rise + height * 0.66),
+        (cx - half, y + height * 0.40),
+        (cx - half * 0.30, y - height * 0.26),
+        (cx + half * 0.24, y - height * 0.18),
+        (cx + half, y + height * 0.66),
     ]
     fig = project.Project(width=W, height=H, title='figure brow')
     fig.add_stroke(core.stroke_record(
@@ -251,66 +263,181 @@ def brow_marks(centre, width, height, seed=72000):
     return fig
 
 
-def hair_marks(mask, seed=73000, depth=112.0, stride=6):
-    """**头发是脸的外面一圈，不是头上扣一块。**
+def grown_outline(grow=1.14, lift=64.0):
+    """脸轮廓放大一点、上提一点：**那是头发的厚度。**
 
-    这一圈由「到脸轮廓的距离」定义：距离在零到 `depth` 之间、且高度在颧骨以上。于是额头前一指处是发际线，
-    侧面是鬓，颅顶之上是那一片顶起来的发量 —— 而**它自己不需要另一个轮廓**，脸的轮廓已经是它的内边界。
+    头发不是贴在头骨上的一层漆，它自己有厚度，所以「头」在画面上比「脸」大一圈。`lift` 单独给，因为颅顶那一段
+    的厚度与两侧不同 —— 一个均匀放大的轮廓会把头压成鸡蛋。
+    """
+    return [(CX + (x - CX) * grow, CY + (y - CY) * grow - lift) for x, y in outline()]
 
-    方向沿用脸那一套办法：距离场的梯度是法向，转九十度是切向，笔顺切向走。所以发丝与脸的走向一致，而走向
-    一致是「这是同一个头」的唯一证据。
 
-    颜色沿这一圈的厚度变化：贴着头皮最深，往外亮起来 —— 一个球形的体积在任何一种光下都是这样，而这一版只
-    想要那个体积，不想要某个光源。
+def colour_layer(alpha, colour, blur=6.0, bottom=None, span=(80.0, 400.0)):
+    """一块纯色，形状由一张 0..1 的遮罩给。**软边是给定的**，因为头发的边缘不是刀切的。
+
+    接受数组而不是布尔掩膜，是因为头发下缘要渐隐：一条水平的硬边在太阳穴那里读成帽檐。
+
+    `bottom` 给出第二个颜色时，按行从上到下混过去 —— **一块均匀的深色读成帽子，读成头发的是那一层渐变。**
+    头发的受光在颅顶、最暗在发梢与耳侧，这个上下差就是体积；没有它，发团的形状再对也是一个剪影。
+    """
+    from scipy import ndimage
+
+    smooth = ndimage.gaussian_filter(np.clip(alpha, 0.0, 1.0) * 255.0, blur)
+    base = r.Layer(W, H)
+    r.fill_polygon(base, [(-20.0, -20.0), (W + 20.0, -20.0), (W + 20.0, H + 20.0), (-20.0, H + 20.0)],
+                   colour, 1.0)
+    array = np.zeros((H, W, 4), dtype=np.uint8)
+    array[:, :, :3] = 255
+    array[:, :, 3] = np.clip(smooth, 0, 255).astype(np.uint8)
+    mask = r.Layer(W, H)
+    mask.data = bytearray(array.tobytes())
+    layer = r.clip(base, mask)
+    if bottom is None:
+        return layer
+    top, low = float(span[0]), float(span[1])
+    rows = np.arange(H, dtype=float)[:, None]
+    weight = alpha * np.clip((rows - top) / max(1.0, low - top), 0.0, 1.0)
+    return r.blend(layer, colour_layer(weight, bottom, blur))
+
+
+def hairline_at(x, middle=-0.52, edge=-0.10, reach=0.92):
+    """发际线在每一列上的高度（半高单位）：中段在 `middle`，到鬓角落向 `edge`。
+
+    **它是逐列的，不是一条弧。** 两次用二次曲线连两个端点，端点都落在颧骨上、中点只低十五像素 —— 画出来是一条
+    水平横线，读成「一条刘海边」。发际线的真实形状是中段平缓、接近太阳穴时急转直下：所以这里用 |x| 的一点六次
+    幂插值，中段几乎不动，最后两成宽度里落掉七成高度。
+
+    写成函数而不是一个多边形，因为**它在画面上本来就是「这一列头发到哪里为止」**。多边形说不出这句话：它的
+    每条边都要在两头之间取直，而发际线不是一条边，是一列一列的边界。
+    """
+    t = np.minimum(1.0, np.abs(np.asarray(x, dtype=float) - CX) / (FACE_W * reach))
+    return middle + (edge - middle) * (t ** 1.6)
+
+
+def hair_roots(mask, limit, spacing):
+    """脸的轮廓上、颧骨以上那一圈点，沿周长每隔 `spacing` 取一个。
+
+    **发根住在轮廓上，不是撒在环带里。** 上一版把笔撒在「距脸零到一百一十二像素」的环带中，每一笔都是一条独立
+    的两厘米短线，方向取自距离场的切向 —— 那是绒，不是头发。头发与绒的分别不在粗细，在**每根都有一个起点，而
+    所有起点都在头皮上**。
+
+    「沿周长等距」在像素网格上只能近似：轮廓是八连通的锯齿，所以这里按极角排序，再要求相邻两点至少隔
+    `spacing` 像素。近似的代价是间距有一两个像素的抖动，而那正好是发根该有的样子。
+    """
+    from scipy import ndimage
+
+    edge = mask & ~ndimage.binary_erosion(mask)
+    ys, xs = np.nonzero(edge)
+    keep = ys < limit
+    ys, xs = ys[keep], xs[keep]
+    order = np.argsort(np.arctan2(ys - CY, xs - CX))
+    picked = []
+    for index in order:
+        point = (float(xs[index]), float(ys[index]))
+        if not picked or math.hypot(point[0] - picked[-1][0], point[1] - picked[-1][1]) >= spacing:
+            picked.append(point)
+    return picked
+
+
+def hair_marks(mask, seed=73000, depth=112.0, spacing=2.6, per_bundle=7):
+    """**头发是一束一束，每束从发根出发：方向由头皮给，弧线由重力给。**
+
+    一条发丝的生成方式是**积分一个方向**，而不是在两个点之间连一条线：
+
+    ```
+    方向 = 上一步的方向（七成） + 向下（重力） + 切向（流向，束内共用） + 一点噪声
+    ```
+
+    三个分量各自对应一件真事。**七成**是惯性，所以发丝是弯的而不是折的；**向下**让每条发丝最终都垂下来，哪怕它
+    从颅顶出发时是朝上的；**切向**让同一束里的几根朝同一个方向流，束与束之间方向不同 —— 那才是「一束一束」，
+    而不是「一丛一丛」的绒。
+
+    发根沿脸轮廓密排（`spacing` 二点六像素，这一圈周长约一千五百像素，于是六百根左右）。根部彼此重叠成一团深色，
+    往外逐渐分离成丝：**密与疏的分布由发根的位置给，不需要再铺一层底色。**
+
+    **长度不由「离脸多远」给，由这一次抖动给。** 上一版让外缘的笔更长，那是为了让环带不显得空；现在发丝本身
+    就是长度，一条长丝自然穿过环带，而「外缘更长」这个规则会让所有发丝在同一个半径上收尾 —— 那是剪过的头发。
     """
     from scipy import ndimage
 
     rng = random.Random(seed)
     outside = ndimage.distance_transform_edt(~mask)
     limit = CY + FACE_H * 0.62
-    zone = (outside > 0.0) & (outside < depth) & (np.arange(H)[:, None] < limit)
-    # **外缘的梯度比脸内部更乱**，因为那里没有第二侧的约束；磨得重一点，否则笔在颅顶会朝四面八方走。
+    # **外缘的梯度比脸内部更乱**，因为那里没有第二侧的约束；磨得重一点，否则发丝在颅顶会朝四面八方走。
     field = ndimage.gaussian_filter(outside, 9.0)
     gy, gx = np.gradient(field)
+
+    roots = hair_roots(mask, limit, spacing)
+    # **一束一次抽样。** 束内的发丝共用一个切向与一个长度尺度，束间不同；`gap` 让每七束留一道缝，缝不是空的，
+    # 只是那一束缺了几根 —— 头发分成束，靠的正是这种不均匀。
+    bundles = {}
+    for index in range(len(roots)):
+        key = index // per_bundle
+        if key not in bundles:
+            local = random.Random(seed + key * 977)
+            bundles[key] = (local.uniform(-0.85, 0.85), local.uniform(0.80, 1.25),
+                            local.random() < 0.18)
+
     fig = project.Project(width=W, height=H, title='figure hair')
-    for y in range(0, H, stride):
-        for x in range(0, W, stride):
-            if not zone[y, x] or rng.random() > 0.74:
-                continue
-            here = min(1.0, float(outside[y, x]) / depth)
-            # **下缘要渐薄，不能是一条横线。** `zone` 在 `limit` 处截断，而截断的边界是水平的 —— 第一版在那里
-            # 留下了锯齿一样的硬边，读成「一顶帽子」。头发收尾靠的是发丝越来越少，不是刀切。
-            fade = 1.0 if y < limit - 46.0 else max(0.0, (limit - y) / 46.0)
-            dx, dy = float(gx[y, x]), float(gy[y, x])
-            norm = math.hypot(dx, dy) or 1.0
-            tx, ty = -dy / norm, dx / norm
-            # **外缘的笔更长。** 发丝在头皮上短、在发梢长，而发梢在外侧；这条长度差就是「一撮头发」与
-            # 「一片色块」的分别。
-            length = 24.0 + 46.0 * here
-            tone = mix(HAIR_DARK, HAIR_MID, 0.25 + 0.75 * here + rng.uniform(-0.06, 0.06))
-            fig.add_stroke(core.stroke_record(
-                [(x - tx * length * 0.5, y - ty * length * 0.5 + rng.uniform(-2.0, 2.0)),
-                 (x + tx * length * 0.5, y + ty * length * 0.5 + rng.uniform(-2.0, 2.0))],
-                'brush', seed=seed + x * 11 + y, colour=hexed(tone), soft=0.75,
-                width_profile=[rng.uniform(10.0, 19.0)] * 2,
-                alpha_profile=[rng.uniform(0.58, 0.92) * fade] * 2,
-                absolute_width=True, edge=rng.uniform(3.5, 7.0), height=0.4),
-                stage='line', layer='hair', note='')
+    for index, (rx, ry) in enumerate(roots):
+        curl, scale, gap = bundles[index // per_bundle]
+        if gap and index % per_bundle == 0:
+            continue
+        dx, dy = float(gx[int(ry), int(rx)]), float(gy[int(ry), int(rx)])
+        norm = math.hypot(dx, dy) or 1.0
+        nx, ny = dx / norm, dy / norm
+        tx, ty = -ny, nx
+        # **下缘要渐薄，不能是一条横线。** 截断的边界是水平的 —— 上一版在那里留下了锯齿一样的硬边，读成「一顶
+        # 帽子」。头发收尾靠的是发丝越来越少、越来越淡，不是刀切。
+        fade = 1.0 if ry < limit - 60.0 else max(0.0, (limit - ry) / 60.0)
+        if fade <= 0.05:
+            continue
+        steps = 6 + int(3 * rng.random())
+        length = (78.0 + 74.0 * rng.random()) * scale
+        seg = length / steps
+        # 起点沿法向错开一两像素：六百根发丝里若有几十根从同一个像素出发，根部会读出几个钉子。
+        x, y = rx + nx * rng.uniform(0.0, 2.5), ry + ny * rng.uniform(0.0, 2.5)
+        dirx, diry = nx, ny
+        points = [(x, y)]
+        for _ in range(steps):
+            dirx = dirx * 0.70 + tx * curl * 0.12 + rng.uniform(-0.05, 0.05)
+            diry = diry * 0.70 + 0.52 + ty * curl * 0.12 + rng.uniform(-0.05, 0.05)
+            length_now = math.hypot(dirx, diry) or 1.0
+            dirx, diry = dirx / length_now, diry / length_now
+            x, y = x + dirx * seg, y + diry * seg
+            points.append((x, y))
+        width = rng.uniform(6.0, 10.5)
+        widths = [width * (1.0 - 0.70 * step / steps) for step in range(steps + 1)]
+        # **黑发的层次靠反光，不靠「更浅的头发」。** 一束头发里真正被看见的是几根反光的丝，它们的颜色不是把
+        # 发色往灰里调，而是往偏红的高光走，并且要淡 —— 浓的高光读成挑染。所以三成是亮丝、七成是本色丝，
+        # 亮丝再薄一层。上一版所有发丝都在深色区间里，画在深色发团上等于没有画。
+        if rng.random() < 0.32:
+            tone = mix(HAIR_MID, (136, 118, 128), rng.uniform(0.25, 0.80))
+            alpha = rng.uniform(0.30, 0.62) * fade
+        else:
+            tone = mix(HAIR_DARK, HAIR_MID, rng.uniform(0.15, 0.85))
+            alpha = rng.uniform(0.42, 0.80) * fade
+        fig.add_stroke(core.stroke_record(
+            points, 'brush', seed=seed + index * 31, colour=hexed(tone), soft=0.7,
+            width_profile=widths, alpha_profile=[alpha] * len(points),
+            absolute_width=True, edge=rng.uniform(2.6, 5.0), height=0.4),
+            stage='line', layer='hair', note='')
     return fig
 
 
-def nose_marks(seed=74000):
+def nose_marks(nose_y, brow_y, seed=74000):
     """**鼻子的全部信息是两条边、一个底、一点亮。**
 
-    它不由轮廓算，因为它不在轮廓上 —— 它是脸**内部**的第一个东西。位置来自三停的比例：眉在两停的交界，鼻底
-    在下一停的末尾，而这三段等长。
+    它不由轮廓算，因为它不在轮廓上 —— 它是脸**内部**的第一个东西。而它的两个端点现在都由三停给：鼻梁从眉线起，
+    鼻底落在第二停的末尾。上一版写的是脸的零点三三半高，那是照着眼睛的位置调的；三停给零点二九，差十六像素 ——
+    差得不多，但那是「猜的」与「算的」的分别，而猜出来的那一版没有人能说它错在哪里。
 
     而**宽度来自脸，不来自眼**：鼻翼大约是脸宽的四分之一，这条比「鼻子是眼睛的多少倍」稳，因为它不随眼睛
     的大小改。
     """
     fig = project.Project(width=W, height=H, title='figure nose')
-    top = CY - FACE_H * 0.04
-    tip = CY + FACE_H * 0.33
+    top = CY + brow_y
+    tip = CY + nose_y
     half = FACE_W * 0.13
     # 鼻梁右侧的影：光从左上过来，所以影子在右下，且它是一条宽带，不是一个轮廓。
     fig.add_stroke(core.stroke_record(
@@ -333,17 +460,21 @@ def nose_marks(seed=74000):
     return fig
 
 
-def mouth_marks(seed=75000):
+def mouth_marks(mouth_y, seed=75000):
     """**口缝是一条线，嘴唇是它上下两层很淡的色。**
 
     嘴的宽是脸的零点四倍 —— 比鼻翼宽，比两眼的内角窄一点，而这条比例是「一张脸放松着」的样子。第一版没有嘴，
     于是下半张脸是一整片肤色，读成面具。
 
+    **高度由三停的第三段给**：鼻底到下巴这一段里，口裂落在上三分之一（`standards.face` 的 `mouth_third`）。上一版
+    写在脸的零点五二半高处，比三停给的位置低十八像素 —— 而那一版是照「下巴到鼻底看着差不多一半」摆的。三停
+    给的不是中点：第三段里嘴偏上，下巴那一段留白更多，这也是「安静」与「面无表情」的分别。
+
     颜色不是红：`LIP` 是这张脸上的第三个颜料，而它比皮肤**暗且偏紫**，不是加亮度。嘴唇的红是它自己的颜色，不是
     脸颊的颜色调亮。
     """
     fig = project.Project(width=W, height=H, title='figure mouth')
-    y = CY + FACE_H * 0.52
+    y = CY + mouth_y
     half = FACE_W * 0.20
     fig.add_stroke(core.stroke_record(
         [(CX - half, y - 4.0), (CX - half * 0.34, y + 4.0),
@@ -404,26 +535,44 @@ def main():
     picture = place(picture, 'face',
                     r.clip(r.blend(skin, r.render_marks([m.to_dict() for m in face.marks], W, H, sweep=True)),
                            soft_mask(mask)))
+    # **那组比值现在住在库里**（`standards.face`），因为判据比画法更可复用：换一张脸这组数还成立，而这支笔
+    # 不成立。库里也写着哪三个数是书上的、哪几个是这个库试出来的 —— 混在一起的那一天，就没有人知道哪个能改。
+    #
+    # **而它现在算在最前面**，因为三停不只管眼睛：眉、鼻底、嘴三处高度都从它取。判据进了库之后，用它的地方就该
+    # 只剩「传下去」这一个动作，否则库里的数改了而这支笔没改，那种不一致是看不见的。
+    ratios = standards.face(FACE_W, FACE_H)
     # **鼻与嘴画在脸上，头发之上或之下都不影响** —— 头发只到脸的轮廓附近，而这两样在脸的中线上。
-    nose = nose_marks()
-    mouth = mouth_marks()
+    nose = nose_marks(ratios['nose_y'], ratios['brow_y'])
+    mouth = mouth_marks(ratios['mouth_y'])
     for name, drawing in (('nose', nose), ('mouth', mouth)):
         picture = place(picture, name,
                         r.render_marks([m.to_dict() for m in drawing.marks], W, H, sweep=True))
-    # **头发画在脸之上。** 鬓与刘海压在额头与颊上，而那是头发与脸唯一的接触方式；若它在脸之下，两侧会是一条
-    # 被裁干净的边，读成「戴了个头套」。
-    hair = hair_marks(mask)
+    # **头发画在脸之上，而且分两层：体积在下，发丝在上。** 鬓与刘海压在额头与颊上，而那是头发与脸唯一的接触
+    # 方式；若它在脸之下，两侧会是一条被裁干净的边，读成「戴了个头套」。
+    #
+    # **两层是这一轮试出来的。** 只有密集短笔的那一版有体积没方向；只有发根长丝的那一版有方向没体积，画出来是
+    # 秃的。两次各缺一半，因为它们本来是同一件事的两半。
+    hair = hair_marks(mask, spacing=1.9)
+    # **发团是两块拼起来的：发际线以上那一片，加脸外那一圈厚度。** 一块多边形说不出这两件事 —— 它的内边界在
+    # 额头是发际线、在太阳穴是脸的轮廓，而一条边画不出两种意思，于是它会在太阳穴横着盖住半张脸（试过一次，
+    # 画出来像戴了个黑头套）。分开之后每一块只说一件事，下缘再各自渐隐。
+    rows = np.arange(H)[:, None]
+    columns = np.arange(W, dtype=float)[None, :]
+    head = mask_of(grown_outline())
+    above = np.where(head, 1.0, 0.0) * (rows < CY + FACE_H * hairline_at(columns))
+    rim = np.where(head & ~mask, 1.0, 0.0) * np.clip((CY + FACE_H * 0.50 - rows) / 70.0, 0.0, 1.0)
+    picture = place(picture, 'hair base',
+                   colour_layer(np.maximum(above, rim), (46, 38, 45), bottom=(24, 20, 24),
+                                span=(70.0, 430.0)))
     picture = place(picture, 'hair', r.render_marks([m.to_dict() for m in hair.marks], W, H, sweep=True))
-    # **那组比值现在住在库里**（`standards.face`），因为判据比画法更可复用：换一张脸这组数还成立，而这支笔
-    # 不成立。库里也写着哪三个数是书上的、哪三个是这个库试出来的 —— 混在一起的那一天，就没有人知道哪个能改。
-    ratios = standards.face(FACE_W, FACE_H)
     eye_w = ratios['eye_width']
     eye_h = ratios['eye_height']
     eyes_y = CY + ratios['eye_dy']
+    brow_line = CY + ratios['brow_y']
     brows, eyes = [], []
     for name, sign in (('left', -1.0), ('right', 1.0)):
         centre = (CX + sign * eye_w, eyes_y)
-        brow = brow_marks(centre, eye_w, eye_h, seed=72000 + (19 if sign > 0 else 0))
+        brow = brow_marks(centre, eye_w, eye_h, brow_line, seed=72000 + (19 if sign > 0 else 0))
         brows.append(brow)
         picture = place(picture, 'brow %s' % name,
                         r.render_marks([m.to_dict() for m in brow.marks], W, H, sweep=True))

@@ -75,6 +75,57 @@ def test_five_eyes_across_the_visible_width():
     assert ratios['eye_dx'] + 2.0 * ratios['eye_width'] == pytest.approx(3.0 * ratios['eye_width'])
 
 
+def test_the_three_divisions_are_equal_and_the_mouth_sits_in_the_lower_third():
+    """The three divisions as three measurable spans: hairline to brow, brow to nose, nose to chin are equal, and the
+    mouth falls in the **upper** third of the last one -- so the space below it is twice the space above it.
+
+    This is the criterion the mouth line is now derived from instead of placed by eye. Before it, `mouth_marks` wrote
+    the mouth at 0.52 half-heights; 三停 puts it at 0.447, eighteen pixels higher on this face."""
+    ratios = standards.face(250.0, 252.0)
+    hairline, brow, nose, chin = (ratios['hairline_y'], ratios['brow_y'],
+                                  ratios['nose_y'], ratios['chin_y'])
+    assert brow - hairline == pytest.approx(nose - brow)
+    assert nose - brow == pytest.approx(chin - nose)
+    assert ratios['mouth_y'] - nose == pytest.approx((chin - nose) / 3.0)
+    assert chin - ratios['mouth_y'] == pytest.approx(2.0 * (chin - nose) / 3.0)
+
+
+def test_the_face_lines_come_down_in_one_order():
+    """The sign convention written as an assertion: y grows downward, so hairline < brow < eyes < nose < mouth < chin.
+
+    `eye_dy` sits between the brow line and the nose line, which is the only claim this makes about the eyes -- the
+    eyes are not on a three-division line, they are below the brow line.
+    """
+    ratios = standards.face(250.0, 252.0)
+    order = [ratios['hairline_y'], ratios['brow_y'], ratios['eye_dy'], ratios['nose_y'],
+             ratios['mouth_y'], ratios['chin_y']]
+    assert order == sorted(order)
+    assert len(set(order)) == len(order)
+
+
+def test_the_mouth_is_not_the_middle_of_the_lower_division():
+    """The distinction that makes the mouth line worth deriving rather than half-waying: it is above the midpoint, so
+    "halfway between nose and chin" is a different face, not a rounding of the same one."""
+    ratios = standards.face(250.0, 252.0)
+    middle = (ratios['nose_y'] + ratios['chin_y']) / 2.0
+    assert ratios['mouth_y'] < middle
+
+
+def test_the_hairline_is_a_parameter_because_three_equal_divisions_need_it():
+    """Without a hairline the three divisions start at the crown and nothing divides equally; the parameter exists so
+    that the crown and the hairline cannot be the same point by accident.
+
+    A hairline lower on the face shortens all three divisions, which lifts the nose line and the mouth with it -- so
+    the parameter is load-bearing rather than decorative.
+    """
+    default = standards.face(250.0, 252.0)
+    lower = standards.face(250.0, 252.0, hairline=-0.60)
+    assert lower['hairline_y'] == pytest.approx(252.0 * -0.60)
+    assert lower['brow_y'] > default['brow_y']
+    assert lower['nose_y'] > default['nose_y']
+    assert lower['mouth_y'] > default['mouth_y']
+
+
 def test_the_known_mistakes_come_from_the_library_that_holds_them():
     from lineweight import aesthetic
 

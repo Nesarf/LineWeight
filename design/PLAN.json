@@ -4,26 +4,30 @@
     {
       "id": "mouth-ratio",
       "title": "嘴的位置写成一条带出处的判据，放进 standards.face，用它重画那张脸",
-      "status": "pending",
-      "after": []
+      "status": "done",
+      "after": [],
+      "notes": "三停落成坐标：hairline/brow/nose/mouth/chin 五个 y 都从 standards.face 出来，眉、鼻底、嘴三处画法改成取它的值。嘴上移到鼻底到下巴的上三分之一（0.447 半高，原来写在 0.52）。发际是本库选的参数（颅顶下 1/5 脸高），口裂上三分之一是面部测量的常用值 —— 两条来源不同，docstring 里分开标注。"
     },
     {
       "id": "chin-round",
       "title": "下巴收口圆钝：FACE 的末尾两段之间插一个点，让最后一段慢下来",
-      "status": "pending",
-      "after": []
+      "status": "done",
+      "after": [],
+      "notes": "在 (0.17,0.71) 与 (0.00,0.76) 之间插 (0.075,0.749)，最后三段斜率 0.73 / 0.41 / 0.15 一路变平。判据写成斜率，不是「看起来圆一点」。"
     },
     {
       "id": "lid-corners",
       "title": "上睑弧两端向内收五到八像素，不再伸出眼角",
-      "status": "pending",
-      "after": []
+      "status": "done",
+      "after": [],
+      "notes": "计划被证据改掉了：按原计划收端点之后放大看，眼角张开一个小口，两条弧错成小叉。真因是倒数第二个控制点高过端点，末段斜穿下睑造成交叉。改成把两个控制点挪到一半处（0.52），末段缓角汇入同一点。证据是 3 倍放大对比图。"
     },
     {
       "id": "hair-strands",
       "title": "头发从一圈软毛改成一束一束：发根出发、带方向的曲线",
-      "status": "pending",
-      "after": ["chin-round"]
+      "status": "done",
+      "after": ["chin-round"],
+      "notes": "五版试错。发团由两块拼成：发际线以上那一片（逐列高度场 hairline_at）与脸外那一圈厚度（grown_outline 减脸）。发丝仍是积分方向（上一步七成 + 重力 + 束内共用切向），三成是反光丝。试错记录：环带短笔有体积无方向；只有发丝有方向无体积；blend 与 clip 用反使发团变白；二次曲线做发际线得到水平横线；一块多边形说不出「额头是发际线、太阳穴是轮廓」两件事。缺的下一步是发团内部的明暗（球面光照），不在本轮范围。"
     },
     {
       "id": "uniform-fill-note",
